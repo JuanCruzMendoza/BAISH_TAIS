@@ -16,6 +16,12 @@
 - **Best layer ≈ 22** (usable band 19–24): strongest worst-case transfer, orthogonal to length.
 - Scale the 32 story/realness prompts as **Tier-1-style form-matched contrasts**; keep narrative rewrites for validation only. (= the "fictionality direction, narrative form fixed" arm of the 2×2.)
 
+## Tier-3 — narrativity (story vs bare request), `extract_direction_tier3.py`
+- **Separate axis from fictionality ✓** (good decorrelation control): `cos_tier1` ≈ 0; `auroc_on_t1` ≈ 0.5 in the mid band → the story/bare axis does not read Tier-1 fiction/real.
+- **Not a usable concept direction ✗**: `auroc_t3_heldout` = 1.0 at *every* layer (incl. L1) and `cos_length` = 0.45–0.63 at L1–3 → dominated by length/surface form, not abstract narrativity. Steering it would move verbosity, not story-mode.
+- `auroc_on_t2` far from 0.5 (0.8–0.9 late layers) → Tier-2's fiction/real is itself partly a narrativity contrast → extra evidence Tier-2 is confounded.
+- **Decision:** keep only as the narrativity⊥fictionality check. For a real narrativity vector, length-match the bare arm (expository passage = story length) → Tier-3b (TODO).
+
 ## Caveats
 - 3B smoke test → confirm on 7B+.
 - Tiny N (transfer = 100 comparisons): read layer **bands**, not single-layer wiggles.
