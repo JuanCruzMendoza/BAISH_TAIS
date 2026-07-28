@@ -4,3 +4,4 @@ CLAUDE.md
 tools
 uv.lock
 .obsidian
+*__pycache__
