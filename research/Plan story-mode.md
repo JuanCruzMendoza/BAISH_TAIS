@@ -1,7 +1,4 @@
 
-
-
-
 **Related work**
 
 [Steering Evaluation-Aware Language Models to Act Like They Are Deployed](https://arxiv.org/abs/2510.20487)
@@ -38,12 +35,12 @@ They propose a rubric to measure success in jailbreaks that is not binary
 ## 2. Correlated directions
 
 
-| Direction                                | Claim it makes about jailbreaks                           | Role here                                                                                      |
-| ---------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| **Harm-perception** (2507.11878)         | jailbreaks make content *read* as non-harmful             | rival; disentangle; test mediation chain                                                       |
-| **Persona** (Assistant Axis, 2601.10387) | role-play installs a compliant character                  | rival; strongest for role-play attacks                                                         |
-| **Eval-awareness** (2510.20487)          | jailbreaks read as "test/evaluation," not real deployment | rival; **closest sibling** to realness — full causal treatment; disentangle; possible collapse |
-| **Refusal direction** (Arditi)           | jailbreaks suppress refusal propagation                   | **foil + positive control** (not a rival)                                                      |
+| Direction                                | Claim it makes about jailbreaks                           |
+| ---------------------------------------- | --------------------------------------------------------- |
+| **Harm-perception** (2507.11878)         | jailbreaks make content *read* as non-harmful             |
+| **Persona** (Assistant Axis, 2601.10387) | role-play installs a compliant character                  |
+| **Eval-awareness** (2510.20487)          | jailbreaks read as "test/evaluation," not real deployment |
+| **Refusal direction** (Arditi)           | jailbreaks suppress refusal propagation                   |
 
 ## 3. Setup
 
@@ -94,7 +91,14 @@ Have in mind, the directions extracted from the original papers had different co
 - We run jailbreaks on the model and measure ASR (measures jailbreak successful with a non-binary LLM-as-a-judge rubric)
 - On a validation subset of the jailbreaks, we steer the different vectors to see which restore refusal on successful jailbreaks and which break the model on unsuccessful jailbreaks
 - Select the steering vector that best restores refusal on a held-out dataset
-- Check: the layers with best AUROC have the most steering power?
+
+Checks
+- the layers with best AUROC have the most steering power?
+- does eval-awareness restore refusal? **(this would be novel)**
+- Build a length vector (with short vs long prompts paris) and see cosine similarity, to check if the vectors are length dependant
+
+Extra:
+- Does the steering impact capabilites (ex MMLU pro)?
 
 
 ### Probes (extra)
@@ -107,10 +111,10 @@ For each direction, we train a linear classifier on contrastive pairs per layer 
 1. Run the probes on the rest of the jailbreak dataset
 2. Apply to successful fiction/role-play jailbreaks → does the readout shift toward story-mode? 
 
-## 6. Phase 3 — Disentanglement (H1)
+## 6. Phase 3 — Test 2: Disentanglement (H1)
 
 Geometric
-- Cosine between story-mode and each rival; 
+- Cosine between story-mode and each rival:  if cosine similarity is low, it is already a good indicator that the directions are not correlated.
 - **principal angles** between subspaces (refusal is a *cone* — compare subspaces, not single vectors, which also absorbs some positional noise); 
 - **residual norm** of realness after projecting onto span{refusal, harm, persona, truth, eval-awareness} (small residual → not a new mechanism). Interpret raw cross-direction cosines only under matched position + layer; a large angle here is suggestive, never decisive on its own.
 
@@ -124,7 +128,7 @@ Extra experiments:
 - **Decorrelating-cell check:** does realness separate real-vs-hypothetical *within* eval framing (and eval separate deployment-vs-test *within* real framing)? Both → two axes, not one.
 - **Orthogonalized (amnesic/INLP) probing:** ablate harm (then persona, then truth, then eval-awareness) from activations; does realness still decode? Survival → independent information. 
 
-## 7. Phase 4 — Test 2: causal steering + double dissociation (H3, the core)
+## 7. Phase 4 — Test 3: causal steering + double dissociation (H3)
 
 **(a) Single-direction steering.** On successful jailbreaks, steer away from story-mode→ measure ASR drop and over-refusal. Repeat for persona/harm/eval-awareness at matched strength.
 
@@ -134,7 +138,7 @@ Extra experiments:
 - Clamp persona (project it out); measure compliance. *(If refusal returns from this alone → persona explains it.)*
 - Project story-mode to persona and steer away the component orthogonal to it  *(If refusal returns while persona is projected out → story-mode has independent causal power.)*
 - Reverse: clamp story-mode, steer persona→Assistant.
-- **Both directions move the outcome with the other held fixed = two distinct causal channels.** Repeat for the other combinations of the rest of directions
+- Both directions move the outcome with the other projected out = two distinct causal channels. Repeat for the other combinations of the rest of directions
 
 
 **Extra experiments:**
