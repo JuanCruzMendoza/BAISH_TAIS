@@ -58,12 +58,13 @@ def last_token_reps(text):
     at the position where the model is about to generate its response."""
     msgs = [{"role": "user", "content": text}]
     try:
-        ids = tok.apply_chat_template(
-            msgs, add_generation_prompt=True, return_tensors="pt"
+        enc = tok.apply_chat_template(
+            msgs, add_generation_prompt=True, return_tensors="pt", return_dict=True
         )
     except Exception:
-        ids = tok(text, return_tensors="pt").input_ids
-    out = model(ids.to(dev), output_hidden_states=True)
+        enc = tok(text, return_tensors="pt")
+    enc = enc.to(dev)
+    out = model(**enc, output_hidden_states=True)
     return torch.stack(out.hidden_states, dim=0)[:, 0, -1, :].float().cpu()
 
 
