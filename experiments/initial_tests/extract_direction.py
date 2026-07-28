@@ -16,11 +16,12 @@ Usage:
 Run on a GPU box (e.g. RunPod). Reads .jsonl from data/initial_tests/ (override
 with the DATA_DIR env var); writes results to experiments/initial_tests/results/.
 
-What "the direction is useful" looks like:
-    - test AUROC near 1.0 at some middle layer  -> fiction/real is linearly encoded
-    - |cos(fiction, length)| near 0             -> not a length artifact
-    - both Tier-1 and Tier-2 pairs separate      -> not a lexical/register artifact
-      (inspect per-tier by filtering the jsonl; see --tier note below)
+What "the direction is useful" looks like (per-layer table + metrics.csv):
+    - auroc_pooled near 1.0 at some middle layer  -> fiction/real is linearly encoded
+    - |cos_fiction_length| near 0                 -> not a length artifact
+    - auroc_t1_to_t2 and auroc_t2_to_t1 both high -> a shared fiction/real axis that
+      transfers across lexical realizations, not a "novel/memoir" word detector
+    - cos_t1_t2 near 1                            -> both tiers induce the same axis
 """
 import csv
 import json
@@ -87,29 +88,72 @@ def cos(a, b):
 
 
 pairs = load("fiction_vs_real_pairs.jsonl")
-train = [p for p in pairs if p["split"] == "train"]
-test = [p for p in pairs if p["split"] == "test"]
 lc = load("length_control_pairs.jsonl")
 
-print(f"train={len(train)} pairs  test={len(test)} pairs  length-control={len(lc)} pairs")
-print("extracting activations ...")
-fic_tr, real_tr = reps_for(train, "fiction"), reps_for(train, "real")
-fic_te, real_te = reps_for(test, "fiction"), reps_for(test, "real")
+n_t1 = sum(p["tier"] == 1 for p in pairs)
+n_t2 = sum(p["tier"] == 2 for p in pairs)
+print(f"{len(pairs)} fiction/real pairs (Tier-1={n_t1}, Tier-2={n_t2}); {len(lc)} length pairs")
+print("extracting activations (one forward pass per prompt) ...")
+
+# reps for every pair once; slice by tier/split with index lists (no recompute)
+fic_all = reps_for(pairs, "fiction")     # [N, n_layers+1, hidden]
+real_all = reps_for(pairs, "real")
 long_lc, short_lc = reps_for(lc, "long"), reps_for(lc, "short")
 
-fic_dir = fic_tr.mean(0) - real_tr.mean(0)      # [n_layers+1, hidden]
+sel = lambda cond: [i for i, p in enumerate(pairs) if cond(p)]
+tr = sel(lambda p: p["split"] == "train")                    # pooled train (both tiers)
+te = sel(lambda p: p["split"] == "test")                     # pooled test  (both tiers)
+te_t1 = sel(lambda p: p["split"] == "test" and p["tier"] == 1)
+te_t2 = sel(lambda p: p["split"] == "test" and p["tier"] == 2)
+tr_t1 = sel(lambda p: p["split"] == "train" and p["tier"] == 1)
+tr_t2 = sel(lambda p: p["split"] == "train" and p["tier"] == 2)
+all_t1 = sel(lambda p: p["tier"] == 1)                       # every Tier-1 pair
+all_t2 = sel(lambda p: p["tier"] == 2)                       # every Tier-2 pair
+
+
+def direction(idx):
+    """diff-in-means fiction - real over the given pairs -> [n_layers+1, hidden]"""
+    return fic_all[idx].mean(0) - real_all[idx].mean(0)
+
+
+def auroc_at(dvec_l, idx, l):
+    """AUROC separating fiction from real over `idx` at layer l, along direction dvec_l."""
+    u = dvec_l / (dvec_l.norm() + 1e-8)
+    pos = (fic_all[idx][:, l, :] @ u).tolist()
+    neg = (real_all[idx][:, l, :] @ u).tolist()
+    return auroc(pos, neg)
+
+
+dir_pool = direction(tr)      # trained on both tiers (the original direction)
+dir_t1 = direction(tr_t1)     # trained on Tier-1 only
+dir_t2 = direction(tr_t2)     # trained on Tier-2 only
 len_dir = long_lc.mean(0) - short_lc.mean(0)
 
-print(f"\n{'layer':>5} {'test_AUROC':>11} {'cos(fic,len)':>13}")
+# Column legend:
+#   pooled : pooled dir on held-out test, both tiers      -- reproduces the original number
+#   T1 / T2: pooled dir on the Tier-1 / Tier-2 test subset  (only 3+3 pairs -> coarse)
+#   T1>T2  : dir from Tier-1 train, tested on ALL Tier-2     (10 pairs, never seen)
+#   T2>T1  : dir from Tier-2 train, tested on ALL Tier-1     (10 pairs, never seen)
+#   cosT12 : cosine between the Tier-1 and Tier-2 directions (does the axis agree?)
+# The transfer columns + cosT12 are the real "concept, not lexical artifact" evidence:
+# a Tier-1-only direction has never seen a full rewrite, so if it still separates all
+# Tier-2 pairs the axis is shared across surface form, not the word "novel".
+print(f"\n{'lyr':>3} {'pooled':>6} {'T1':>6} {'T2':>6} {'T1>T2':>6} {'T2>T1':>6} {'cosT12':>7} {'cosLen':>7}")
 rows = []
-n_layers = fic_dir.shape[0]
+n_layers = dir_pool.shape[0]
 for l in range(1, n_layers):
-    d = fic_dir[l] / (fic_dir[l].norm() + 1e-8)
-    pos = (fic_te[:, l, :] @ d).tolist()
-    neg = (real_te[:, l, :] @ d).tolist()
-    a, c = auroc(pos, neg), cos(fic_dir[l], len_dir[l])
-    rows.append((l, a, c))
-    print(f"{l:>5} {a:>11.3f} {c:>13.3f}")
+    r = (
+        l,
+        auroc_at(dir_pool[l], te, l),
+        auroc_at(dir_pool[l], te_t1, l),
+        auroc_at(dir_pool[l], te_t2, l),
+        auroc_at(dir_t1[l], all_t2, l),
+        auroc_at(dir_t2[l], all_t1, l),
+        cos(dir_t1[l], dir_t2[l]),
+        cos(dir_pool[l], len_dir[l]),
+    )
+    rows.append(r)
+    print(f"{r[0]:>3} {r[1]:>6.2f} {r[2]:>6.2f} {r[3]:>6.2f} {r[4]:>6.2f} {r[5]:>6.2f} {r[6]:>7.2f} {r[7]:>7.2f}")
 
 # --- save results (namespaced per model so multiple runs don't overwrite) ---
 out_dir = os.path.join(HERE, "results", MODEL.replace("/", "_"))
@@ -117,12 +161,22 @@ os.makedirs(out_dir, exist_ok=True)
 csv_path = os.path.join(out_dir, "metrics.csv")
 with open(csv_path, "w", newline="", encoding="utf-8") as f:
     w = csv.writer(f)
-    w.writerow(["layer", "test_auroc", "cos_fiction_length"])
+    w.writerow([
+        "layer", "auroc_pooled", "auroc_pool_on_t1", "auroc_pool_on_t2",
+        "auroc_t1_to_t2", "auroc_t2_to_t1", "cos_t1_t2", "cos_fiction_length",
+    ])
     w.writerows(rows)
 # direction vectors are the reusable artifact for Phase 2/3 steering & probes
 dir_path = os.path.join(out_dir, "directions.pt")
-torch.save({"model": MODEL, "fiction": fic_dir, "length": len_dir}, dir_path)
-best = max(rows, key=lambda r: r[1])
-print(f"\nbest layer: {best[0]} (test AUROC {best[1]:.3f}, cos-with-length {best[2]:.3f})")
+torch.save(
+    {"model": MODEL, "fiction_pooled": dir_pool, "fiction_tier1": dir_t1,
+     "fiction_tier2": dir_t2, "length": len_dir},
+    dir_path,
+)
+# best layer = strongest worst-case cross-tier transfer (i.e. most tier-invariant)
+best = max(rows, key=lambda r: min(r[4], r[5]))
+print(f"\nbest transfer layer: {best[0]}  T1>T2={best[4]:.2f}  T2>T1={best[5]:.2f}  "
+      f"cosT12={best[6]:.2f}  cosLen={best[7]:.2f}")
+print("note: T1/T2 cols are 3+3 pairs (coarse, ~0.11 steps); transfer cols are 10+10 (~0.01).")
 print(f"saved metrics       -> {csv_path}")
 print(f"saved directions.pt -> {dir_path}")
