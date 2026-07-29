@@ -1,10 +1,17 @@
 """
 Causal steering on story-wrapped jailbreaks: does moving AWAY from narrativity restore refusal?
 
-Plan section 7(a). Inputs are prompts whose harmful request is already inside a narrative
-frame. Baseline generation is expected to comply (successful jailbreak); steering with
-alpha < 0 should restore refusal. The positive tail is swept too so the result is a
-dose-response curve rather than two points.
+Plan sections 7(a) and 7(b). Inputs are prompts whose harmful request is already inside a
+narrative frame. Steering away from narrativity (alpha < 0) should restore refusal on the
+ones that succeeded; steering toward it (alpha > 0) should induce compliance on the ones
+that did not. Both arms come out of ONE sweep: every prompt is run at both signs plus a
+shared alpha=0 baseline, and the split into 7(a) and 7(b) happens at analysis time
+according to whether that baseline complied or refused.
+
+The alpha grid is SYMMETRIC for two reasons beyond covering both arms. It gives the
+dose-response monotonicity that section 9 asks for, and it is the only way to see the
+damage failure mode: if -alpha and +alpha restore refusal *equally*, the effect is
+perturbation damage rather than a signed directional one, and an asymmetric grid hides that.
 
 Steers ONE layer at a time (L18-26 by default) and compares them -- not all layers at
 once. `--simultaneous` switches to injecting at every layer in the range in a single
@@ -58,7 +65,7 @@ NOT IN SCOPE
 
 Usage:
     python steer_narrativity.py [model_name]
-    LAYERS=18-26 ALPHAS=-2,-1.5,-1,-0.5,0.5,1 MAX_NEW=256 python steer_narrativity.py Qwen/Qwen2.5-3B-Instruct
+    LAYERS=18-26 ALPHAS=-2,-1.5,-1,-0.5,0.5,1,1.5,2 MAX_NEW=256 python steer_narrativity.py Qwen/Qwen2.5-3B-Instruct
     DIRECTION=length_pooled python steer_narrativity.py Qwen/Qwen2.5-3B-Instruct
     SIMULTANEOUS=1 python steer_narrativity.py Qwen/Qwen2.5-3B-Instruct
 
@@ -82,7 +89,7 @@ DATA_DIR = os.environ.get(
 MODEL = sys.argv[1] if len(sys.argv) > 1 else "Qwen/Qwen2.5-7B-Instruct"
 DIRECTION = os.environ.get("DIRECTION", "narrativity_orth")
 LAYERS = os.environ.get("LAYERS", "18-26")
-ALPHAS = [float(a) for a in os.environ.get("ALPHAS", "-2,-1.5,-1,-0.5,0.5,1").split(",")]
+ALPHAS = [float(a) for a in os.environ.get("ALPHAS", "-2,-1.5,-1,-0.5,0.5,1,1.5,2").split(",")]
 MAX_NEW = int(os.environ.get("MAX_NEW", 256))
 SIMULTANEOUS = os.environ.get("SIMULTANEOUS", "") not in ("", "0", "false")
 SEED = int(os.environ.get("SEED", 0))
@@ -92,8 +99,30 @@ LAYER_LIST = list(range(lo, hi + 1))
 
 
 def load_jsonl(path):
+    """One JSON object per line, with a decode error that says what to fix.
+
+    Jailbreak prompts are pasted in as raw text, and raw text trips JSON in two
+    predictable ways. The stdlib message ("Expecting ',' delimiter") names neither.
+    """
+    rows = []
     with open(path, encoding="utf-8") as f:
-        return [json.loads(line) for line in f if line.strip()]
+        for i, line in enumerate(f, 1):
+            if not line.strip():
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError as e:
+                near = line[max(0, e.colno - 45):e.colno + 25].replace("\n", "")
+                raise SystemExit(
+                    f"{os.path.basename(path)} line {i}, column {e.colno}: {e.msg}\n"
+                    f"  near: ...{near}...\n"
+                    "  Pasted jailbreak text almost always means one of:\n"
+                    '    a literal "  inside a string  -> escape it as \\"\n'
+                    "    a literal tab or newline      -> escape as \\t / \\n, or delete it\n"
+                    "  Reliable fix: build the row in Python and json.dumps() it rather than\n"
+                    "  typing the quotes by hand."
+                ) from None
+    return rows
 
 
 # ------------------------------------------------------------------------------- data
