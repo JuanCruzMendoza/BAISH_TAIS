@@ -17,7 +17,7 @@ All results: Qwen2.5-3B-Instruct, diff-in-means on the last prompt token. See
 - Tier-2 (full rewrite) = fiction/real **+ genre/setting confound** → contaminated vector, poor transfer. Clincher: Tier-1 is the *easier* eval set, yet `dir_t2` scores only 0.6–0.79 on it while `dir_t1` scores ~0.9 on the *harder* Tier-2 set.
 
 ## Decision
-- **Extract the direction from Tier-1** (form-matched); use **Tier-2 as held-out realistic validation** — never extract from Tier-2 alone.
+- **Extract the direction from Tier-1** (form-matched)
 - **Best layer ≈ 22** (usable band 19–24): strongest worst-case transfer, orthogonal to length.
 - Scale the 32 story/realness prompts as **Tier-1-style form-matched contrasts**; keep narrative rewrites for validation only. (= the "fictionality direction, narrative form fixed" arm of the 2×2.)
 

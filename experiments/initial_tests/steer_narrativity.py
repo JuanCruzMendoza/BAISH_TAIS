@@ -65,7 +65,7 @@ NOT IN SCOPE
 
 Usage:
     python steer_narrativity.py [model_name]
-    LAYERS=18-26 ALPHAS=-2,-1.5,-1,-0.5,0.5,1,1.5,2 MAX_NEW=256 python steer_narrativity.py Qwen/Qwen2.5-3B-Instruct
+    LAYERS=18-26 ALPHAS=-2,-1.5,-1,-0.5,0.5,1,1.5,2 MAX_NEW=1024 python steer_narrativity.py Qwen/Qwen2.5-3B-Instruct
     DIRECTION=length_pooled python steer_narrativity.py Qwen/Qwen2.5-3B-Instruct
     SIMULTANEOUS=1 python steer_narrativity.py Qwen/Qwen2.5-3B-Instruct
 
@@ -90,7 +90,7 @@ MODEL = sys.argv[1] if len(sys.argv) > 1 else "Qwen/Qwen2.5-7B-Instruct"
 DIRECTION = os.environ.get("DIRECTION", "narrativity_orth")
 LAYERS = os.environ.get("LAYERS", "18-26")
 ALPHAS = [float(a) for a in os.environ.get("ALPHAS", "-2,-1.5,-1,-0.5,0.5,1,1.5,2").split(",")]
-MAX_NEW = int(os.environ.get("MAX_NEW", 256))
+MAX_NEW = int(os.environ.get("MAX_NEW", 1024))
 SIMULTANEOUS = os.environ.get("SIMULTANEOUS", "") not in ("", "0", "false")
 SEED = int(os.environ.get("SEED", 0))
 

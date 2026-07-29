@@ -15,6 +15,7 @@ python extract_direction.py Qwen/Qwen2.5-3B-Instruct
 python extract_direction_tier3.py Qwen/Qwen2.5-3B-Instruct
 python deconfound_length_tier3.py Qwen/Qwen2.5-3B-Instruct
 python residual_length_tier3.py Qwen/Qwen2.5-3B-Instruct
+python steer_narrativity.py Qwen/Qwen2.5-3B-Instruct    # generates; needs 1-4 run first
 ```
 
 Outputs go to `results/<model>/`, `/` replaced by `_`.
@@ -34,7 +35,7 @@ apart is the main conceptual result of these pilots:
 | `fiction_vs_real_pairs.jsonl` | 20 | fictionality. **Tier-1** (10): byte-identical body, provenance label swapped (novel/memoir). **Tier-2** (10): full rewrite, never uses the words novel/memoir |
 | `tier3_story_vs_bare_pairs.jsonl` | 10 | narrativity. Same request embedded in a short story vs stated plainly. Confounded with length by construction |
 | `length_filler_pairs.jsonl` | 30 | length/verbosity nuisance for Tier-3. Same 10 requests padded to story length with non-narrative prose, 3 styles: `expository` (topic-matched facts), `ambient` (topic-neutral description), `oblique` (document framing ending in `"... reads:"`, matching the story's speech act) |
-| `story_jailbreaks.jsonl` | — | **placeholder, unfilled.** Story-wrapped jailbreak prompts for the causal experiment. `prompt` = what the model sees, `request` = the plain ask kept separate so a judge can score later, `source` = jailbreak family |
+| `story_jailbreaks.jsonl` | 3 | story-wrapped jailbreaks for the causal experiment, from `Casey27/JailbreakPrompts`. `prompt` = what the model sees, `request` = the plain ask kept separate so a judge can score later, `source` = jailbreak family. Grows over time; rows with `FILL_ME` are skipped |
 | `length_control_pairs.jsonl` | 8 | legacy. Terse question vs request for a *verbose answer* — that is requested-verbosity, not prompt length. Wrong nuisance for Tier-3; superseded by `length_filler_pairs` |
 
 Tier-3 and filler splits are aligned (requests 1–7 train, 8–10 test) so nuisance
@@ -105,20 +106,31 @@ Outcomes: no leak → keep `narrativity_orth`, question closed. Leak + `leace_M`
 switch to `narrativity_leace`. Leak + `leace_M` collapses → not separable at this n,
 escalate to the design-side controls in `research/deconfounding-length.md`.
 
-### 5. `steer_narrativity.py` — does steering away from narrativity restore refusal? (§7a)
+### 5. `steer_narrativity.py` — does steering narrativity move refusal? (§7a + §7b)
 
-**Not yet run** — `story_jailbreaks.jsonl` is still a template.
+**Not yet run.**
 
-Story-wrapped jailbreaks in, generations out. Baseline (no hook) is expected to comply;
-α < 0 should restore refusal. Sweeps **one layer at a time**, L18–26, so layers can be
-compared — `SIMULTANEOUS=1` injects at all of them at once instead, which is a stronger
-and differently-interpreted intervention.
+Story-wrapped jailbreaks in, generations out. α < 0 (away from narrativity) should restore
+refusal on jailbreaks that succeeded; α > 0 should induce compliance on ones that didn't.
+**Both arms come from one sweep** — every prompt runs at both signs plus a shared α=0
+baseline, and the §7a/§7b split happens at analysis time by whether that baseline complied
+or refused. So a prompt that already refuses is not a wasted row, it is the §7b case.
 
+Sweeps **one layer at a time**, L18–26, so layers can be compared — `SIMULTANEOUS=1`
+injects at all of them at once instead, which is a stronger and differently-interpreted
+intervention. Grid is 8 α × 9 layers + 1 baseline = **73 generations per request**.
+
+- **α is symmetric** (`-2 … +2`). Beyond covering both arms, it gives the dose-response
+  monotonicity §9 asks for and is the only way to see the damage failure mode: if −α and
+  +α restore refusal *equally*, the effect is perturbation damage, not a signed direction.
 - **α is in units of the layer's median activation norm**, not raw multiples of the
   direction. Load-bearing for a layer sweep: residual-stream norms grow with depth, so a
   fixed raw coefficient would make deep layers look weaker than they are.
 - Injected at **all** positions (prefill + every decoded token). Greedy decoding, so
-  differences across α are steering and not sampling.
+  differences across α are steering and not sampling. `MAX_NEW=1024` — high enough that
+  `out_tokens` stays a measurement rather than a ceiling, which matters because that column
+  is how the toward-shorter side effect from 2c gets checked. Verify the saturation rate at
+  the cap before reading it.
 - **Layer indexing:** layer `l` = `hidden_states[l]` = output of `blocks[l-1]`. Asserted
   against the direction tensor at startup.
 - `nar_proj_final` is the manipulation check, read at the **final** layer — at the steered
