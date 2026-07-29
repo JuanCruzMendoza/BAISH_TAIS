@@ -41,7 +41,54 @@ Three fixes on the *same* Tier-3 pairs: OLS intercept on Δtokens (fix 1), proje
 
 **Decision:** narrativity is a usable axis. Steer `narrativity_orth` @ **L19–28** (`len_frac` minimal there, and it overlaps the L19–24 fictionality band → matched layers across directions, as §4 of the plan requires). Promote `length_pooled`/`length_slope` from a cosine check to a **named rival** in the §7 cross-steering matrix — with `len_ho` = 1.00 it is a real competitor.
 
+## 2c. Residual-length audit, `residual_length_tier3.py`
+
+2b showed narrativity **survives** length matching. It could not show length was **removed**:
+the `*_M` evals hold length constant, so a vector's residual length component contributes
+nothing to them. Test on the missing cell — a pure-length contrast (filler-long vs
+filler-short, held-out rows, neither class a story). AUROC 0.5 = blind to length; any
+distance from 0.5, either sign, = still reading length. Also compared a Σ-orthogonal
+(covariance-corrected) projection against FIX 2's plain orthogonal one.
+
+Band means, L19–28:
+
+| vector | resid (long vs short) | dev from 0.5 | `*_M` | `*_M_obl` |
+|---|---|---|---|---|
+| `length_pooled` | 1.00 | +0.50 | — | — |
+| `narrativity_raw` | 0.78 | +0.28 | — | — |
+| **`narrativity_orth`** | **0.40** | **−0.10** | **1.00** | **1.00** |
+| `narrativity_leace` | 0.20 | −0.30 | 0.97 | 0.91 |
+
+- **The audit was necessary and `*_M` could not have replaced it**: all candidates score
+  ~1.00 on `*_M`/`*_M_obl` and are cleanly ordered by the length contrast.
+- **`narrativity_orth` removed ~65% of the length readout and slightly overshot.** Below
+  0.5 at every layer L8–L31 — too consistent to be noise (adjacent layers are correlated;
+  the per-layer `p_ort` are not 10 independent tests). `p_ort` < 0.05 at L19, L21–23, L25.
+- **The Σ correction is rejected at this n.** `narrativity_leace` lands as far from neutral
+  as the raw vector, on the other side, with `p_leace` pinned at the 1/512 floor; and it is
+  unstable — `leace_M_obl` = 0.33 @ L20, **0.00** @ L8–9, `cos_leace_ort` swinging 0.42–0.87
+  with no pattern. Σ from 80 pooled prompts in ~2048 dims cannot support a 3×3 solve.
+- **`sig_frac_ort` = 0.62 contradicts the behavioral column** (`euc_frac_ort` ≈ 0 as designed).
+  Given the leace failure, treat `sig_frac` as uninformative at this Σ quality and read the
+  behavioral column.
+
+**Decision** (refines 2b's L19–28):
+- Steer **`narrativity_orth`**, not `narrativity_leace`.
+- **L24** to keep layers matched with fictionality (L19–24), as §4 of the plan requires —
+  cleanest residual in the overlap (0.43, `p` = 0.14) with `ort_M` = `ort_M_obl` = 1.00.
+  **L26–28** (0.44, `p` = 0.12) if optimizing narrativity alone.
+- L19, L21–23 are the worst of the band on residual despite `ort_M` = 1.00 — exactly the
+  failure `*_M` cannot see.
+- Revisit whitening at n=32 / 7B, where Σ is better estimated. Not before.
+
 ## Caveats
+- The leak in `narrativity_orth` is **sign-inverted** (scores long prompts lower). Stories
+  are long, so a "steering worked because it's length" explanation would have to run through
+  *anti*-length — conservative for H3. But `+narrativity_orth` carries a mild toward-shorter
+  push: log output length alongside ASR in Phase 4.
+- `resid_ort_full` ≈ 0.50 at every layer is the **in-sample** column and circular by
+  construction — not reassurance. It is also the variant saved in the `.pt`, so the held-out
+  audit covers the same construction, not the same weights.
 - 3B smoke test → confirm on 7B+.
 - Tiny N (transfer = 100 comparisons; deconfounded held-out cells are 3×9 = 27): read layer **bands**, not single-layer wiggles. A reported 1.00 means 27/27 and is indistinguishable from 0.95.
 - `ort_M` = 1.00 at L1–2 is **not** evidence of a concept: stories contain narrative vocabulary (`found`, `she`, `his`) the fillers lack, so early layers may be a word detector. Resolved for fictionality via cross-tier transfer; unresolved for narrativity — another reason to read L19–28 only.

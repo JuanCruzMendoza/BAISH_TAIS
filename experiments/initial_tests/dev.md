@@ -34,6 +34,7 @@ apart is the main conceptual result of these pilots:
 | `fiction_vs_real_pairs.jsonl` | 20 | fictionality. **Tier-1** (10): byte-identical body, provenance label swapped (novel/memoir). **Tier-2** (10): full rewrite, never uses the words novel/memoir |
 | `tier3_story_vs_bare_pairs.jsonl` | 10 | narrativity. Same request embedded in a short story vs stated plainly. Confounded with length by construction |
 | `length_filler_pairs.jsonl` | 30 | length/verbosity nuisance for Tier-3. Same 10 requests padded to story length with non-narrative prose, 3 styles: `expository` (topic-matched facts), `ambient` (topic-neutral description), `oblique` (document framing ending in `"... reads:"`, matching the story's speech act) |
+| `story_jailbreaks.jsonl` | — | **placeholder, unfilled.** Story-wrapped jailbreak prompts for the causal experiment. `prompt` = what the model sees, `request` = the plain ask kept separate so a judge can score later, `source` = jailbreak family |
 | `length_control_pairs.jsonl` | 8 | legacy. Terse question vs request for a *verbose answer* — that is requested-verbosity, not prompt length. Wrong nuisance for Tier-3; superseded by `length_filler_pairs` |
 
 Tier-3 and filler splits are aligned (requests 1–7 train, 8–10 test) so nuisance
@@ -103,6 +104,38 @@ hidden×hidden matrix. Also reports `sig_frac_*` (length share of the readout) a
 Outcomes: no leak → keep `narrativity_orth`, question closed. Leak + `leace_M` holds →
 switch to `narrativity_leace`. Leak + `leace_M` collapses → not separable at this n,
 escalate to the design-side controls in `research/deconfounding-length.md`.
+
+### 5. `steer_narrativity.py` — does steering away from narrativity restore refusal? (§7a)
+
+**Not yet run** — `story_jailbreaks.jsonl` is still a template.
+
+Story-wrapped jailbreaks in, generations out. Baseline (no hook) is expected to comply;
+α < 0 should restore refusal. Sweeps **one layer at a time**, L18–26, so layers can be
+compared — `SIMULTANEOUS=1` injects at all of them at once instead, which is a stronger
+and differently-interpreted intervention.
+
+- **α is in units of the layer's median activation norm**, not raw multiples of the
+  direction. Load-bearing for a layer sweep: residual-stream norms grow with depth, so a
+  fixed raw coefficient would make deep layers look weaker than they are.
+- Injected at **all** positions (prefill + every decoded token). Greedy decoding, so
+  differences across α are steering and not sampling.
+- **Layer indexing:** layer `l` = `hidden_states[l]` = output of `blocks[l-1]`. Asserted
+  against the direction tensor at startup.
+- `nar_proj_final` is the manipulation check, read at the **final** layer — at the steered
+  layer it is tautological (add `α·û`, project onto `û`, moves by exactly `α`).
+- `resid_ort_layer` carries each layer's residual-length AUROC from experiment 4. **If
+  steering power correlates with it across L18–26, the effect is length, not narrativity.**
+  insights.md 2c found the leakage varies a lot inside this band, so the sweep is
+  informative either way.
+- Startup smoke test asserts the hook fires, that α=0 reproduces the baseline exactly, and
+  that a large α changes the output — a hook that silently never fires would otherwise look
+  like a clean null at every layer.
+- Appends after each generation and skips `(id, layer, α)` already present, so an
+  interrupted run resumes. → `steer_<direction>.jsonl`
+
+Controls are one flag away, not run yet: `DIRECTION=length_pooled` (the named length rival)
+and `DIRECTION=random` (matched-norm, must **not** restore refusal). No judge here — raw
+responses only, so any rubric can score them later.
 
 ## What downstream phases should reuse
 
