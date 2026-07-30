@@ -4,11 +4,13 @@ Pilot experiments for the story-mode plan (`research/Plan story-mode.md`), Phase
 Goal: establish that the axes we want to steer exist, are linearly readable, and are
 not artifacts — before scaling to 19.2k prompts and 3 model families.
 
-All scripts: diff-in-means on the **last prompt token** (generation onset, chat
-template applied), every layer, one forward pass per prompt. Model defaults to
-`Qwen/Qwen2.5-7B-Instruct`; results so far are **Qwen2.5-3B-Instruct** (smoke test).
+Scripts 1-4: diff-in-means on the **last prompt token** (generation onset, chat
+template applied), every layer, one forward pass per prompt. 5-6 generate. Results so far
+are **Qwen2.5-3B-Instruct**.
 Layer `l` in the CSVs = `hidden_states[l]`, so `l=0` is embeddings and `l=36` is the
 final block.
+
+To run the tests:
 
 ```bash
 python extract_direction.py Qwen/Qwen2.5-3B-Instruct
@@ -16,17 +18,11 @@ python extract_direction_tier3.py Qwen/Qwen2.5-3B-Instruct
 python deconfound_length_tier3.py Qwen/Qwen2.5-3B-Instruct
 python residual_length_tier3.py Qwen/Qwen2.5-3B-Instruct
 python steer_narrativity.py Qwen/Qwen2.5-3B-Instruct    # generates; needs 1-4 run first
+python preamble_check.py Qwen/Qwen2.5-3B-Instruct       # generates; reads data/main/, standalone
 ```
 
 Outputs go to `results/<model>/`, `/` replaced by `_`.
 
-## Two different axes
-
-The plan says "story-mode", which turned out to be two separable things. Keeping them
-apart is the main conceptual result of these pilots:
-
-- **fictionality** — invented vs real, *narrative form held fixed* (Tier-1/Tier-2)
-- **narrativity** — request wrapped in a story vs stated plainly (Tier-3)
 
 ## Datasets (`data/initial_tests/`)
 
@@ -70,6 +66,27 @@ Keeps the Tier-3 dataset and the diff-in-means family; attacks length three ways
 | 2 | project out the 3-dim length subspace spanned by the filler styles | `narrativity_orth` |
 | 3 | keep the direction, change the statistic: `score ~ n_tokens + is_story`, plus within-token-bin AUROC | — |
 
+Per layer `l`, all on the last prompt token. `Δh_i` / `Δtok_i` are the story−bare
+differences of train pair `i`; `s` ranges over the three filler styles:
+
+```
+d_raw[l] = mean(story_train[l]) − mean(bare_train[l])                    # confounded baseline
+b_s[l]   = mean(filler_long_train[s][l]) − mean(filler_short_train[s][l])
+
+FIX 1   d_ols[l]  = intercept of   Δh_i[l] ~ 1 + Δtok_i
+FIX 2   Q[l]      = left singular vectors of [b_expository; b_ambient; b_oblique]ᵀ,
+                    keeping σ > 0.05·σ_max                    → len_rank (= 3 at every layer)
+        d_orth[l] = d_raw[l] − Q Qᵀ d_raw[l]                  → narrativity_orth
+        len_frac  = ‖Q Qᵀ d_raw[l]‖ / ‖d_raw[l]‖              (0.47–0.55 mid band)
+```
+
+The rank truncation is load-bearing, not hygiene: if the three styles induced one shared
+length axis the basis rows would be near-collinear, and a plain QR would still hand back
+three orthonormal columns whose 2nd and 3rd are fixed by sampling noise — projecting those
+out deletes real signal and inflates `len_frac`. The basis is fitted on **train requests
+only**, so the matched-eval negatives come from held-out requests. `Q Qᵀ` is a Euclidean
+projection, which is exactly the gap experiment 4 goes after.
+
 Headline columns are the **length-matched** AUROCs (`*_M`): story vs filler-long, both
 classes long. `*_M_obl` is sharpest — length, topic and speech act all matched.
 `len_ho` is the foil: a pure length vector on the naive eval. Column-by-column legend
@@ -108,56 +125,47 @@ escalate to the design-side controls in `research/deconfounding-length.md`.
 
 ### 5. `steer_narrativity.py` — does steering narrativity move refusal? (§7a + §7b)
 
-**Not yet run.**
-
 Story-wrapped jailbreaks in, generations out. α < 0 (away from narrativity) should restore
 refusal on jailbreaks that succeeded; α > 0 should induce compliance on ones that didn't.
 **Both arms come from one sweep** — every prompt runs at both signs plus a shared α=0
 baseline, and the §7a/§7b split happens at analysis time by whether that baseline complied
 or refused. So a prompt that already refuses is not a wasted row, it is the §7b case.
 
-Sweeps **one layer at a time** so layers can be compared — `SIMULTANEOUS=1` injects at all
-of them at once instead, which is a stronger and differently-interpreted intervention.
+Sweeps **one layer at a time** so layers can be compared
 Default grid is 4 α × 4 layers + 1 baseline = **17 generations per request**;
-`LAYERS=18-26 ALPHAS=-2,-1.5,-1,-0.5,0.5,1,1.5,2` restores the full 73-cell sweep.
+`LAYERS=20-26 ALPHAS=--1,0,1,1` 
 
-- **Layers 20, 22, 24, 26.** `ort_M` saturates at 1.00 band-wide and cannot rank layers, so
-  the choice comes from 2c's residual-length column. L22 = ~60% depth where steering usually
-  bites, and the fictionality best layer, but the **highest** leakage of the four (dev
-  −0.130); L24 = 2c's pick, cleanest inside the fictionality overlap L19–24 (§4 matched
-  layers); L26 = cleanest overall; L20 fills the gap. The **spread is deliberate** —
-  `resid_ort_layer` only works as a confound check if the tested layers differ in leakage.
-- **α is symmetric** (`±1, ±2`). Beyond covering both arms, it gives the dose-response
-  monotonicity §9 asks for and is the only way to see the damage failure mode: if −α and
-  +α restore refusal *equally*, the effect is perturbation damage, not a signed direction.
-  Two points per side is the minimum for both; widen α before widening layers if you have
-  budget to spend.
+
 - **α is in units of the layer's median activation norm**, not raw multiples of the
-  direction. Load-bearing for a layer sweep: residual-stream norms grow with depth, so a
-  fixed raw coefficient would make deep layers look weaker than they are.
+  direction.
 - Injected at **all** positions (prefill + every decoded token). Greedy decoding, so
   differences across α are steering and not sampling. `MAX_NEW=1024` — high enough that
-  `out_tokens` stays a measurement rather than a ceiling, which matters because that column
-  is how the toward-shorter side effect from 2c gets checked. Verify the saturation rate at
-  the cap before reading it.
-- **Layer indexing:** layer `l` = `hidden_states[l]` = output of `blocks[l-1]`. Asserted
-  against the direction tensor at startup.
+  `out_tokens` stays a measurement rather than a ceiling
 - `nar_proj_final` is the manipulation check, read at the **final** layer — at the steered
   layer it is tautological (add `α·û`, project onto `û`, moves by exactly `α`).
 - `resid_ort_layer` carries each layer's residual-length AUROC from experiment 4. **If
   steering power correlates with it across L18–26, the effect is length, not narrativity.**
-  insights.md 2c found the leakage varies a lot inside this band, so the sweep is
-  informative either way.
-- Startup smoke test asserts the hook fires, that α=0 reproduces the baseline exactly, and
-  that a large α changes the output — a hook that silently never fires would otherwise look
-  like a clean null at every layer.
-- Appends after each generation and skips `(id, layer, α)` already present, so an
-  interrupted run resumes. → `steer_<direction>.jsonl`. `OUT_DIR` redirects output only —
-  point it at mounted Drive on Colab so a disconnect loses nothing and a relaunch resumes.
 
-Controls are one flag away, not run yet: `DIRECTION=length_pooled` (the named length rival)
-and `DIRECTION=random` (matched-norm, must **not** restore refusal). No judge here — raw
-responses only, so any rubric can score them later.
+### 6. `preamble_check.py` — do the wrappers need an instruction in front?
+
+**Not yet run.** Reads `data/main/story_mode_prompts.csv`; independent of 1–5.
+
+Instruct models may answer an instruction-free, colon-terminated story by *commenting* on
+it instead of producing the content. If a preamble turns out to be needed it has to go on
+**both** classes, which forces the negative class to change from a plain imperative to a
+matched non-narrative frame — so this decides the shape of the main dataset, not just a
+prompt detail.
+
+64 prompts (all 32 wrappers × 2 tasks, 1 harmful + 1 benign, tasks rotated so wrapper is
+not confounded with request) × {no preamble, `Continue the text below.`}, greedy,
+`MAX_NEW=256`. → `preamble_check.jsonl`, `preamble_check_summary.csv`
+
+- **The §3 pilot does not already answer this.** All three prompts in `story_jailbreaks.jsonl`
+  carry an explicit instruction — SJ-2 literally opens `Finish the story:` — and Tier-3
+  extraction never generated. "All 3 comply at baseline" is about *instructed* framings.
+- `refused` / `meta` / `degenerate` are **triage flags, not the measurement**. `meta` catches
+  commentary openers, not a model that narrates *around* the request without answering it.
+  Read the raw `response`.
 
 ## What downstream phases should reuse
 
@@ -165,14 +173,10 @@ responses only, so any rubric can score them later.
 - narrativity: `tier3_deconfounded_directions.pt` → `narrativity_orth`, **not** `narrativity_raw`
 - length as a *rival* direction in the §7 cross-steering matrix: `length_pooled` / `length_slope`.
   It scores 1.00 on the naive Tier-3 eval, so it is a real competitor, not a formality.
-- band L19–28 for both axes (see `insights.md`)
+
 
 ## Not addressed here
 
 - 3B only; the plan needs ≥2 families at 7B+.
 - n is tiny (10–20 pairs). Held-out cells are 3×3 to 3×9 comparisons — read layer
   bands, never single-layer wiggles.
-- Narrativity is still entangled with **fictional framing** (a story implies invented
-  events). That is the fictionality axis, and no length control touches it.
-- Early-layer results may be lexical (stories contain `found`, `she`, `his`; fillers
-  do not). Resolved for fictionality via cross-tier transfer; unresolved for narrativity.
