@@ -5,3 +5,12 @@ tools
 uv.lock
 .obsidian
 *__pycache__
+TODO.md
+
+# data/ holds datasets only; the scripts that build and audit them stay local
+data/**/*.py
+
+data/role_play/instructions
+data/role_play/role_list*
+data/role_play/extraction_questions.jsonl
+data/role_play/roles.jsonl

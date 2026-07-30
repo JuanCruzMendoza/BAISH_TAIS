@@ -1,5 +1,5 @@
 
-**Related work**
+## **Related work**
 
 [Steering Evaluation-Aware Language Models to Act Like They Are Deployed](https://arxiv.org/abs/2510.20487)
 
