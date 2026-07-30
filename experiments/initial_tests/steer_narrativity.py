@@ -13,9 +13,25 @@ dose-response monotonicity that section 9 asks for, and it is the only way to se
 damage failure mode: if -alpha and +alpha restore refusal *equally*, the effect is
 perturbation damage rather than a signed directional one, and an asymmetric grid hides that.
 
-Steers ONE layer at a time (L18-26 by default) and compares them -- not all layers at
-once. `--simultaneous` switches to injecting at every layer in the range in a single
-forward pass, which is a much stronger and differently-interpreted intervention.
+Steers ONE layer at a time and compares them -- not all layers at once. SIMULTANEOUS=1
+switches to injecting at every listed layer in a single forward pass, which is a much
+stronger and differently-interpreted intervention.
+
+LAYER CHOICE (default 20,22,24,26)
+    `ort_M` saturates at 1.00 across the whole band, so it cannot rank layers; the
+    selection comes from the residual-length column of insights.md 2c instead.
+        L22  ~60% depth, where behavioural steering usually bites, and the fictionality
+             best layer. HIGHEST residual-length leakage of the four (dev -0.130).
+        L24  2c's primary pick: cleanest residual inside the fictionality overlap L19-24,
+             so section 4's matched-layers requirement holds.
+        L26  cleanest overall (dev -0.056); tests whether going deeper than the
+             fictionality band buys more steering power.
+        L20  fills the gap so the leakage-vs-power correlation has four spread points.
+    The SPREAD is deliberate. `resid_ort_layer` is only useful as a confound check if the
+    tested layers differ in leakage; four clean layers would throw that away. Skipped
+    L19/L21/L23/L25 are all high-leak layers adjacent to ones kept, and adjacent layers
+    are highly correlated. L18 is outside the established band.
+    LAYERS=18-26 restores the full sweep.
 
 COEFFICIENT UNITS
     `narrativity_orth` is a difference of means with a subspace removed, so its norm is
@@ -66,6 +82,7 @@ NOT IN SCOPE
 Usage:
     python steer_narrativity.py [model_name]
     LAYERS=18-26 ALPHAS=-2,-1.5,-1,-0.5,0.5,1,1.5,2 MAX_NEW=1024 python steer_narrativity.py Qwen/Qwen2.5-3B-Instruct
+    LAYERS=22,24 python steer_narrativity.py Qwen/Qwen2.5-3B-Instruct        # cut further
     DIRECTION=length_pooled python steer_narrativity.py Qwen/Qwen2.5-3B-Instruct
     SIMULTANEOUS=1 python steer_narrativity.py Qwen/Qwen2.5-3B-Instruct
 
@@ -88,14 +105,28 @@ DATA_DIR = os.environ.get(
 )
 MODEL = sys.argv[1] if len(sys.argv) > 1 else "Qwen/Qwen2.5-7B-Instruct"
 DIRECTION = os.environ.get("DIRECTION", "narrativity_orth")
-LAYERS = os.environ.get("LAYERS", "18-26")
-ALPHAS = [float(a) for a in os.environ.get("ALPHAS", "-2,-1.5,-1,-0.5,0.5,1,1.5,2").split(",")]
+LAYERS = os.environ.get("LAYERS", "20,22,24,26")
+ALPHAS = [float(a) for a in os.environ.get("ALPHAS", "-2,-1,1,2").split(",")]
 MAX_NEW = int(os.environ.get("MAX_NEW", 1024))
 SIMULTANEOUS = os.environ.get("SIMULTANEOUS", "") not in ("", "0", "false")
 SEED = int(os.environ.get("SEED", 0))
 
-lo, hi = (int(x) for x in LAYERS.split("-"))
-LAYER_LIST = list(range(lo, hi + 1))
+def parse_layers(spec):
+    """"20,22,24,26" | "18-26" | "20,22-24" -> sorted unique layer list."""
+    out = set()
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part.lstrip("-"):
+            lo, hi = (int(x) for x in part.split("-"))
+            out.update(range(lo, hi + 1))
+        else:
+            out.add(int(part))
+    return sorted(out)
+
+
+LAYER_LIST = parse_layers(LAYERS)
 
 
 def load_jsonl(path):

@@ -116,13 +116,22 @@ refusal on jailbreaks that succeeded; α > 0 should induce compliance on ones th
 baseline, and the §7a/§7b split happens at analysis time by whether that baseline complied
 or refused. So a prompt that already refuses is not a wasted row, it is the §7b case.
 
-Sweeps **one layer at a time**, L18–26, so layers can be compared — `SIMULTANEOUS=1`
-injects at all of them at once instead, which is a stronger and differently-interpreted
-intervention. Grid is 8 α × 9 layers + 1 baseline = **73 generations per request**.
+Sweeps **one layer at a time** so layers can be compared — `SIMULTANEOUS=1` injects at all
+of them at once instead, which is a stronger and differently-interpreted intervention.
+Default grid is 4 α × 4 layers + 1 baseline = **17 generations per request**;
+`LAYERS=18-26 ALPHAS=-2,-1.5,-1,-0.5,0.5,1,1.5,2` restores the full 73-cell sweep.
 
-- **α is symmetric** (`-2 … +2`). Beyond covering both arms, it gives the dose-response
+- **Layers 20, 22, 24, 26.** `ort_M` saturates at 1.00 band-wide and cannot rank layers, so
+  the choice comes from 2c's residual-length column. L22 = ~60% depth where steering usually
+  bites, and the fictionality best layer, but the **highest** leakage of the four (dev
+  −0.130); L24 = 2c's pick, cleanest inside the fictionality overlap L19–24 (§4 matched
+  layers); L26 = cleanest overall; L20 fills the gap. The **spread is deliberate** —
+  `resid_ort_layer` only works as a confound check if the tested layers differ in leakage.
+- **α is symmetric** (`±1, ±2`). Beyond covering both arms, it gives the dose-response
   monotonicity §9 asks for and is the only way to see the damage failure mode: if −α and
   +α restore refusal *equally*, the effect is perturbation damage, not a signed direction.
+  Two points per side is the minimum for both; widen α before widening layers if you have
+  budget to spend.
 - **α is in units of the layer's median activation norm**, not raw multiples of the
   direction. Load-bearing for a layer sweep: residual-stream norms grow with depth, so a
   fixed raw coefficient would make deep layers look weaker than they are.
