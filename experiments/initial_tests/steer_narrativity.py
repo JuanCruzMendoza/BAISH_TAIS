@@ -90,6 +90,15 @@ Reads data/initial_tests/story_jailbreaks.jsonl (override with $DATA_DIR) and
 results/<model>/tier3_deconfounded_directions.pt. Appends to
 results/<model>/steer_<direction>.jsonl after every generation, and skips
 (id, layer, alpha) rows already present -- so an interrupted run resumes.
+
+$OUT_DIR redirects the output only (the .pt and the residual-length CSV are still read from
+results/<model>/). On Colab, point it at mounted Drive so results survive a disconnect and a
+relaunch resumes from them -- better than downloading at the end, since the run is what gets
+interrupted:
+
+    from google.colab import drive; drive.mount('/content/drive')
+    !cd /content/BAISH_TAIS && OUT_DIR=/content/drive/MyDrive/baish_results \
+        python experiments/initial_tests/steer_narrativity.py Qwen/Qwen2.5-3B-Instruct
 """
 import csv
 import json
@@ -308,10 +317,11 @@ else:
     print(f"note: {os.path.basename(resid_csv)} not found -> resid_ort_layer will be null")
 
 # ------------------------------------------------------------------------- resume state
-out_path = os.path.join(
-    HERE, "results", MODEL.replace("/", "_"), f"steer_{DIRECTION}.jsonl"
+out_dir = os.environ.get(
+    "OUT_DIR", os.path.join(HERE, "results", MODEL.replace("/", "_"))
 )
-os.makedirs(os.path.dirname(out_path), exist_ok=True)
+out_path = os.path.join(out_dir, f"steer_{DIRECTION}.jsonl")
+os.makedirs(out_dir, exist_ok=True)
 done = set()
 if os.path.exists(out_path):
     for row in load_jsonl(out_path):

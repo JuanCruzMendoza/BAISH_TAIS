@@ -152,7 +152,8 @@ Default grid is 4 α × 4 layers + 1 baseline = **17 generations per request**;
   that a large α changes the output — a hook that silently never fires would otherwise look
   like a clean null at every layer.
 - Appends after each generation and skips `(id, layer, α)` already present, so an
-  interrupted run resumes. → `steer_<direction>.jsonl`
+  interrupted run resumes. → `steer_<direction>.jsonl`. `OUT_DIR` redirects output only —
+  point it at mounted Drive on Colab so a disconnect loses nothing and a relaunch resumes.
 
 Controls are one flag away, not run yet: `DIRECTION=length_pooled` (the named length rival)
 and `DIRECTION=random` (matched-norm, must **not** restore refusal). No judge here — raw

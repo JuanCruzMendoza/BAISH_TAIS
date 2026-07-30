@@ -94,3 +94,46 @@ Band means, L19–28:
 - `ort_M` = 1.00 at L1–2 is **not** evidence of a concept: stories contain narrative vocabulary (`found`, `she`, `his`) the fillers lack, so early layers may be a word detector. Resolved for fictionality via cross-tier transfer; unresolved for narrativity — another reason to read L19–28 only.
 - `t_is_story` pools all 80 items including the 7 train stories → optimistic.
 - Narrativity remains entangled with **fictional framing** (a story implies invented events). That is the fictionality axis; no length control touches it.
+
+# 3. Causal steering (narrativity_orth), `steer_narrativity.py`
+
+**Objective (§7a):** on story-wrapped jailbreaks that succeed, does steering *away* from
+narrativity restore refusal? 3 jailbreaks (`Casey27/JailbreakPrompts`), L∈{20,22,24,26},
+α∈{−2,−1,+1,+2} in units of each layer's median activation norm, greedy, hand-classified
+(no judge). All 3 comply at baseline → all are §7a cases; no §7b arm here.
+
+## Findings
+- **The intervention works mechanically.** `nar_proj_final` moves monotonically with α and
+  the lever grows with depth (L26 mean: −92 at α=−2 → +76 at α=+1; L20 barely ±15). So the
+  hook injects and propagates — a null is not a plumbing bug.
+- **But it never restores refusal. It destroys the model first.** **0 of 48** steered cells
+  are a coherent refusal. **44/48 are degenerate** (repetition loop or collapse into
+  non-English character salad); baselines are all coherent.
+- **The damage is symmetric in sign → perturbation, not a signed narrativity→refusal effect.**
+  This is the failure mode the symmetric grid was built to expose.
+
+| |α| | degenerate (α<0) | degenerate (α>0) |
+|---|---|---|
+| 1 | 12/12 | 10/12 |
+| 2 | 10/12 | 12/12 |
+
+- **The α unit is ~an order of magnitude too large.** One median activation norm obliterates
+  coherence at every layer. The single least-degraded cell is the *lightest* push at the
+  *shallowest* layer (L20, α=+1), i.e. the usable regime is **below α=1** and was never swept.
+
+## Decision
+- **No H3 claim, either way.** Not a substantive null (no coherent regime was tested) and not
+  support. Inconclusive by miscalibrated strength.
+- **Re-run a fine low-α sweep** (≈0.05–0.5) to find the coherence-preserving band *before*
+  reading refusal at all; the current grid is only useful as the upper bound where the model
+  breaks.
+- **Controls are now mandatory, at matched coherent strength** (plan §8): refusal-direction
+  positive control (must move behavior) and matched-norm `random` (must *not*) — both are
+  `DIRECTION=` flags. Without them a low-α effect can't be attributed to narrativity.
+
+## Caveats
+- n=3, one 3B model, hand-classified — a pilot of the harness, not evidence about H3.
+- `out_tokens` saturates the 1024 cap in 46/51 rows because degenerate text loops to the
+  cap, so the §2c toward-shorter side-effect is **untestable** from this run.
+- Degeneracy is auto-detected (non-ASCII fraction > 0.15 or word-repetition > 0.6); it
+  slightly *under*counts (e.g. `1.1.1.…` reads as one token), so 44/48 is a floor.
