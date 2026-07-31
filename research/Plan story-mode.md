@@ -51,15 +51,18 @@ Models: Qwen3-32B,  Qwen2.5-7B-Instruct, Gemma-2-9B-it
     
 - We will build different pairs of framings for each of the other three directions. Each framing will be paired with the 100 base tasks (50 benign and 50 harmful). 
     
-	- For eval-awareness, we will take the 16 framings written in [[2510.20487] Steering Evaluation-Aware Language Models to Act Like They Are Deployed](https://arxiv.org/abs/2510.20487), and write 16 more following their structure
+	- For eval-awareness, we will take the 16 framings written in [[2510.20487] Steering Evaluation-Aware Language Models to Act Like They Are Deployed](https://arxiv.org/abs/2510.20487), and write 34 more following their structure to complete a set of 50, and then write 15 more for a heldout dataset
     
-	- For persona, we will use a subset of 32 the 230 roles publicly available by [[2601.10387] The Assistant Axis: Situating and Stabilizing the Default Persona of Language Models](https://arxiv.org/abs/2601.10387), both purely fictional and regular ()
+	- For persona, we will use a subset of 50 the 230 roles publicly available by [[2601.10387] The Assistant Axis: Situating and Stabilizing the Default Persona of Language Models](https://arxiv.org/abs/2601.10387), both purely fictional and regular, and another set of 15 roles for heldout
     
-	- For story/realness, we will build customized 32 prompts in which the request is just part of the story and the model has to follow it
+	- For story/realness, we will build customized 65 (50 train / 15 heldout) prompts in which the request is just part of the story and the model has to follow it. The contrastive pairs will be the requests.
+		- This dataset will have a preamble in both contrastive pairs ("Continue the text below...") to make sure the model continues the story and doesn't just comment it.
+		- To make sure prompt length isnt' a confound, we will add fillers to the requests for the contrast to the stories
+			
 
-	- We will use 1 paraphrase per prompts
+	- Optionally, we may use 1 paraphrase per prompt
 
-	- The total number of prompts will be: (32 eval * 100 + 32 story * 100 + 32 persona * 100) * 2 = 19.200
+	- The total number of prompts will be: (50 eval * 100 + 50 story * 100 + 50 persona * 100) * 2 = 19.200
 
 - Jailbreaks (about 1000 prompts in total): **In-the-Wild Jailbreak Prompts**, **Persona Modulation**, **Jailbreak Mimicry**.
 

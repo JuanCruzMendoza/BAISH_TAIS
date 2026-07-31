@@ -14,3 +14,12 @@ data/role_play/instructions
 data/role_play/role_list*
 data/role_play/extraction_questions.jsonl
 data/role_play/roles.jsonl
+
+# jailbreaks: downloads and labelling chunks regenerate from download_sources.py and
+# classify_itw.py; the labels_*.jsonl the LLM wrote do not, so those stay tracked
+data/jailbreaks/raw
+data/jailbreaks/classification/*chunk_*.md
+data/jailbreaks/classification/itw_unique.jsonl
+data/jailbreaks/classification
+
+round1
