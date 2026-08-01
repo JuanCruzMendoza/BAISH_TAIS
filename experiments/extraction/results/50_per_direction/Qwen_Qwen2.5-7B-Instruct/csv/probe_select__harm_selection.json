@@ -1,0 +1,74 @@
+{
+  "band": [
+    22,
+    23,
+    24
+  ],
+  "primary": 22,
+  "best_lopo_auroc": 1.0,
+  "best_lopo_ci_lo": 0.9288782635358022,
+  "band_threshold": 0.8788782635358021,
+  "gate_applied": true,
+  "gate_failed": false,
+  "n_pass_length_gate": 5,
+  "primary_depth": 0.7857,
+  "primary_lopo_auroc": 1.0,
+  "primary_resid_len_auroc": 0.5555555555555556,
+  "primary_mean_paired_cos": 0.6910294827069068,
+  "sanity": {
+    "view": {
+      "n_pairs": 50,
+      "source": "final_char",
+      "n_distinct_final_pos": 15,
+      "n_distinct_final_neg": 13,
+      "final_chars": {
+        "pos": [
+          "9",
+          "S",
+          "a",
+          "b",
+          "d",
+          "e",
+          "g",
+          "k",
+          "l",
+          "m",
+          "n",
+          "s",
+          "t",
+          "x",
+          "y"
+        ],
+        "neg": [
+          "9",
+          "S",
+          "d",
+          "e",
+          "g",
+          "k",
+          "m",
+          "n",
+          "o",
+          "p",
+          "r",
+          "s",
+          "y"
+        ]
+      },
+      "n_tokens_delta_mean": 15.0,
+      "same_final_within_pair": false,
+      "final_separates_poles": false
+    },
+    "band_mean_null_shuffled": 0.494,
+    "band_mean_null_random_dir": 0.49166666666666664,
+    "band_mean_null_random_dir_abs": 0.7616666666666667,
+    "band_min_margin_sd": 0.18266284465789795,
+    "band_median_margin_sd": 1.8136881589889526,
+    "band_max_lopo_auroc": 1.0,
+    "passes": true,
+    "failures": [],
+    "warnings": [
+      "mean length gap +15.0 at the read position"
+    ]
+  }
+}

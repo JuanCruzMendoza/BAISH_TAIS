@@ -33,6 +33,18 @@ def prompt_hasher(tok):
     return hash_fn
 
 
+def token_info_fn(tok):
+    """Final token id and length at the read position, recorded in the view.
+
+    If the two poles systematically end on different tokens, a perfect AUROC is a
+    token-identity readout and says nothing about the construct.
+    """
+    def info(prompt):
+        ids = token_ids(tok, prompt)
+        return {"n_tokens": len(ids), "last_token_id": int(ids[-1])}
+    return info
+
+
 def chat_template_sha(tok):
     tpl = getattr(tok, "chat_template", None) or ""
     return hashlib.sha256(tpl.encode()).hexdigest()[:16]

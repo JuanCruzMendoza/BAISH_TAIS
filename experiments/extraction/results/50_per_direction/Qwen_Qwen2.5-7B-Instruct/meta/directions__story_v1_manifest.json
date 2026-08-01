@@ -1,0 +1,41 @@
+{
+  "config": {
+    "direction": "story_v1",
+    "estimator": "diff_in_means",
+    "n_pairs": 50,
+    "position": "last_token",
+    "seed": 20260731
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/extract_direction.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "50_per_direction",
+      "--direction",
+      "story_v1"
+    ],
+    "git_diff_sha": "b05793a2d40771f955644a88c6296b65733f663405a0f1a5a9d35fadba11b88d",
+    "git_dirty": true,
+    "git_sha": "5974b2bfab74f9fb0606300c43b0b5de395df9e9",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-01T15:12:06",
+    "wall_s": 0.53
+  },
+  "inputs": {
+    "source_files": [
+      {
+        "path": "data/story_mode/story_mode_prompts_matched.csv",
+        "sha256": "1e489c4a1cd453daccdcd4c708cd4996d89130b65f4155ec5ced59a9d7c7e065"
+      }
+    ],
+    "view_key": "573807d7dd960a9a04e69b99e29a57031f871aef1cc1b80dea533b79be508ce4"
+  },
+  "notes": [],
+  "run_key": "1eb784fb7c2a3aa43bebb50caf6575786f6333941ff8f646185ec5d95f26ac02",
+  "status": "complete",
+  "stem": "directions__story_v1"
+}

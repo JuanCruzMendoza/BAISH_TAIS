@@ -1,0 +1,46 @@
+{
+  "config": {
+    "append_task": false,
+    "batch_size": 8,
+    "dataset": "harm",
+    "dtype": "float16",
+    "position": "last_token",
+    "seed": 20260731,
+    "split": "heldout"
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/cache_activations.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "50_per_direction",
+      "--dataset",
+      "harm",
+      "--split",
+      "heldout"
+    ],
+    "git_diff_sha": null,
+    "git_dirty": false,
+    "git_sha": "5974b2bfab74f9fb0606300c43b0b5de395df9e9",
+    "host": "4e830492-d898-40ca-b033-685b5d5f2f7e-njnvb",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.11",
+    "resumed_from": 0,
+    "timestamp": "2026-08-01T17:29:21",
+    "wall_s": 0.77
+  },
+  "inputs": {
+    "chat_template_sha": "cd8e9439f0570856",
+    "source_files": [
+      {
+        "path": "data/harm/harm_selected_pairs_heldout.csv",
+        "sha256": "8255ef2bebec83d91fa6f386605a42734436e3606f5744a53fc8cfaef3adf85a"
+      }
+    ],
+    "view_key": "c28500d05d1cb95f742d464c52c8fd93634b87cfd6d97f489860e5fcef0cfcce"
+  },
+  "notes": [],
+  "run_key": "00e326bf6e1331760dd45e575497471dd6dae610feb82e0279c517526fa9cb24",
+  "status": "complete",
+  "stem": "cache_activations__harm__heldout"
+}

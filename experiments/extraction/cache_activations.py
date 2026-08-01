@@ -32,7 +32,8 @@ def main():
     hash_fn = mdl.prompt_hasher(tok)
 
     view, texts = views.build_view(args.dataset, args.split, hash_fn,
-                                   append_task=args.append_task)
+                                   append_task=args.append_task,
+                                   token_info=mdl.token_info_fn(tok))
     stem = mf.stem("cache_activations", args.dataset, args.split)
     config = {"dataset": args.dataset, "split": args.split, "batch_size": args.batch_size,
               "append_task": args.append_task, "position": "last_token",

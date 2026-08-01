@@ -1,0 +1,46 @@
+{
+  "config": {
+    "append_task": false,
+    "batch_size": 8,
+    "dataset": "story_v2",
+    "dtype": "float16",
+    "position": "last_token",
+    "seed": 20260731,
+    "split": "heldout"
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/cache_activations.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "50_per_direction",
+      "--dataset",
+      "story_v2",
+      "--split",
+      "heldout"
+    ],
+    "git_diff_sha": null,
+    "git_dirty": false,
+    "git_sha": "5974b2bfab74f9fb0606300c43b0b5de395df9e9",
+    "host": "4e830492-d898-40ca-b033-685b5d5f2f7e-njnvb",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.11",
+    "resumed_from": 0,
+    "timestamp": "2026-08-01T17:28:13",
+    "wall_s": 0.84
+  },
+  "inputs": {
+    "chat_template_sha": "cd8e9439f0570856",
+    "source_files": [
+      {
+        "path": "data/story_mode_v2/pairs_heldout.jsonl",
+        "sha256": "44e5a3111b16fd2bffedf6212374884527532dc1aac10fdce747c670fb2a084b"
+      }
+    ],
+    "view_key": "95722b3db90a8fdbd6177d0985c50cc5dd26d5fa58f03678568bd832e614057f"
+  },
+  "notes": [],
+  "run_key": "f8f5206371d949b6572129f4b18da9bd9232b7c0b7d8639f92d12318f74b711e",
+  "status": "complete",
+  "stem": "cache_activations__story_v2__heldout"
+}

@@ -37,6 +37,79 @@ def proj(h, u):
     return np.einsum("nld,ld->nl", h, u)
 
 
+N_DRAWS = 20         # nulls are averaged: one draw has sd ~0.07 at n=50
+SANITY_TOL = 0.10    # |null_shuffled - 0.5| above this means the label is leaking
+
+
+def view_sanity(view, direction, append_task=False):
+    """Is a saturated AUROC explainable by the read position alone?
+
+    A perfect score is uninformative if the two poles end on different tokens: the
+    probe would then be a token-identity readout, not a construct readout. Prefers
+    the token ids recorded in the view; falls back to the raw text tail for views
+    cached before `token_info` existed.
+    """
+    by_pole = {}
+    for r in view["rows"]:
+        by_pole.setdefault(r["pole"], []).append(r)
+    out = {"n_pairs": view["n_pairs"], "source": "token_ids"}
+
+    if "last_token_id" in view["rows"][0]:
+        for pole, rows in by_pole.items():
+            out[f"n_distinct_final_{pole}"] = len({r["last_token_id"] for r in rows})
+        keys = {p: [r["last_token_id"] for r in rs] for p, rs in by_pole.items()}
+        out["n_tokens_delta_mean"] = round(float(np.mean(
+            [a["n_tokens"] - b["n_tokens"] for a, b in zip(by_pole["pos"], by_pole["neg"])])), 1)
+    else:
+        # Fallback: the final *character*. A 16-char tail would be disjoint between any
+        # two distinct sentences and would flag every dataset, which says nothing about
+        # the final token -- two arms both ending in "." share it.
+        try:
+            _, pairs = views.load_pairs(direction, view["split"], append_task=append_task)
+        except Exception as e:                                    # noqa: BLE001
+            return {**out, "source": f"unavailable ({type(e).__name__})"}
+        out["source"] = "final_char"
+        keys = {"pos": [p["pos"][-1] for p in pairs], "neg": [p["neg"][-1] for p in pairs]}
+        for pole in ("pos", "neg"):
+            out[f"n_distinct_final_{pole}"] = len(set(keys[pole]))
+        out["final_chars"] = {pole: sorted(set(keys[pole])) for pole in ("pos", "neg")}
+        out["n_tokens_delta_mean"] = round(float(np.mean(
+            [len(p["pos"]) - len(p["neg"]) for p in pairs])), 1)
+
+    out["same_final_within_pair"] = all(a == b for a, b in zip(keys["pos"], keys["neg"]))
+    out["final_separates_poles"] = not (set(keys["pos"]) & set(keys["neg"]))
+    return out
+
+
+def nulls(tp, tn, l, rng, n_draws=N_DRAWS):
+    """Nulls for a saturated AUROC, each averaged over `n_draws`.
+
+    shuffled: flip the pos/neg assignment per pair, refit LOPO, rescore. Must sit at
+        chance -- anything else means the label reaches the vector through some path
+        LOPO does not close.
+    random_dir: score the real data with random unit directions. Its *mean* is 0.5 by
+        symmetry and says nothing; the informative statistic is the sign-corrected
+        mean, `..._abs`. When the contrast is consistent across pairs, sign(delta.r)
+        is shared by every pair, so a single random direction lands near 0 or 1 -- and
+        `_abs` near 1.0 means the separation is a large common-mode offset that any
+        direction recovers, so the *fitted* direction is not what earns the AUROC.
+    """
+    n, d = tp.shape[0], tp.shape[2]
+    sh, rd = [], []
+    for _ in range(n_draws):
+        flip = rng.random(n) < 0.5
+        sp = np.where(flip[:, None], tn[:, l, :], tp[:, l, :])
+        sn = np.where(flip[:, None], tp[:, l, :], tn[:, l, :])
+        u = met.unit(met.lopo_directions(sp, sn))
+        sh.append(met.paired_auroc(np.einsum("nd,nd->n", sp, u),
+                                   np.einsum("nd,nd->n", sn, u)))
+        r = rng.normal(size=d)
+        r /= np.linalg.norm(r)
+        rd.append(met.paired_auroc(tp[:, l, :] @ r, tn[:, l, :] @ r))
+    rd = np.array(rd)
+    return float(np.mean(sh)), float(rd.mean()), float(np.maximum(rd, 1 - rd).mean())
+
+
 # ------------------------------------------------------------------ 1.2 tables
 
 
@@ -75,6 +148,7 @@ def layer_metrics(args, lay, run):
     if len_ho is None:
         print("! no length heldout view: resid_len_auroc blank, selection gate SKIPPED")
 
+    rng = np.random.default_rng(cfg.SEED)
     rows = []
     for l in range(Lp1):
         u_l = u_full[l]
@@ -83,6 +157,9 @@ def layer_metrics(args, lay, run):
         s_pos = np.einsum("nd,nd->n", tp[:, l, :], u_lopo)
         s_neg = np.einsum("nd,nd->n", tn[:, l, :], u_lopo)
         lopo_ci = met.auroc_ci(s_pos, s_neg)
+        a_shuffled, a_random, a_random_abs = nulls(tp, tn, l, rng)
+        gap = s_pos - s_neg
+        sd = np.concatenate([s_pos, s_neg]).std(ddof=1)
 
         delta = tp[:, l, :] - tn[:, l, :]
         mpc = float(np.mean([met.cos(delta[i], u_l) for i in range(delta.shape[0])]))
@@ -95,6 +172,13 @@ def layer_metrics(args, lay, run):
                "lopo_sign_p": met.sign_test_p(s_pos, s_neg),
                "mean_paired_cos": mpc, "lopo_cos_stability": stab,
                "cohens_dz_train": met.cohens_dz(s_pos, s_neg),
+               # Is the saturation real? Both nulls must sit near 0.5.
+               "null_shuffled_auroc": a_shuffled, "null_random_dir_auroc": a_random,
+               "null_random_dir_abs": a_random_abs,
+               # How much room is there? min margin in pooled-sd units; <=0 means
+               # the classes touch even though AUROC rounded to 1.000.
+               "min_pair_margin_sd": float(gap.min() / sd) if sd > 0 else float("nan"),
+               "median_pair_margin_sd": float(np.median(gap) / sd) if sd > 0 else float("nan"),
                "norm": float(np.linalg.norm(d_full[l])),
                "norm_over_sigma": float(np.linalg.norm(d_full[l]) / max(sigma[l], 1e-9))}
 
@@ -128,8 +212,52 @@ def layer_metrics(args, lay, run):
         rows.append(row)
 
     sel = select_band(rows, gate=len_ho is not None)
+    sel["sanity"] = sanity_summary(rows, train_view, sel, args.direction,
+                                   train_view.get("append_task", False))
     write_csv(run.artefact(".csv"), rows)
     return rows, sel
+
+
+def sanity_summary(rows, train_view, sel, direction, append_task=False):
+    """Verdict on whether a saturated AUROC survives its own controls.
+
+    `failures` are correctness problems -- the number would be wrong.
+    `warnings` are interpretability problems -- the number is right but does not
+    mean what it looks like.
+    """
+    band = [r for r in rows if r["layer"] in sel["band"]]
+    m = lambda k: float(np.mean([r[k] for r in band]))
+    s = {"view": view_sanity(train_view, direction, append_task),
+         "band_mean_null_shuffled": m("null_shuffled_auroc"),
+         "band_mean_null_random_dir": m("null_random_dir_auroc"),
+         "band_mean_null_random_dir_abs": m("null_random_dir_abs"),
+         "band_min_margin_sd": float(np.min([r["min_pair_margin_sd"] for r in band])),
+         "band_median_margin_sd": float(np.median([r["median_pair_margin_sd"] for r in band])),
+         "band_max_lopo_auroc": max(r["lopo_auroc"] for r in band)}
+    fails, warns = [], []
+
+    if abs(s["band_mean_null_shuffled"] - 0.5) > SANITY_TOL:
+        fails.append(f"shuffled-label null at {s['band_mean_null_shuffled']:.3f}, not chance: "
+                     f"the label reaches the vector")
+    # Only a contradiction where AUROC actually saturated; below 1.0 an overlap is
+    # just an imperfect classifier.
+    if s["band_max_lopo_auroc"] >= 0.999 and s["band_min_margin_sd"] <= 0:
+        fails.append("classes touch at a band layer despite AUROC 1.000")
+
+    if s["band_mean_null_random_dir_abs"] >= 0.90:
+        warns.append(f"sign-corrected random directions reach "
+                     f"{s['band_mean_null_random_dir_abs']:.3f}: the poles differ by a large "
+                     f"common-mode offset, so AUROC does not credit the fitted direction")
+    v = s["view"]
+    if v.get("final_separates_poles"):
+        warns.append(f"poles never share a final token ({v['source']}): AUROC may be "
+                     f"token identity, not the construct")
+    if abs(v.get("n_tokens_delta_mean", 0)) > 5:
+        warns.append(f"mean length gap {v['n_tokens_delta_mean']:+.1f} at the read position")
+
+    s["passes"] = not fails
+    s["failures"], s["warnings"] = fails, warns
+    return s
 
 
 def _longest_run(rows, ok):
@@ -271,9 +399,23 @@ def main():
         print(f"  band {band[0]}-{band[-1]} ({len(band)} layers), primary L{sel['primary']} "
               f"(depth {sel['primary_depth']}, resid_len {sel['primary_resid_len_auroc']})")
         if sel["gate_failed"]:
-            print("  ! NO layer passed the length gate — band is AUROC-only and provisional")
+            print("  ! NO layer passed the length gate -- band is AUROC-only and provisional")
         elif not sel["gate_applied"]:
-            print("  ! length gate not applied (no length heldout view) — band is provisional")
+            print("  ! length gate not applied (no length heldout view) -- band is provisional")
+
+        s, v = sel["sanity"], sel["sanity"]["view"]
+        print(f"  nulls: shuffled {s['band_mean_null_shuffled']:.3f} (want 0.5)   "
+              f"random_dir {s['band_mean_null_random_dir']:.3f} / sign-corrected "
+              f"{s['band_mean_null_random_dir_abs']:.3f}")
+        print(f"  margin_sd: min {s['band_min_margin_sd']:+.2f}  med "
+              f"{s['band_median_margin_sd']:+.2f}")
+        print(f"  final token [{v['source']}]: {v.get('n_distinct_final_pos')} distinct pos / "
+              f"{v.get('n_distinct_final_neg')} neg, same within pair="
+              f"{v.get('same_final_within_pair')}, disjoint={v.get('final_separates_poles')}, "
+              f"mean dlen {v.get('n_tokens_delta_mean')}")
+        print("  " + ("SANITY OK" if s["passes"] else "SANITY FAIL: " + "; ".join(s["failures"])))
+        for w in s["warnings"]:
+            print(f"  ! {w}")
 
 
 if __name__ == "__main__":

@@ -91,6 +91,25 @@ If no layer clears the length gate the band falls back to the AUROC criterion al
 `gate_failed` in `probe_select__<axis>_selection.json` — a direction that cannot be separated from
 length at any layer is a finding, not a crash.
 
+**Is a saturated AUROC real?** Every diagonal reads 1.000, so `probe_select` also emits three
+controls per layer, summarised under `sanity` in the selection JSON:
+
+| control | what a failure means |
+|---|---|
+| `null_shuffled_auroc` | pos/neg flipped per pair, LOPO refitted, 20 draws. Off 0.5 ⇒ the label reaches the vector |
+| `null_random_dir_auroc` / `_abs` | 20 random unit directions. The mean is 0.5 by symmetry; the sign-corrected `_abs` near 1.0 ⇒ a large common-mode offset any direction recovers, so AUROC does not credit the fitted direction |
+| `min_pair_margin_sd` | smallest per-pair gap in pooled-sd units. ≤ 0 with AUROC 1.000 is a contradiction |
+
+Plus a view-level check on the read position: the number of distinct final tokens per pole and
+whether the poles share one. If the two arms never end on the same token, a perfect AUROC may be a
+token-identity readout. Uses `last_token_id` recorded in the view by `cache_activations`; for views
+cached before that existed it falls back to the final *character* — not a longer tail, which would be
+disjoint between any two distinct sentences and would flag every dataset.
+
+`failures` are correctness problems (the number is wrong); `warnings` are interpretability problems
+(the number is right but does not mean what it looks like). `load_view_matrix` additionally asserts
+pole alignment by `row_id` and rejects identical pos/neg prompts.
+
 **§1.6 `compare_crossed`.** Matched *n*, 50 vs 50: `directions__story_v2` against
 `directions__story_v1`. Cross-evaluation runs on the other side's **50**, not its 15 — neither vector
 was fitted on the other's data.

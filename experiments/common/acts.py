@@ -54,8 +54,20 @@ def load_view_matrix(layout, view):
     order = {}
     for r in view["rows"]:
         order.setdefault(r["pole"], []).append(r)
+    ids = [r["row_id"] for r in order["pos"]]
     out = {}
     for pole, rows in order.items():
+        # Paired metrics are only meaningful if row i of every pole is the same pair.
+        got = [r["row_id"] for r in rows]
+        if got != ids:
+            raise RuntimeError(f"pole {pole!r} is misaligned with 'pos' in view "
+                               f"{view['dataset']}/{view['split']}")
+        if len({r["prompt_sha16"] for r in rows}) == 1 and len(rows) > 1:
+            raise RuntimeError(f"pole {pole!r} is a single repeated prompt")
         out[pole] = np.stack([read(layout, r["prompt_sha16"]) for r in rows]).astype("float32")
-    out["pair_ids"] = [r["row_id"] for r in order["pos"]]
+    dup = sum(a == b for a, b in zip([r["prompt_sha16"] for r in order["pos"]],
+                                     [r["prompt_sha16"] for r in order["neg"]]))
+    if dup:
+        raise RuntimeError(f"{dup} pairs have identical pos and neg prompts")
+    out["pair_ids"] = ids
     return out

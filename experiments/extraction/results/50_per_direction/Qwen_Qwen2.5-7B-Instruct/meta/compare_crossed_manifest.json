@@ -1,0 +1,36 @@
+{
+  "config": {
+    "curve": false,
+    "curve_n": [],
+    "matched_n": true,
+    "neg_pole": "prompt_expository",
+    "seed": 20260731
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/compare_crossed.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "50_per_direction"
+    ],
+    "git_diff_sha": null,
+    "git_dirty": false,
+    "git_sha": "5974b2bfab74f9fb0606300c43b0b5de395df9e9",
+    "host": "4e830492-d898-40ca-b033-685b5d5f2f7e-njnvb",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.11",
+    "resumed_from": 0,
+    "timestamp": "2026-08-01T17:31:48",
+    "wall_s": 0.03
+  },
+  "inputs": {
+    "v1_run_key": "1eb784fb7c2a3aa43bebb50caf6575786f6333941ff8f646185ec5d95f26ac02",
+    "v1_view_key": "573807d7dd960a9a04e69b99e29a57031f871aef1cc1b80dea533b79be508ce4",
+    "v2_run_key": "e647e5ec626696de8f2cde0865b9e3a6bff9703943303f70329721ddaf8ddb8c",
+    "v2_view_key": "0c942c06aaa0e7c34bb71450149acbacc1862d811faa9c492e9efbdde221aadb"
+  },
+  "notes": [],
+  "run_key": "acc3a8364feeb05c3874e500bb4afc910d9f49f68a295b2d0a34ff03aa6fe041",
+  "status": "complete",
+  "stem": "compare_crossed"
+}

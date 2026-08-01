@@ -1,0 +1,46 @@
+{
+  "config": {
+    "append_task": false,
+    "batch_size": 8,
+    "dataset": "length",
+    "dtype": "float16",
+    "position": "last_token",
+    "seed": 20260731,
+    "split": "train"
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/cache_activations.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "50_per_direction",
+      "--dataset",
+      "length",
+      "--split",
+      "train"
+    ],
+    "git_diff_sha": null,
+    "git_dirty": false,
+    "git_sha": "5974b2bfab74f9fb0606300c43b0b5de395df9e9",
+    "host": "4e830492-d898-40ca-b033-685b5d5f2f7e-njnvb",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.11",
+    "resumed_from": 0,
+    "timestamp": "2026-08-01T17:30:45",
+    "wall_s": 0.84
+  },
+  "inputs": {
+    "chat_template_sha": "cd8e9439f0570856",
+    "source_files": [
+      {
+        "path": "data/initial_tests/length_filler_pairs.jsonl",
+        "sha256": "c1b2b3267802e43f8f12b09fa0427f6280dd27f8ae9ed328cb15bd9b74fd147f"
+      }
+    ],
+    "view_key": "55ff607714669855276bc6d7813402e6b496de961267efbdd9d710b6d362e775"
+  },
+  "notes": [],
+  "run_key": "b43df7708099fe098e03d63b238cec351259aac130c4f4f20b661b061c3d5411",
+  "status": "complete",
+  "stem": "cache_activations__length__train"
+}

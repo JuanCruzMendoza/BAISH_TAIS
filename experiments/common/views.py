@@ -282,15 +282,23 @@ def load_pairs(dataset, split="train", append_task=False):
 # --------------------------------------------------------------------- views
 
 
-def build_view(dataset, split, hash_fn, append_task=False, subsample=None):
-    """Ordered rows + content-derived view_key. Written before any forward pass."""
+def build_view(dataset, split, hash_fn, append_task=False, subsample=None, token_info=None):
+    """Ordered rows + content-derived view_key. Written before any forward pass.
+
+    `token_info(text) -> dict` is merged into each row. Used to record the final
+    token id and length at the read position, so a saturated AUROC can be checked
+    against the trivial explanation that the two poles end on different tokens.
+    """
     src, pairs = load_pairs(dataset, split, append_task=append_task)
     poles = ["pos", "neg"] + (["neg2"] if pairs and "neg2" in pairs[0] else [])
     rows, texts = [], {}
     for p in pairs:
         for pole in poles:
             sha = hash_fn(p[pole])
-            rows.append({"row_id": p["pair_id"], "pole": pole, "prompt_sha16": sha})
+            row = {"row_id": p["pair_id"], "pole": pole, "prompt_sha16": sha}
+            if token_info is not None:
+                row.update(token_info(p[pole]))
+            rows.append(row)
             texts[sha] = p[pole]
     view = {"dataset": dataset, "split": split,
             "source_files": [{"path": str(Path(src).relative_to(cfg.REPO)),

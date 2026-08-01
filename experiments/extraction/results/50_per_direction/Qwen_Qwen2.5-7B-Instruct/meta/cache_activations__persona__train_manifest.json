@@ -1,0 +1,47 @@
+{
+  "config": {
+    "append_task": true,
+    "batch_size": 8,
+    "dataset": "persona",
+    "dtype": "float16",
+    "position": "last_token",
+    "seed": 20260731,
+    "split": "train"
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/cache_activations.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "50_per_direction",
+      "--dataset",
+      "persona",
+      "--split",
+      "train",
+      "--append-task"
+    ],
+    "git_diff_sha": null,
+    "git_dirty": false,
+    "git_sha": "5974b2bfab74f9fb0606300c43b0b5de395df9e9",
+    "host": "4e830492-d898-40ca-b033-685b5d5f2f7e-njnvb",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.11",
+    "resumed_from": 0,
+    "timestamp": "2026-08-01T17:29:38",
+    "wall_s": 1.13
+  },
+  "inputs": {
+    "chat_template_sha": "cd8e9439f0570856",
+    "source_files": [
+      {
+        "path": "data/role_play/roles_subset_paraphrased.csv",
+        "sha256": "75fb363d8a91927b944638ae1e06cc754b105a90c4a83134ff77da76815da0d9"
+      }
+    ],
+    "view_key": "df0b82f5bbd28425b1d014043471c2a10aa7ea44de0a409ebf7399e9f5d9bb0a"
+  },
+  "notes": [],
+  "run_key": "6da67e79271e3f41f01b50a9314ffd251b916ec1f2301a1c0dacd6c5d5c70f09",
+  "status": "complete",
+  "stem": "cache_activations__persona__train"
+}

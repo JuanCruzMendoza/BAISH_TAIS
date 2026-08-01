@@ -1,0 +1,41 @@
+{
+  "config": {
+    "direction": "persona",
+    "estimator": "diff_in_means",
+    "n_pairs": 50,
+    "position": "last_token",
+    "seed": 20260731
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/extract_direction.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "50_per_direction",
+      "--direction",
+      "persona"
+    ],
+    "git_diff_sha": "b05793a2d40771f955644a88c6296b65733f663405a0f1a5a9d35fadba11b88d",
+    "git_dirty": true,
+    "git_sha": "5974b2bfab74f9fb0606300c43b0b5de395df9e9",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-01T15:12:19",
+    "wall_s": 0.4
+  },
+  "inputs": {
+    "source_files": [
+      {
+        "path": "data/role_play/roles_subset_paraphrased.csv",
+        "sha256": "75fb363d8a91927b944638ae1e06cc754b105a90c4a83134ff77da76815da0d9"
+      }
+    ],
+    "view_key": "df0b82f5bbd28425b1d014043471c2a10aa7ea44de0a409ebf7399e9f5d9bb0a"
+  },
+  "notes": [],
+  "run_key": "f4d31ddd77c3cccf3cf3c4554abade143456f2645a754a547524e1126984330a",
+  "status": "complete",
+  "stem": "directions__persona"
+}

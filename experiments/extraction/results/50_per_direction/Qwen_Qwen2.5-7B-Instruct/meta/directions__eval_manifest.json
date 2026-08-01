@@ -1,0 +1,41 @@
+{
+  "config": {
+    "direction": "eval",
+    "estimator": "diff_in_means",
+    "n_pairs": 50,
+    "position": "last_token",
+    "seed": 20260731
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/extract_direction.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "50_per_direction",
+      "--direction",
+      "eval"
+    ],
+    "git_diff_sha": "b05793a2d40771f955644a88c6296b65733f663405a0f1a5a9d35fadba11b88d",
+    "git_dirty": true,
+    "git_sha": "5974b2bfab74f9fb0606300c43b0b5de395df9e9",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-01T15:12:25",
+    "wall_s": 0.52
+  },
+  "inputs": {
+    "source_files": [
+      {
+        "path": "data/eval_aware/eval_awareness_pairs.csv",
+        "sha256": "d9a9fc47c4a980a8c6c29d138ed0fc71c3571282b50adfca6f77c2b534076231"
+      }
+    ],
+    "view_key": "042fa563faa867de819fd39742f654a197cdfa2d5c1ac12ea0dec16b5a686f6c"
+  },
+  "notes": [],
+  "run_key": "e87bd5c4bec3defc14fcc539c0989ae97036437c02b88a0bdb28f8f8acf8ff02",
+  "status": "complete",
+  "stem": "directions__eval"
+}
