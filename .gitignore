@@ -23,3 +23,11 @@ data/jailbreaks/classification/itw_unique.jsonl
 data/jailbreaks/classification
 
 round1
+
+audit
+
+# experiments: activation cache and vectors are regenerable from the cache in seconds
+# (lopo_d alone is ~20 MB per direction at d=3584). CSVs, manifests and runs.csv stay tracked.
+experiments/*/results/**/acts/
+experiments/*/results/**/*.pt
+experiments/*/results/**/_archive/

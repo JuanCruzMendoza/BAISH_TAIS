@@ -8,6 +8,8 @@
 | `roleplay_prompts_heldout.csv` | 480 | same, on held-out roles and held-out tasks |
 | `roles_subset.csv` | 50 | the selected role framings |
 | `roles_subset_heldout.csv` | 15 | role framings reserved for validation |
+| `roles_subset_paraphrased.csv` | 50 | same, Assistant pole spread over 5 paraphrases |
+| `roles_subset_paraphrased_heldout.csv` | 15 | same, over 3 held-out paraphrases |
 
 ## Prompts
 
@@ -75,6 +77,35 @@ yourself.` are `default.json[2]` and `[4]` of the source repo; the middle clause
 situational rather than dispositional, so the negative pole carries no helpfulness or
 compliance content that would cancel persona's causal signal. The bare pole is kept in
 `roles_subset.csv` as `neg_instruction` for provenance but is not used in any prompt.
+
+### Paraphrases
+
+One constant string on the negative pole against 50 distinct ones on the positive pole is
+an asymmetry a probe can read: whatever is idiosyncratic to that sentence is perfectly
+label-aligned. `roles_subset_paraphrased{,_heldout}.csv` replace it with a pool, one entry
+per role in `neg_instruction_padded` and its id in `neg_variant`; every other column is
+byte-identical to `roles_subset{,_heldout}.csv`.
+
+| | train | held-out |
+|---|---|---|
+| paraphrases | 5 (`A1`–`A5`) | 3 (`H1`–`H3`), disjoint from train |
+| roles per paraphrase | 10 (2–3 per stratum) | 5 (1–2 per stratum) |
+| words | 14–21 (mean 17.2) vs role 17.4 | 15–17 (mean 16.0) vs role 16.2 |
+| paired gap role−Assistant | −8 to +13, mean +0.2, role longer in 42% | −4 to +4, mean +0.2, 47% |
+
+Assignment is random within stratum with the counter running across strata (`SEED = 0`),
+so each paraphrase is used exactly *n*/*k* times and none is confined to one stratum. The
+pool is built from the same `default.json` clauses as `NEG_PADDED`, which is kept as `A1`,
+and every entry is a declarative `You are …` — matching `instruction[0]` on the role side,
+so the two poles still differ in no speech act. The paper's `assistant.json` paraphrases
+are *not* used: they are dispositional (`prioritizes being helpful, informative, and
+supportive`), which is the helpfulness content the padded pole was designed to avoid, and
+they mix in `Please be …` / `Act as …`. `{model_name}` (`default.json[3]`) is skipped so
+the dataset stays model-independent.
+
+`build_roleplay_dataset.py` asserts `neg_instruction_padded` is constant across roles and
+still reads the single-string files; these are inputs for a paraphrase-varied build, not
+yet crossed with the base tasks.
 
 ## Base tasks
 
