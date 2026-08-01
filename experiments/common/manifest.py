@@ -44,6 +44,20 @@ def stem(script, *parts):
     return "__".join([Path(script).stem, *keep])
 
 
+def artefact_kind(suffix):
+    """Where an artefact lives: what you read vs what you don't.
+
+    csv/     tables and *_selection.json — the headline of each script
+    vectors/ *.pt consumed by later experiments
+    meta/    manifests, deciles, run log, archive
+    """
+    if suffix.endswith(".csv") or suffix.endswith("_selection.json"):
+        return "csv"
+    if suffix.endswith(".pt"):
+        return "vectors"
+    return "meta"
+
+
 class Run:
     """Manifest lifecycle: in_progress at start, complete at exit.
 
@@ -52,8 +66,9 @@ class Run:
     check_stale.py reports as an interrupted run.
     """
 
-    def __init__(self, out_dir, stem_, config, inputs, resumable=False):
-        self.dir = Path(out_dir)
+    def __init__(self, layout, stem_, config, inputs, resumable=False):
+        self.layout = layout
+        self.dir = Path(layout.meta)
         self.stem = stem_
         self.config = config
         self.inputs = inputs
@@ -84,8 +99,14 @@ class Run:
 
     # ------------------------------------------------------------ artefacts
 
-    def artefact(self, suffix):
-        return self.dir / f"{self.stem}{suffix}"
+    def artefact(self, suffix, kind=None):
+        return getattr(self.layout, kind or artefact_kind(suffix)) / f"{self.stem}{suffix}"
+
+    def _own_files(self):
+        for kind in ("csv", "vectors", "meta"):
+            for p in Path(getattr(self.layout, kind)).glob(f"{self.stem}*"):
+                if p.is_file():
+                    yield kind, p
 
     def resume_from(self, suffix=".jsonl"):
         """Completed unit ids from a matching partial (spec 0.11).
@@ -123,15 +144,12 @@ class Run:
             return None
 
     def _archive(self, prior):
-        arch = self.dir / "_archive"
-        arch.mkdir(exist_ok=True)
-        tag = (prior.get("run_key") or "unknown")[:8]
-        for p in self.dir.glob(f"{self.stem}*"):
-            if p.is_dir():
-                continue
-            suffix = p.name[len(self.stem):]
-            os.replace(p, arch / f"{self.stem}__{tag}{suffix}")
-        self.notes.append(f"archived prior run {tag}")
+        key = (prior.get("run_key") or "unknown")[:8]
+        for kind, p in self._own_files():
+            dest = self.dir / "_archive" / kind
+            dest.mkdir(parents=True, exist_ok=True)
+            os.replace(p, dest / f"{self.stem}__{key}{p.name[len(self.stem):]}")
+        self.notes.append(f"archived prior run {key}")
 
     def _write(self, status):
         payload = {"stem": self.stem, "status": status, "run_key": self.run_key,

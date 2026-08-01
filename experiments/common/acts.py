@@ -4,40 +4,38 @@ import os
 
 import numpy as np
 
-from . import config as cfg
+
+def blob_path(layout, sha):
+    return layout.blobs / f"{sha}.npy"
 
 
-def blob_path(model_id, sha):
-    return cfg.acts_dir(model_id) / "blobs" / f"{sha}.npy"
+def has(layout, sha):
+    return blob_path(layout, sha).exists()
 
 
-def has(model_id, sha):
-    return blob_path(model_id, sha).exists()
-
-
-def write(model_id, sha, arr):
+def write(layout, sha, arr):
     """Atomic: a kill mid-write must not leave a truncated but present blob."""
-    path = blob_path(model_id, sha)
+    path = blob_path(layout, sha)
     tmp = path.with_name(path.name + ".tmp")
     with tmp.open("wb") as f:
         np.save(f, np.ascontiguousarray(arr, dtype=np.float16), allow_pickle=False)
     os.replace(tmp, path)
 
 
-def read(model_id, sha):
-    return np.load(blob_path(model_id, sha), allow_pickle=False)
+def read(layout, sha):
+    return np.load(blob_path(layout, sha), allow_pickle=False)
 
 
-def missing(model_id, shas):
-    return [s for s in dict.fromkeys(shas) if not has(model_id, s)]
+def missing(layout, shas):
+    return [s for s in dict.fromkeys(shas) if not has(layout, s)]
 
 
-def acts_manifest_path(model_id):
-    return cfg.acts_dir(model_id) / "acts_manifest.json"
+def acts_manifest_path(layout):
+    return layout.acts / "acts_manifest.json"
 
 
-def write_acts_manifest(model_id, payload):
-    path = acts_manifest_path(model_id)
+def write_acts_manifest(layout, payload):
+    path = acts_manifest_path(layout)
     prior = {}
     if path.exists():
         prior = json.loads(path.read_text(encoding="utf-8"))
@@ -51,14 +49,13 @@ def write_acts_manifest(model_id, payload):
     os.replace(tmp, path)
 
 
-def load_view_matrix(model_id, view):
+def load_view_matrix(layout, view):
     """-> {pole: [n_pairs, L+1, d] float32}, rows in view order."""
     order = {}
     for r in view["rows"]:
         order.setdefault(r["pole"], []).append(r)
     out = {}
     for pole, rows in order.items():
-        stack = [read(model_id, r["prompt_sha16"]) for r in rows]
-        out[pole] = np.stack(stack).astype("float32")
+        out[pole] = np.stack([read(layout, r["prompt_sha16"]) for r in rows]).astype("float32")
     out["pair_ids"] = [r["row_id"] for r in order["pos"]]
     return out

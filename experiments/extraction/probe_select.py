@@ -23,11 +23,12 @@ BAND_TOL = 0.05      # CP lower bound must be within this of the best lopo auroc
 LEN_TOL = 0.10       # |resid_len_auroc - 0.5| gate
 
 
-def load_direction(model, axis, out):
-    path = out / f"{mf.stem('directions', axis)}.pt"
+def load_direction(lay, axis):
+    stem = mf.stem("directions", axis)
+    path = lay.vectors / f"{stem}.pt"
     if not path.exists():
         return None
-    mf.load_upstream(out / f"{mf.stem('directions', axis)}_manifest.json")
+    mf.load_upstream(lay.meta / f"{stem}_manifest.json")
     return torch.load(path, weights_only=False)
 
 
@@ -39,8 +40,8 @@ def proj(h, u):
 # ------------------------------------------------------------------ 1.2 tables
 
 
-def layer_metrics(args, out):
-    dirn = load_direction(args.model, args.direction, out)
+def layer_metrics(args, lay, run):
+    dirn = load_direction(lay, args.direction)
     if dirn is None:
         raise SystemExit(f"run extract_direction.py --direction {args.direction} first")
 
@@ -50,20 +51,25 @@ def layer_metrics(args, out):
     sigma = dirn["sigma_act"].numpy()
     Lp1 = d_full.shape[0]
 
-    train = acts.load_view_matrix(args.model, views.read_view(args.model, args.direction, "train"))
+    train_view = views.read_view(lay, args.direction, "train")
+    train = acts.load_view_matrix(lay, train_view)
     tp, tn = train["pos"], train["neg"]
 
+    # Spec 0.2(a): if a task was appended, split the readout by task harmfulness.
+    tmeta = train_view.get("meta", {})
+    harmful = np.array([bool(tmeta.get(p, {}).get("task_harmful", False)) for p in train["pair_ids"]])
+    has_tasks = any("task_harmful" in tmeta.get(p, {}) for p in train["pair_ids"])
+
     try:
-        ho = acts.load_view_matrix(args.model,
-                                  views.read_view(args.model, args.direction, "heldout"))
+        ho = acts.load_view_matrix(lay, views.read_view(lay, args.direction, "heldout"))
     except FileNotFoundError:
         ho = None
         print("! no held-out view cached: heldout columns will be blank")
 
     # length foil + len_frac (spec 1.2). Absent -> gate skipped, recorded in the CSV.
-    len_dir = load_direction(args.model, "length", out)
+    len_dir = load_direction(lay, "length")
     try:
-        len_ho = acts.load_view_matrix(args.model, views.read_view(args.model, "length", "heldout"))
+        len_ho = acts.load_view_matrix(lay, views.read_view(lay, "length", "heldout"))
     except FileNotFoundError:
         len_ho = None
     if len_ho is None:
@@ -92,6 +98,13 @@ def layer_metrics(args, out):
                "norm": float(np.linalg.norm(d_full[l])),
                "norm_over_sigma": float(np.linalg.norm(d_full[l]) / max(sigma[l], 1e-9))}
 
+        if has_tasks:
+            # Does the framing axis read the same way over harmful and benign requests?
+            # A large gap means the vector is framing x harm, not framing.
+            row |= {"lopo_auroc_task_harmful": met.paired_auroc(s_pos[harmful], s_neg[harmful]),
+                    "lopo_auroc_task_benign": met.paired_auroc(s_pos[~harmful], s_neg[~harmful]),
+                    "n_task_harmful": int(harmful.sum()), "n_task_benign": int((~harmful).sum())}
+
         if ho is not None:
             hp = proj(ho["pos"][:, l:l + 1, :], u_full[l:l + 1])[:, 0]
             hn = proj(ho["neg"][:, l:l + 1, :], u_full[l:l + 1])[:, 0]
@@ -115,7 +128,7 @@ def layer_metrics(args, out):
         rows.append(row)
 
     sel = select_band(rows, gate=len_ho is not None)
-    write_csv(out / f"{mf.stem('probe_select', args.direction)}.csv", rows)
+    write_csv(run.artefact(".csv"), rows)
     return rows, sel
 
 
@@ -170,20 +183,20 @@ def select_band(rows, gate=True):
 # ---------------------------------------------------------------- 1.2a transfer
 
 
-def transfer_report(args, out):
+def transfer_report(args, lay):
     """Both story vectors + the length foil on the filler-free v1 prompts."""
-    view = views.read_view(args.model, args.transfer, "train")
-    m = acts.load_view_matrix(args.model, view)
+    view = views.read_view(lay, args.transfer, "train")
+    m = acts.load_view_matrix(lay, view)
     meta = view["meta"]
 
     probes = {}
     for axis, label in [(args.direction, "d_v2"), ("length", "d_length")]:
-        dd = load_direction(args.model, axis, out)
+        dd = load_direction(lay, axis)
         if dd is not None:
             probes[label] = dd["u"].numpy()
-    v1 = out / f"{mf.stem('directions', 'v1_fair50')}.pt"
-    if v1.exists():
-        probes["d_v1_50"] = torch.load(v1, weights_only=False)["u"].numpy()
+    v1 = load_direction(lay, "story_v1")
+    if v1 is not None:
+        probes["d_v1_50"] = v1["u"].numpy()
     if "d_length" not in probes:
         print("! d_length missing: this test is UNINTERPRETABLE without the length foil (spec 1.2a)")
 
@@ -207,7 +220,7 @@ def transfer_report(args, out):
     config = {"direction": args.direction, "transfer": args.transfer,
               "probes": sorted(probes), "seed": cfg.SEED}
     inputs = {"view_key": view["view_key"], "source_files": view["source_files"]}
-    with mf.Run(out, stem, config, inputs) as run:
+    with mf.Run(lay, stem, config, inputs) as run:
         write_csv(run.artefact(".csv"), rows)
         run.artefact("_deciles.json").write_text(json.dumps(deciles, indent=2), encoding="utf-8")
         band = cfg.band(Lp1 - 1)
@@ -234,21 +247,22 @@ def main():
     ap.add_argument("model")
     ap.add_argument("--direction", required=True, choices=views.DIRECTIONS)
     ap.add_argument("--transfer", default=None, help="spec 1.2a, e.g. v1_nofiller100")
+    ap.add_argument("--tag", default=None)
     args = ap.parse_args()
-    out = cfg.results_dir("extraction", args.model)
+    lay = cfg.Layout("extraction", args.model, args.tag)
 
     if args.transfer:
-        transfer_report(args, out)
+        transfer_report(args, lay)
         return
 
     stem = mf.stem("probe_select", args.direction)
-    view = views.read_view(args.model, args.direction, "train")
+    view = views.read_view(lay, args.direction, "train")
     config = {"direction": args.direction, "band_tol": BAND_TOL, "len_tol": LEN_TOL,
               "selector": "lopo_paired_auroc", "interval": "clopper_pearson",
               "seed": cfg.SEED}
     inputs = {"view_key": view["view_key"]}
-    with mf.Run(out, stem, config, inputs) as run:
-        rows, sel = layer_metrics(args, out)
+    with mf.Run(lay, stem, config, inputs) as run:
+        rows, sel = layer_metrics(args, lay, run)
         run.artefact("_selection.json").write_text(json.dumps(sel, indent=2), encoding="utf-8")
         band = sel["band"]
         print(f"{args.direction}: best lopo AUROC {sel['best_lopo_auroc']:.3f} "

@@ -9,7 +9,7 @@ import csv
 import json
 import random
 import sys
-from pathlib import Path
+from pathlib import Path  # noqa: F401  (used by the v1 loaders' error messages)
 
 from . import config as cfg
 from . import manifest as mf
@@ -17,7 +17,7 @@ from . import prompts as pr
 
 csv.field_size_limit(min(sys.maxsize, 2 ** 31 - 1))
 
-DIRECTIONS = ["story", "harm", "persona", "eval", "length"]
+DIRECTIONS = ["story", "story_v1", "harm", "persona", "eval", "length"]
 
 # ------------------------------------------------------------------- readers
 
@@ -57,35 +57,38 @@ def _harm(split):
                  for r in _csv(src)]
 
 
+def _attach(rows, tasks):
+    """Spec 0.2(a): one task per pair, byte-identical across the pair."""
+    if not tasks:
+        return rows
+    if len(tasks) < len(rows):
+        raise RuntimeError(f"need {len(rows)} tasks, task pool has {len(tasks)}")
+    for r, t in zip(rows, tasks):
+        r["pos"], r["neg"] = pr.with_task(r["pos"], t["text"]), pr.with_task(r["neg"], t["text"])
+        r["meta"] = {**r["meta"], "task_harmful": t["harmful"], "task_id": t["task_id"]}
+    return rows
+
+
 def _persona(split, tasks=None):
     name = ("roles_subset_paraphrased.csv" if split == "train"
             else "roles_subset_paraphrased_heldout.csv")
     src = cfg.DATA / "role_play" / name
-    rows = []
-    for i, r in enumerate(_csv(src)):
-        pos, neg = r["pos_instruction"], r["neg_instruction_padded"]
-        if tasks:
-            t = tasks[i % len(tasks)]
-            pos, neg = pr.with_task(pos, t), pr.with_task(neg, t)
-        rows.append({"pair_id": f"persona-{r['role']}", "pos": pos, "neg": neg,
-                     "meta": {"role": r["role"], "stratum": r["stratum"],
-                              "neg_variant": r["neg_variant"]}})
-    return src, rows
+    rows = [{"pair_id": f"persona-{r['role']}",
+             "pos": r["pos_instruction"], "neg": r["neg_instruction_padded"],
+             "meta": {"role": r["role"], "stratum": r["stratum"],
+                      "neg_variant": r["neg_variant"]}}
+            for r in _csv(src)]
+    return src, _attach(rows, tasks)
 
 
 def _eval(split, tasks=None):
     name = ("eval_awareness_pairs.csv" if split == "train"
             else "eval_awareness_pairs_heldout.csv")
     src = cfg.DATA / "eval_aware" / name
-    rows = []
-    for i, r in enumerate(_csv(src)):
-        pos, neg = r["evaluation"], r["deployment"]
-        if tasks:
-            t = tasks[i % len(tasks)]
-            pos, neg = pr.with_task(pos, t), pr.with_task(neg, t)
-        rows.append({"pair_id": f"eval-{r['id']}", "pos": pos, "neg": neg,
-                     "meta": {"id": r["id"], "source": r["source"], "person": r["person"]}})
-    return src, rows
+    rows = [{"pair_id": f"eval-{r['id']}", "pos": r["evaluation"], "neg": r["deployment"],
+             "meta": {"id": r["id"], "source": r["source"], "person": r["person"]}}
+            for r in _csv(src)]
+    return src, _attach(rows, tasks)
 
 
 def _length(split):
@@ -100,12 +103,14 @@ def _length(split):
 # ------------------------------------------------- v1 story tables (1.6 / 1.2a)
 
 _V1_MATCHED = cfg.DATA / "story_mode" / "story_mode_prompts_matched.csv"
+_V1_MATCHED_HO = cfg.DATA / "story_mode" / "story_mode_prompts_matched_heldout.csv"
 _V1_PLAIN = cfg.DATA / "story_mode" / "story_mode_prompts.csv"
 _V1_WRAPPERS = cfg.DATA / "story_mode" / "story_wrappers.csv"
+_V1_WRAPPERS_HO = cfg.DATA / "story_mode" / "story_wrappers_heldout.csv"
 
 
-def _wrapper_ids():
-    return [r["id"] for r in _csv(_V1_WRAPPERS)]
+def _wrapper_ids(path=None):
+    return [r["id"] for r in _csv(path or _V1_WRAPPERS)]
 
 
 def _requests_in(path):
@@ -126,30 +131,47 @@ def _request_split():
     return perm[:half], perm[half:]
 
 
-def _v1_fair50():
-    """Spec 1.6: 50 wrappers x 1 distinct request each, matched table."""
-    wrappers = _wrapper_ids()
-    fair, _ = _request_split()
-    if len(fair) < len(wrappers):
-        raise RuntimeError(f"need >= {len(wrappers)} shared requests, have {len(fair)}")
-    want = {(w, fair[i]) for i, w in enumerate(wrappers)}
+def _story_v1(split):
+    """v1 matched, as a first-class direction: 50 train / 15 heldout pairs.
+
+    One row per wrapper, each with a different request, so wrapper is not confounded
+    with request. Train and held-out files share no wrapper and no request, so the
+    held-out 15 test framing *and* request generalisation - the same shape as v2's
+    disjoint context families.
+
+    Train requests come from the first half of `_request_split`, leaving the second
+    half reserved for `v1_nofiller100` (spec 1.2a).
+    """
+    if split == "train":
+        src, wrappers = _V1_MATCHED, _wrapper_ids()
+        requests, _ = _request_split()
+    else:
+        src, wrappers = _V1_MATCHED_HO, _wrapper_ids(_V1_WRAPPERS_HO)
+        requests = sorted({r["request"] for r in _csv(_V1_MATCHED_HO)})
+        random.Random(cfg.SEED).shuffle(requests)
+    if len(requests) < len(wrappers):
+        raise RuntimeError(f"{split}: need >= {len(wrappers)} requests, have {len(requests)}")
+
+    want = {(w, requests[i]): None for i, w in enumerate(wrappers)}
     found = {}
-    for r in _csv(_V1_MATCHED):
+    for r in _csv(src):
         key = (r["story_id"], r["request"])
         if key in want and key not in found:
             found[key] = r
-    missing = want - set(found)
+    missing = set(want) - set(found)
     if missing:
-        raise RuntimeError(f"{len(missing)} wrapper x request cells absent from matched table, "
-                           f"e.g. {sorted(missing)[:3]}")
+        raise RuntimeError(f"{split}: {len(missing)} wrapper x request cells absent from "
+                           f"{Path(src).name}, e.g. {sorted(missing)[:3]}")
     rows = []
     for i, w in enumerate(wrappers):
-        r = found[(w, fair[i])]
-        rows.append({"pair_id": f"v1f-{w}", "pos": r["prompt_story"],
+        r = found[(w, requests[i])]
+        rows.append({"pair_id": f"v1-{w}", "pos": r["prompt_story"],
                      "neg": r["prompt_expository"], "neg2": r["prompt_audience"],
-                     "meta": {"story_id": w, "request": r["request"],
-                              "genre": r["genre"], "jbb_index": r["jbb_index"]}})
-    return _V1_MATCHED, rows
+                     "meta": {"story_id": w, "request": r["request"], "genre": r["genre"],
+                              "jbb_index": r["jbb_index"], "label": r["label"],
+                              "n_words_story": r["n_words_story"],
+                              "n_words_expository": r["n_words_expository"]}})
+    return src, rows
 
 
 def _v1_nofiller100():
@@ -216,18 +238,33 @@ def _jailbreaks(split):
 # ------------------------------------------------------------------ dispatch
 
 _LOADERS = {
-    "story": _story, "harm": _harm, "persona": _persona, "eval": _eval, "length": _length,
+    "story": _story, "story_v1": _story_v1, "harm": _harm, "persona": _persona,
+    "eval": _eval, "length": _length,
 }
-_SINGLETONS = {
-    "v1_fair50": _v1_fair50, "v1_nofiller100": _v1_nofiller100, "v1_curve": _v1_curve,
-}
+_SINGLETONS = {"v1_nofiller100": _v1_nofiller100, "v1_curve": _v1_curve}
 FRAMING_ONLY = {"persona", "eval"}
 
 
-def base_tasks():
-    """The 50 harm goals, for spec 0.2(a) task appending."""
-    _, rows = _harm("train")
-    return [r["pos"] for r in rows]
+def base_tasks(split="train"):
+    """Balanced harmful/benign task pool for spec 0.2(a).
+
+    One task per harm row, alternating pole after a seeded shuffle, so the pool is
+    half harmful by construction and no goal repeats. Train tasks come from the harm
+    train rows and held-out tasks from the held-out rows, so a task a persona pair
+    was fitted with never reappears in its own evaluation set.
+    """
+    name = "harm_selected_pairs.csv" if split == "train" else "harm_selected_pairs_heldout.csv"
+    rows = list(_csv(cfg.DATA / "harm" / name))
+    order = list(range(len(rows)))
+    random.Random(cfg.SEED).shuffle(order)
+    pool = []
+    for rank, i in enumerate(order):
+        harmful = rank % 2 == 0
+        r = rows[i]
+        pool.append({"text": r["harmful_goal"] if harmful else r["benign_goal"],
+                     "harmful": harmful,
+                     "task_id": f"jbb{r['jbb_index']}-{'h' if harmful else 'b'}"})
+    return pool
 
 
 def load_pairs(dataset, split="train", append_task=False):
@@ -238,7 +275,7 @@ def load_pairs(dataset, split="train", append_task=False):
     if dataset not in _LOADERS:
         raise KeyError(f"unknown dataset {dataset!r}")
     if dataset in FRAMING_ONLY and append_task:
-        return _LOADERS[dataset](split, tasks=base_tasks())
+        return _LOADERS[dataset](split, tasks=base_tasks(split))
     return _LOADERS[dataset](split)
 
 
@@ -265,20 +302,28 @@ def build_view(dataset, split, hash_fn, append_task=False, subsample=None):
     return view, texts
 
 
-def view_path(model_id, dataset, split):
-    return cfg.acts_dir(model_id) / "views" / f"{dataset}__{split}.json"
+def view_path(layout, dataset, split, view_key=None):
+    """Plain name is the current pointer; the keyed name is history.
+
+    Without the keyed copy, changing a dataset overwrites the only record of the
+    previous view and every earlier result becomes an unresolvable view_key.
+    """
+    d = layout.acts / "views"
+    return d / (f"{dataset}__{split}__{view_key[:8]}.json" if view_key
+                else f"{dataset}__{split}.json")
 
 
-def write_view(model_id, view):
-    path = view_path(model_id, view["dataset"], view["split"])
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(view, indent=2), encoding="utf-8")
-    tmp.replace(path)
-    return path
+def write_view(layout, view):
+    for path in (view_path(layout, view["dataset"], view["split"], view["view_key"]),
+                 view_path(layout, view["dataset"], view["split"])):
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(view, indent=2), encoding="utf-8")
+        tmp.replace(path)
+    return view_path(layout, view["dataset"], view["split"])
 
 
-def read_view(model_id, dataset, split="train"):
-    path = view_path(model_id, dataset, split)
+def read_view(layout, dataset, split="train"):
+    path = view_path(layout, dataset, split)
     if not path.exists():
         raise FileNotFoundError(f"no view for {dataset}/{split}: run cache_activations.py first")
     return json.loads(path.read_text(encoding="utf-8"))

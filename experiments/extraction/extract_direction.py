@@ -21,11 +21,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("model")
     ap.add_argument("--direction", required=True, choices=views.DIRECTIONS)
+    ap.add_argument("--tag", default=None)
     args = ap.parse_args()
 
-    out = cfg.results_dir("extraction", args.model)
-    view = views.read_view(args.model, args.direction, "train")
-    m = acts.load_view_matrix(args.model, view)
+    lay = cfg.Layout("extraction", args.model, args.tag)
+    view = views.read_view(lay, args.direction, "train")
+    m = acts.load_view_matrix(lay, view)
     pos, neg = m["pos"], m["neg"]                       # [n, L+1, d]
     n, Lp1, d = pos.shape
 
@@ -40,7 +41,7 @@ def main():
               "estimator": "diff_in_means", "seed": cfg.SEED}
     inputs = {"view_key": view["view_key"], "source_files": view["source_files"]}
 
-    with mf.Run(out, stem, config, inputs) as run:
+    with mf.Run(lay, stem, config, inputs) as run:
         torch.save({"model": args.model, "axis": args.direction,
                     "d": torch.from_numpy(dvec),
                     "u": torch.from_numpy(met.unit(dvec)),

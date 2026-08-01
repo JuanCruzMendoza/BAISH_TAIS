@@ -26,8 +26,9 @@ round1
 
 audit
 
-# experiments: activation cache and vectors are regenerable from the cache in seconds
-# (lopo_d alone is ~20 MB per direction at d=3584). CSVs, manifests and runs.csv stay tracked.
-experiments/*/results/**/acts/
-experiments/*/results/**/*.pt
-experiments/*/results/**/_archive/
+# experiments: results/<tag>/<model>/{csv,vectors,acts,meta}
+# csv/ and meta/ stay tracked; the cache and vectors regenerate from the cache in seconds
+# (lopo_d alone is ~20 MB per direction at d=3584).
+experiments/*/results/*/*/acts/
+experiments/*/results/*/*/vectors/
+experiments/*/results/*/*/meta/_archive/

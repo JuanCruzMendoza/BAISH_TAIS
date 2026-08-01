@@ -28,45 +28,34 @@ def paired_cos(pos, neg, u):
     return float(np.mean([met.cos(delta[i], u) for i in range(delta.shape[0])]))
 
 
-def extract_v1(model_id, out, view, neg_pole="neg"):
-    """d_v1_50 from the 50-row matched subsample; saved so 1.2a can reuse it."""
-    m = acts.load_view_matrix(model_id, view)
-    pos, neg = m["pos"], m[neg_pole]
-    dvec = met.diff_in_means(pos, neg)
-    stem = mf.stem("directions", "v1_fair50" if neg_pole == "neg" else "v1_fair50_audience")
-    config = {"source": "v1_matched_50", "neg_pole": neg_pole, "n_pairs": pos.shape[0],
-              "estimator": "diff_in_means", "seed": cfg.SEED}
-    with mf.Run(out, stem, config, {"view_key": view["view_key"]}) as run:
-        torch.save({"model": model_id, "axis": "story_v1_50", "neg_pole": neg_pole,
-                    "d": torch.from_numpy(dvec), "u": torch.from_numpy(met.unit(dvec)),
-                    "lopo_d": torch.from_numpy(met.lopo_directions(pos, neg)),
-                    "n_pairs": pos.shape[0], "view_key": view["view_key"],
-                    "run_key": run.run_key}, run.artefact(".pt"))
-    return dvec, m
+def load(lay, axis):
+    stem = mf.stem("directions", axis)
+    path = lay.vectors / f"{stem}.pt"
+    if not path.exists():
+        raise SystemExit(f"run extract_direction.py --direction {axis} first")
+    mf.load_upstream(lay.meta / f"{stem}_manifest.json")
+    return torch.load(path, weights_only=False)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("model")
     ap.add_argument("--curve", action="store_true")
+    ap.add_argument("--tag", default=None)
     args = ap.parse_args()
-    out = cfg.results_dir("extraction", args.model)
+    lay = cfg.Layout("extraction", args.model, args.tag)
 
-    v2_path = out / f"{mf.stem('directions', 'story')}.pt"
-    if not v2_path.exists():
-        raise SystemExit("run extract_direction.py --direction story first")
-    v2 = torch.load(v2_path, weights_only=False)
+    v2, v1 = load(lay, "story"), load(lay, "story_v1")
     d_v2, u_v2 = v2["d"].numpy(), v2["u"].numpy()
+    d_v1, u_v1 = v1["d"].numpy(), v1["u"].numpy()
 
-    v1_view = views.read_view(args.model, "v1_fair50", "train")
-    d_v1, m1 = extract_v1(args.model, out, v1_view, "neg")
-    u_v1 = met.unit(d_v1)
+    v1_view = views.read_view(lay, "story_v1", "train")
+    v2_view = views.read_view(lay, "story", "train")
+    m1 = acts.load_view_matrix(lay, v1_view)
+    m2 = acts.load_view_matrix(lay, v2_view)
 
-    have_audience = "neg2" in v1_view["poles"]
-    d_v1_aud = extract_v1(args.model, out, v1_view, "neg2")[0] if have_audience else None
-
-    v2_view = views.read_view(args.model, "story", "train")
-    m2 = acts.load_view_matrix(args.model, v2_view)
+    # The audience arm is a reported cosine, not a saved artefact (spec 1.6).
+    d_v1_aud = (met.diff_in_means(m1["pos"], m1["neg2"]) if "neg2" in v1_view["poles"] else None)
 
     Lp1 = d_v2.shape[0]
     rows = []
@@ -92,14 +81,14 @@ def main():
 
     curve = {}
     if args.curve:
-        curve = subsample_curve(args.model)
+        curve = subsample_curve(lay)
 
     stem = mf.stem("compare_crossed")
     config = {"matched_n": True, "neg_pole": "prompt_expository", "curve": args.curve,
               "curve_n": CURVE_N if args.curve else [], "seed": cfg.SEED}
     inputs = {"v2_view_key": v2_view["view_key"], "v1_view_key": v1_view["view_key"],
-              "v2_run_key": v2.get("run_key")}
-    with mf.Run(out, stem, config, inputs) as run:
+              "v2_run_key": v2.get("run_key"), "v1_run_key": v1.get("run_key")}
+    with mf.Run(lay, stem, config, inputs) as run:
         with run.artefact(".csv").open("w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=list(dict.fromkeys(k for r in rows for k in r)))
             w.writeheader()
@@ -118,10 +107,10 @@ def main():
               f"   v1 {np.mean([r['mean_paired_cos_v1'] for r in inband]):.3f}")
 
 
-def subsample_curve(model_id):
+def subsample_curve(lay):
     """cos(d_n, d_full) on the v1 curve view: where does the vector stop moving?"""
-    view = views.read_view(model_id, "v1_curve", "train")
-    m = acts.load_view_matrix(model_id, view)
+    view = views.read_view(lay, "v1_curve", "train")
+    m = acts.load_view_matrix(lay, view)
     pos, neg = m["pos"], m["neg"]
     n_tot = pos.shape[0]
     d_full = met.diff_in_means(pos, neg)

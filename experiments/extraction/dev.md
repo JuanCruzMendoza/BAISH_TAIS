@@ -6,6 +6,24 @@ Spec: `research/spec-experiments.md` §1. Phase 1 of `research/Plan story-mode.m
 diff-in-means on the last prompt token, at every layer, and decide which layer band reads each
 axis best without reading length.
 
+## Layout
+
+```
+results/<tag>/<model_slug>/
+  csv/       metrics tables + *_selection.json   <- what you read
+  vectors/   *.pt for experiments 2-5            (gitignored)
+  acts/      blobs/<prompt_sha16>.npy + views/   (gitignored)
+  meta/      manifests, runs.csv, _archive/, *_deciles.json
+```
+
+`<tag>` names a run — a dataset version, not a timestamp (`base`, `benign_tasks`, `story_v3`).
+Every script takes `--tag`, also read from `$RUN_TAG`, default `base`. Nothing is shared between
+tags, so two runs never mix.
+
+**Cost of that isolation:** `acts/` sits inside the tag, so a new tag re-caches every prompt even
+where the dataset did not change. Set `$BLOB_STORE` to an absolute path to point several tags at one
+content-addressed blob store — safe by construction, since blobs are keyed by prompt content.
+
 ## Run order
 
 ```bash
@@ -23,9 +41,30 @@ python -m experiments.common.check_stale <model>
 `cache_activations.py` is the only script that touches the GPU. Everything downstream reads the
 blob cache, so re-running the analysis costs seconds.
 
-Datasets: `story` (`story_mode_v2/pairs*.jsonl`), `harm`, `persona`, `eval`, `length`, plus the two
-v1 story views `v1_fair50` (§1.6) and `v1_nofiller100` (§1.2a), and `v1_curve` for the second
+Directions: `story` (v2, `story_mode_v2/pairs*.jsonl`), **`story_v1`** (v1 matched), `harm`,
+`persona`, `eval`, `length`. Extra views: `v1_nofiller100` (§1.2a) and `v1_curve` for the second
 `compare_crossed --curve` run.
+
+**`story_v1` is a first-class direction**, 50 train / 15 heldout, so it gets the same LOPO band,
+held-out AUROC and length gate as v2 rather than being a by-product of `compare_crossed`:
+
+| split | file | pairs | wrappers | requests |
+|---|---|---|---|---|
+| train | `story_mode_prompts_matched.csv` | 50 | 50 | 50 |
+| heldout | `story_mode_prompts_matched_heldout.csv` | 15 | 15 | 15 |
+
+One row per wrapper, each with a different request, so wrapper is not confounded with request. The
+two files share **no wrapper and no request**, so the held-out 15 test framing *and* request
+generalisation — the same shape as v2's disjoint context families. Train requests come from the first
+half of the shared-request permutation, leaving the second half reserved for `v1_nofiller100`, which
+keeps §1.2a out-of-sample for `d_v1` (verified: 0 overlap).
+
+Poles: `pos = prompt_story`, `neg = prompt_expository`, `neg2 = prompt_audience` (v1's concrete rung,
+reported by `compare_crossed` as a cosine, not saved as its own vector).
+
+`compare_crossed` now *consumes* `directions__story.pt` and `directions__story_v1.pt` instead of
+extracting v1 itself, so both story vectors are produced the same way and the old ordering dependency
+is gone.
 
 ## Method
 
@@ -52,9 +91,9 @@ If no layer clears the length gate the band falls back to the AUROC criterion al
 `gate_failed` in `probe_select__<axis>_selection.json` — a direction that cannot be separated from
 length at any layer is a finding, not a crash.
 
-**§1.6 `compare_crossed`.** Matched *n*, 50 vs 50: v2 against a 50-row v1 subsample (all 50
-wrappers of `story_wrappers.csv`, each with a different request). Cross-evaluation runs on the other
-side's **50**, not its 15 — neither vector was fitted on the other's data.
+**§1.6 `compare_crossed`.** Matched *n*, 50 vs 50: `directions__story` against
+`directions__story_v1`. Cross-evaluation runs on the other side's **50**, not its 15 — neither vector
+was fitted on the other's data.
 
 `--curve` adds the `cos(d_n, d_full)` subsample curve over n ∈ {5, 10, 25, 50, 100, 250, 1000} and
 needs the `v1_curve` view: **1,000 pairs = 2,000 prompts**, 20 requests per wrapper. `d_full` is the
@@ -75,15 +114,49 @@ Per §0.8/§0.10/§0.11: activations are content-addressed per prompt (`acts/blo
 atomic writes) with datasets as views over them, so subsamples cost no extra forward passes and an
 interrupted cache run resumes by skipping existing blobs. Every artefact carries a manifest with a
 `run_key` over the resolved config plus upstream keys; a changed config archives the prior artefact
-instead of overwriting it. `check_stale.py` reports stale, interrupted and orphaned artefacts.
+instead of overwriting it. `check_stale.py <model> [tag]` reports stale, interrupted and orphaned
+artefacts.
+
+Views are written twice: `views/<ds>__<split>.json` is the current pointer and
+`views/<ds>__<split>__<view_key8>.json` is history. Without the keyed copy, changing a dataset would
+overwrite the only record of the previous view and every earlier result would hold an unresolvable
+`view_key`.
+
+## Appended tasks for `persona` / `eval` (§0.2(a))
+
+`--append-task` gives each framing pair one base task, byte-identical across the pair, so the
+contrast stays framing-only while the read position sits after a request. Without it, `eval` is a
+7-word prefix and the probe is read on ~1,012-char jailbreaks in experiment 3 — a two-order-of-
+magnitude extrapolation.
+
+The pool is **half harmful by construction**: one task per harm row, alternating pole after a seeded
+shuffle, so no goal repeats. Train tasks come from `harm_selected_pairs.csv`, held-out tasks from
+`harm_selected_pairs_heldout.csv`, so a task a pair was fitted with never reappears in its own
+evaluation set.
+
+| split | tasks | harmful | benign |
+|---|---|---|---|
+| train | 50 | 25 | 25 |
+| heldout | 15 | 8 | 7 |
+
+`persona` and `eval` share the assignment (task *i* is the same in both), which keeps them comparable;
+the task cancels within each pair, so it does not enter either vector at first order.
+
+**It also fixes the `persona` degeneracy.** `neg_instruction_padded` has only 5 paraphrases over 50
+roles, so the bare negative pole is 5 distinct strings at 10× reuse — `mean(neg)` averages 5 points,
+not 50, and LOPO is not out-of-sample because 9 copies of the held-out pair's negative stay in the
+fit. With tasks appended the negative pole is 50 distinct prompts. The *framing* still has 5 levels,
+so grouped LOPO by `neg_variant` is still worth adding.
+
+`probe_select` emits `lopo_auroc_task_{harmful,benign}` whenever tasks are present. A large gap means
+the vector is framing × harm rather than framing.
 
 ## Open
 
-- **`--append-task` defaults to off.** §0.2(a) recommends pairing each `persona`/`eval` framing 1:1
-  with a rotated base task, since `eval` is a 7-word prefix and jailbreaks are ~1,012 chars. It is
-  implemented (`--append-task`, rotating the 50 harm goals) but not the default, pending a decision.
 - `length` has 21 train / 9 heldout pairs, not 50/15 (§6.5). The length gate is therefore coarse:
-  9 pairs quantise `resid_len_auroc` to 1/9 ≈ 0.111, which is wider than the ±0.10 tolerance.
+  9 pairs quantise `resid_len_auroc` to 1/9 ≈ 0.111, wider than the ±0.10 tolerance, so
+  `gate_failed` will fire more often than the construct warrants.
+- Grouped LOPO by `neg_variant` for `persona` (5 folds, not 50) — the framing pole is still 5 levels.
 - `hooks.py` (§5.4) is not written yet; nothing here needs it.
 
 ## Verification
