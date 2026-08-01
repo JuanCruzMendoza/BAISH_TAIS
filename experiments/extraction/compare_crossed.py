@@ -45,12 +45,12 @@ def main():
     args = ap.parse_args()
     lay = cfg.Layout("extraction", args.model, args.tag)
 
-    v2, v1 = load(lay, "story"), load(lay, "story_v1")
+    v2, v1 = load(lay, "story_v2"), load(lay, "story_v1")
     d_v2, u_v2 = v2["d"].numpy(), v2["u"].numpy()
     d_v1, u_v1 = v1["d"].numpy(), v1["u"].numpy()
 
     v1_view = views.read_view(lay, "story_v1", "train")
-    v2_view = views.read_view(lay, "story", "train")
+    v2_view = views.read_view(lay, "story_v2", "train")
     m1 = acts.load_view_matrix(lay, v1_view)
     m2 = acts.load_view_matrix(lay, v2_view)
 

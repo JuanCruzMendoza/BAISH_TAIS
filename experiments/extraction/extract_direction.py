@@ -1,6 +1,6 @@
 """Diff-in-means direction for one axis, every layer, from cached activations. CPU only.
 
-    python extract_direction.py <model> --direction story
+    python extract_direction.py <model> --direction story_v2
 
 Writes directions__<axis>.pt with the full vector, the 50 LOPO vectors, pole means
 and sigma_act, all of which sections 1.2, 2 and 5 reuse.

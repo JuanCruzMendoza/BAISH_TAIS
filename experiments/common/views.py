@@ -17,7 +17,7 @@ from . import prompts as pr
 
 csv.field_size_limit(min(sys.maxsize, 2 ** 31 - 1))
 
-DIRECTIONS = ["story", "story_v1", "harm", "persona", "eval", "length"]
+DIRECTIONS = ["story_v2", "story_v1", "harm", "persona", "eval", "length"]
 
 # ------------------------------------------------------------------- readers
 
@@ -37,7 +37,7 @@ def _jsonl(path):
 # Each returns [{pair_id, pos, neg, meta}], already rendered to final prompt text.
 
 
-def _story(split):
+def _story_v2(split):
     name = "pairs.jsonl" if split == "train" else "pairs_heldout.jsonl"
     src = cfg.DATA / "story_mode_v2" / name
     return src, [{"pair_id": r["pair_id"],
@@ -238,7 +238,7 @@ def _jailbreaks(split):
 # ------------------------------------------------------------------ dispatch
 
 _LOADERS = {
-    "story": _story, "story_v1": _story_v1, "harm": _harm, "persona": _persona,
+    "story_v2": _story_v2, "story_v1": _story_v1, "harm": _harm, "persona": _persona,
     "eval": _eval, "length": _length,
 }
 _SINGLETONS = {"v1_nofiller100": _v1_nofiller100, "v1_curve": _v1_curve}

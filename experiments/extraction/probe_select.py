@@ -1,7 +1,7 @@
 """Per-layer probe metrics and the layer-band selection rule (spec 1.2).
 
-    python probe_select.py <model> --direction story
-    python probe_select.py <model> --direction story --transfer v1_nofiller100   # 1.2a
+    python probe_select.py <model> --direction story_v2
+    python probe_select.py <model> --direction story_v2 --transfer v1_nofiller100   # 1.2a
 
 LOPO on the 50 train pairs selects; the 15 held-out pairs report. Intervals are
 Clopper-Pearson, never bootstrap (spec 0.7).

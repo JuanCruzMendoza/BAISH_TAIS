@@ -27,21 +27,21 @@ content-addressed blob store — safe by construction, since blobs are keyed by 
 ## Run order
 
 ```bash
-python cache_activations.py <model> --dataset story   --split train      # GPU
-python cache_activations.py <model> --dataset story   --split heldout
+python cache_activations.py <model> --dataset story_v2 --split train      # GPU
+python cache_activations.py <model> --dataset story_v2 --split heldout
 python cache_activations.py <model> --dataset harm    --split train      # ... x5 directions
 python cache_activations.py <model> --dataset length  --split heldout    # needed by the length gate
-python extract_direction.py <model> --direction story                    # CPU
-python probe_select.py      <model> --direction story
+python extract_direction.py <model> --direction story_v2                 # CPU
+python probe_select.py      <model> --direction story_v2
 python compare_crossed.py   <model>                                      # §1.6
-python probe_select.py      <model> --direction story --transfer v1_nofiller100   # §1.2a
+python probe_select.py      <model> --direction story_v2 --transfer v1_nofiller100   # §1.2a
 python -m experiments.common.check_stale <model>
 ```
 
 `cache_activations.py` is the only script that touches the GPU. Everything downstream reads the
 blob cache, so re-running the analysis costs seconds.
 
-Directions: `story` (v2, `story_mode_v2/pairs*.jsonl`), **`story_v1`** (v1 matched), `harm`,
+Directions: **`story_v2`** (`story_mode_v2/pairs*.jsonl`), **`story_v1`** (v1 matched), `harm`,
 `persona`, `eval`, `length`. Extra views: `v1_nofiller100` (§1.2a) and `v1_curve` for the second
 `compare_crossed --curve` run.
 
@@ -62,7 +62,7 @@ keeps §1.2a out-of-sample for `d_v1` (verified: 0 overlap).
 Poles: `pos = prompt_story`, `neg = prompt_expository`, `neg2 = prompt_audience` (v1's concrete rung,
 reported by `compare_crossed` as a cosine, not saved as its own vector).
 
-`compare_crossed` now *consumes* `directions__story.pt` and `directions__story_v1.pt` instead of
+`compare_crossed` now *consumes* `directions__story_v2.pt` and `directions__story_v1.pt` instead of
 extracting v1 itself, so both story vectors are produced the same way and the old ordering dependency
 is gone.
 
@@ -91,7 +91,7 @@ If no layer clears the length gate the band falls back to the AUROC criterion al
 `gate_failed` in `probe_select__<axis>_selection.json` — a direction that cannot be separated from
 length at any layer is a finding, not a crash.
 
-**§1.6 `compare_crossed`.** Matched *n*, 50 vs 50: `directions__story` against
+**§1.6 `compare_crossed`.** Matched *n*, 50 vs 50: `directions__story_v2` against
 `directions__story_v1`. Cross-evaluation runs on the other side's **50**, not its 15 — neither vector
 was fitted on the other's data.
 
