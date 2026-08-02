@@ -17,7 +17,7 @@ from . import prompts as pr
 
 csv.field_size_limit(min(sys.maxsize, 2 ** 31 - 1))
 
-DIRECTIONS = ["story_v2", "story_v1", "harm", "persona", "eval", "length"]
+DIRECTIONS = ["story_v2", "story_v1", "harm", "harm_v2", "persona", "eval", "length"]
 
 # ------------------------------------------------------------------- readers
 
@@ -55,6 +55,18 @@ def _harm(split):
                   "pos": r["harmful_goal"], "neg": r["benign_goal"],
                   "meta": {"jbb_index": r["jbb_index"], "category": r["category"]}}
                  for r in _csv(src)]
+
+
+def _harm_v2(split):
+    """v1 `harm` under four framing families; its `bare` cell is v1 unchanged."""
+    name = "pairs.jsonl" if split == "train" else "pairs_heldout.jsonl"
+    src = cfg.DATA / "harm_v2" / name
+    return src, [{"pair_id": r["pair_id"],
+                  "pos": r["prompt_harmful"], "neg": r["prompt_benign"],
+                  "meta": {"family": r["family"], "arm": r["arm"],
+                           "framing_id": r["framing_id"], "jbb_index": r["jbb_index"],
+                           "category": r["category"]}}
+                 for r in _jsonl(src)]
 
 
 def _attach(rows, tasks):
@@ -238,8 +250,8 @@ def _jailbreaks(split):
 # ------------------------------------------------------------------ dispatch
 
 _LOADERS = {
-    "story_v2": _story_v2, "story_v1": _story_v1, "harm": _harm, "persona": _persona,
-    "eval": _eval, "length": _length,
+    "story_v2": _story_v2, "story_v1": _story_v1, "harm": _harm, "harm_v2": _harm_v2,
+    "persona": _persona, "eval": _eval, "length": _length,
 }
 _SINGLETONS = {"v1_nofiller100": _v1_nofiller100, "v1_curve": _v1_curve}
 FRAMING_ONLY = {"persona", "eval"}
