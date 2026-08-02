@@ -23,7 +23,14 @@ def main():
     ap.add_argument("--tag", default=None, help="run label; also read from $RUN_TAG (default 'base')")
     ap.add_argument("--append-task", action="store_true",
                     help="spec 0.2(a): append a rotated base task to persona/eval framings")
+    ap.add_argument("--subsample-n", type=int, default=None,
+                    help="spec 3: subsample the dataset to n pairs (jailbreaks only)")
     args = ap.parse_args()
+
+    subsample = None if args.subsample_n is None else {
+        "n": args.subsample_n, "strategy": "template_diverse", "seed": cfg.SEED,
+        "max_per_template": views.JB_MAX_PER_TEMPLATE,
+        "family_alloc": views.JB_FAMILY_ALLOC, "filter": views.JB_FILTER}
 
     lay = cfg.Layout("extraction", args.model, args.tag)
     print(f"run {lay}")
@@ -32,12 +39,15 @@ def main():
     hash_fn = mdl.prompt_hasher(tok)
 
     view, texts = views.build_view(args.dataset, args.split, hash_fn,
-                                   append_task=args.append_task,
+                                   append_task=args.append_task, subsample=subsample,
                                    token_info=mdl.token_info_fn(tok))
+    # No subsample knob in the stem: the view pointer views/<ds>__<split>.json is
+    # single-valued per tag, so two subsamples of one table cannot coexist anyway.
+    # A changed subsample archives the prior manifest through the normal run_key path.
     stem = mf.stem("cache_activations", args.dataset, args.split)
     config = {"dataset": args.dataset, "split": args.split, "batch_size": args.batch_size,
-              "append_task": args.append_task, "position": "last_token",
-              "dtype": "float16", "seed": cfg.SEED}
+              "append_task": args.append_task, "subsample": subsample,
+              "position": "last_token", "dtype": "float16", "seed": cfg.SEED}
     inputs = {"view_key": view["view_key"], "source_files": view["source_files"],
               "chat_template_sha": mdl.chat_template_sha(tok)}
 

@@ -9,6 +9,7 @@ import csv
 import json
 import random
 import sys
+from collections import Counter
 from pathlib import Path  # noqa: F401  (used by the v1 loaders' error messages)
 
 from . import config as cfg
@@ -236,14 +237,133 @@ def _v1_curve(n=1000):
                          for r in picked]
 
 
-def _jailbreaks(split):
+# Spec 3: the 100-row subset. Family allocation lifts nonfiction_other from its
+# proportional 8 to 15, because it is the contrast class of 3.2's family test.
+JB_FAMILY_ALLOC = {"fiction_narrative": 35, "roleplay_persona": 30,
+                   "hybrid": 20, "nonfiction_other": 15}
+JB_MAX_PER_TEMPLATE = 2
+
+
+def _largest_remainder(weights, total, floor=0):
+    """Integer allocation summing to `total`, each key >= min(floor, its weight)."""
+    keys = sorted(weights)
+    base = {k: min(floor, weights[k]) for k in keys}
+    left = total - sum(base.values())
+    wsum = sum(max(weights[k] - base[k], 0) for k in keys) or 1
+    exact = {k: left * max(weights[k] - base[k], 0) / wsum for k in keys}
+    out = {k: base[k] + int(exact[k]) for k in keys}
+    for k in sorted(keys, key=lambda k: -(exact[k] % 1)):
+        if sum(out.values()) >= total:
+            break
+        out[k] += 1
+    return {k: min(v, weights[k]) for k, v in out.items()}
+
+
+def _take_wrappers(by_tpl, want, cap, rng, seen_req, used_tpl):
+    """Round-robin over shuffled wrappers, preferring rows with an unseen request.
+
+    `used_tpl` is global: a template_id that spans two families is still one cluster,
+    so the cap has to be counted across families, not inside each.
+    """
+    order = sorted(by_tpl)
+    rng.shuffle(order)
+    pool = {t: list(by_tpl[t]) for t in order}
+    picked = []
+    for _ in range(cap):
+        for t in order:
+            if len(picked) >= want or not pool[t] or used_tpl[t] >= cap:
+                continue
+            fresh = [r for r in pool[t] if r["request"] not in seen_req]
+            pick = rng.choice(fresh or pool[t])
+            pool[t] = [r for r in pool[t] if r is not pick]
+            seen_req.add(pick["request"])
+            used_tpl[t] += 1
+            picked.append(pick)
+    return picked
+
+
+def _jb_template_diverse(rows, n, seed, alloc=None, cap=JB_MAX_PER_TEMPLATE):
+    """Wrapper-diverse subsample (spec 0.7 clustering).
+
+    template_id is very concentrated -- 400 of the corpus's 425 wrappers are
+    in_the_wild singletons while jailbreak_mimicry's 300 rows share 2 -- so a
+    row-proportional sample of 100 would collapse to ~20 clusters. Three rules:
+
+    - family allocation lifts nonfiction_other above its proportional share, since it
+      is the contrast class of 3.2's family test;
+    - inside a family, sources are allocated proportional to their **distinct wrapper
+      count** with a floor, so in_the_wild's 86 fiction wrappers cannot crowd out
+      strongreject's 2 -- that pair is 3.2's only clean within-source family cell;
+    - inside a source, round-robin over wrappers at most `cap` rows each, preferring
+      rows whose request has not been used.
+
+    Request coverage is bounded by the corpus, not by n: in_the_wild's 400 rows sit on
+    ~32 JBB behaviours, so any wrapper-rich sample is request-poor (spec 0.7).
+    """
+    alloc = alloc or JB_FAMILY_ALLOC
+    rng = random.Random(seed)
+    seen_req, picked = set(), []
+    used_tpl = Counter()
+    fam_alloc = _largest_remainder({f: sum(1 for r in rows if r["family"] == f)
+                                    for f in alloc if any(r["family"] == f for r in rows)},
+                                   n)
+    fam_alloc = {f: min(alloc[f], fam_alloc.get(f, 0)) if f in alloc else 0 for f in alloc}
+    short = n - sum(fam_alloc.values())
+    for f in sorted(fam_alloc, key=lambda f: -alloc[f]):        # spend any rounding slack
+        room = min(alloc[f], sum(1 for r in rows if r["family"] == f)) - fam_alloc[f]
+        take = max(0, min(short, room))
+        fam_alloc[f] += take
+        short -= take
+
+    for fam in sorted(fam_alloc):
+        fam_rows = [r for r in rows if r["family"] == fam]
+        by_src = {}
+        for r in fam_rows:
+            by_src.setdefault(r["source"], {}).setdefault(r["template_id"], []).append(r)
+        wrappers = {s: len(t) for s, t in by_src.items()}
+        # Headroom, not raw availability: a wrapper already used by another family
+        # cannot supply `cap` more rows.
+        room_of = lambda t: {s: sum(min(len(v), cap - used_tpl[k])
+                                    for k, v in t[s].items()) for s in t}
+        rooms = room_of(by_src)
+        src_alloc = _largest_remainder(wrappers, fam_alloc[fam], floor=2)
+        for s in sorted(src_alloc):
+            src_alloc[s] = min(src_alloc[s], rooms[s])
+        got = sum(src_alloc.values())
+        for s in sorted(src_alloc, key=lambda s: -wrappers[s]):  # give slack to the widest
+            take = max(0, min(fam_alloc[fam] - got, rooms[s] - src_alloc[s]))
+            src_alloc[s] += take
+            got += take
+        for s in sorted(src_alloc):
+            picked += _take_wrappers(by_src[s], src_alloc[s], cap, rng, seen_req, used_tpl)
+    return sorted(picked, key=lambda r: r["id"])
+
+
+JB_FILTER = "prompt != request"
+
+
+def _jailbreaks(split, subsample=None):
+    """Spec 3.1's contrast is framed `prompt` vs bare `request`, so a row whose prompt
+    *is* its request carries no framing and is dropped: 8 rows, all
+    technique=bare_request, and all nonfiction_other -- i.e. all in 3.2's contrast
+    class, where a forced zero delta would bias the family test toward fiction.
+    """
     src = cfg.DATA / "jailbreaks" / "jailbreaks.csv"
     rows = [r for r in _csv(src) if split == "all" or r["split"] == split]
+    rows = [r for r in rows if r["prompt"].strip() != r["request"].strip()]
+    if subsample:
+        if subsample.get("strategy", "template_diverse") != "template_diverse":
+            raise ValueError(f"unknown strategy {subsample['strategy']!r}")
+        rows = _jb_template_diverse(rows, subsample["n"],
+                                    subsample.get("seed", cfg.SEED),
+                                    cap=subsample.get("max_per_template",
+                                                      JB_MAX_PER_TEMPLATE))
     return src, [{"pair_id": r["id"], "pos": r["prompt"], "neg": r["request"],
                   "meta": {"family": r["family"], "source": r["source"],
                            "technique": r["technique"], "template_id": r["template_id"],
                            "request": r["request"], "category": r["category"],
-                           "base_task_source": r["base_task_source"]}}
+                           "base_task_source": r["base_task_source"],
+                           "split": r["split"], "n_chars": r["n_chars"]}}
                  for r in rows]
 
 
@@ -279,11 +399,11 @@ def base_tasks(split="train"):
     return pool
 
 
-def load_pairs(dataset, split="train", append_task=False):
+def load_pairs(dataset, split="train", append_task=False, subsample=None):
     if dataset in _SINGLETONS:
         return _SINGLETONS[dataset]()
     if dataset == "jailbreaks":
-        return _jailbreaks(split)
+        return _jailbreaks(split, subsample)
     if dataset not in _LOADERS:
         raise KeyError(f"unknown dataset {dataset!r}")
     if dataset in FRAMING_ONLY and append_task:
@@ -300,8 +420,11 @@ def build_view(dataset, split, hash_fn, append_task=False, subsample=None, token
     `token_info(text) -> dict` is merged into each row. Used to record the final
     token id and length at the read position, so a saturated AUROC can be checked
     against the trivial explanation that the two poles end on different tokens.
+
+    `subsample` both drives the sampling and is recorded, so a changed sampler moves
+    the view_key even when {n, seed} are unchanged (spec 0.8).
     """
-    src, pairs = load_pairs(dataset, split, append_task=append_task)
+    src, pairs = load_pairs(dataset, split, append_task=append_task, subsample=subsample)
     poles = ["pos", "neg"] + (["neg2"] if pairs and "neg2" in pairs[0] else [])
     rows, texts = [], {}
     for p in pairs:

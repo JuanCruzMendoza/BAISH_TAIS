@@ -24,6 +24,24 @@ def paired_auroc(pos, neg):
     return (wins + 0.5 * ties) / n if n else float("nan")
 
 
+def unpaired_auroc(a, b):
+    """Mann-Whitney AUROC, ties at 0.5. For between-group contrasts (spec 3.2).
+
+    No exact interval: Clopper-Pearson does not apply because the n_a * n_b
+    comparisons are not independent trials. Report the point estimate with both n.
+    """
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    if not len(a) or not len(b):
+        return float("nan")
+    allv = np.concatenate([a, b])
+    r = np.argsort(np.argsort(allv)).astype(float) + 1.0
+    for v in np.unique(allv):                       # average ranks within ties
+        m = allv == v
+        if m.sum() > 1:
+            r[m] = r[m].mean()
+    return float((r[:len(a)].sum() - len(a) * (len(a) + 1) / 2) / (len(a) * len(b)))
+
+
 def cohens_dz(pos, neg):
     d = np.asarray(pos, float) - np.asarray(neg, float)
     sd = d.std(ddof=1)
