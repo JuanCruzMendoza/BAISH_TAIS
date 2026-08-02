@@ -39,16 +39,19 @@ def run_dir(experiment, model_id, tag_=None):
 class Layout:
     """The four subdirectories of one <tag>/<model> run."""
 
-    def __init__(self, experiment, model_id, tag_=None):
+    def __init__(self, experiment, model_id, tag_=None, acts_cache=True):
         self.root = run_dir(experiment, model_id, tag_)
         self.csv = self.root / "csv"
         self.vectors = self.root / "vectors"
         self.meta = self.root / "meta"
         self.acts = self.root / "acts"
-        for d in (self.csv, self.vectors, self.meta, self.acts):
+        for d in (self.csv, self.vectors, self.meta):
             d.mkdir(parents=True, exist_ok=True)
-        (self.acts / "views").mkdir(exist_ok=True)
-        self.blobs.mkdir(parents=True, exist_ok=True)
+        # Experiments 2+ only read the cache, which lives under extraction; an empty
+        # acts/ under their own results dir would suggest otherwise.
+        if acts_cache:
+            (self.acts / "views").mkdir(parents=True, exist_ok=True)
+            self.blobs.mkdir(parents=True, exist_ok=True)
 
     @property
     def blobs(self):

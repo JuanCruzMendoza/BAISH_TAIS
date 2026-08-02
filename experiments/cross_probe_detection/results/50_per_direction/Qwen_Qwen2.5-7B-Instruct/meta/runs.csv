@@ -1,0 +1,11 @@
+timestamp,script,stem,run_key,git_sha,git_dirty,outcome,resumed_from,wall_s,argv
+2026-08-01T16:41:46,cross_auroc.py,cross_auroc,ff0209548db1d459,100bf8d245cf,True,written,0,0.6,"Qwen/Qwen2.5-7B-Instruct"
+2026-08-01T16:43:07,cross_auroc.py,cross_auroc,ff0209548db1d459,100bf8d245cf,True,written,0,0.6,"Qwen/Qwen2.5-7B-Instruct"
+2026-08-01T16:43:23,geometry.py,geometry,245d9d5b20e0c883,100bf8d245cf,True,written,0,0.7,"Qwen/Qwen2.5-7B-Instruct"
+2026-08-01T16:44:59,cross_auroc.py,cross_auroc,ff0209548db1d459,100bf8d245cf,True,written,0,0.9,"Qwen/Qwen2.5-7B-Instruct"
+2026-08-01T16:48:32,geometry.py,geometry,245d9d5b20e0c883,100bf8d245cf,True,written,0,0.7,"Qwen/Qwen2.5-7B-Instruct"
+2026-08-01T17:11:19,cross_auroc.py,cross_auroc,9856324d416c3437,100bf8d245cf,True,written,0,0.7,"Qwen/Qwen2.5-7B-Instruct"
+2026-08-01T17:11:59,cross_auroc.py,cross_auroc,443c575539f42aa8,100bf8d245cf,True,written,0,0.6,"Qwen/Qwen2.5-7B-Instruct"
+2026-08-01T17:12:14,geometry.py,geometry,812c04f1a5c311bf,100bf8d245cf,True,written,0,0.7,"Qwen/Qwen2.5-7B-Instruct"
+2026-08-01T17:28:24,geometry.py,geometry,a1c247d4d110c2c7,100bf8d245cf,True,written,0,0.7,"Qwen/Qwen2.5-7B-Instruct"
+2026-08-01T17:29:06,cross_auroc.py,cross_auroc,443c575539f42aa8,100bf8d245cf,True,written,0,0.7,"Qwen/Qwen2.5-7B-Instruct"

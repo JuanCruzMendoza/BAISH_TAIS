@@ -6,6 +6,8 @@ Qwen2.5-7B-Instruct (L=28, d=3584), 50 train / 15 held-out pairs per direction, 
 
 We compare the story_v1 direction with the story_v2 direction, also against the story_v1 unmatched in order to know whether they can actually read "narrativity" 
 
+These direction seem to be almost the same, although all the AUROC metrcis are saturated
+
 ## Do the axes exist?
 
 Band-mean over L11–25; held-out is 15 pairs, CP interval.

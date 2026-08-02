@@ -169,6 +169,24 @@ def random_cos_band(d, k=3.0):
     return k / math.sqrt(d)
 
 
+def residual_frac(v, basis):
+    """||v - P_span(basis) v|| / ||v|| (spec 2.3). basis: [k, d] rows."""
+    v = np.asarray(v, float)
+    q = np.linalg.qr(np.asarray(basis, float).T)[0]
+    r = v - q @ (q.T @ v)
+    return float(np.linalg.norm(r) / max(np.linalg.norm(v), 1e-12))
+
+
+def spearman_brown(s):
+    """Split-half cosine -> reliability of the double-length estimate, 2s/(1+s).
+
+    A split-half cosine is the reliability of a *half*-sized vector; the full
+    vector is more reliable than that, and correcting a cross-axis cosine by the
+    uncorrected half value would over-correct.
+    """
+    return 2.0 * s / (1.0 + s) if s > 0 else float("nan")
+
+
 # ------------------------------------------------------- clustered aggregation
 
 

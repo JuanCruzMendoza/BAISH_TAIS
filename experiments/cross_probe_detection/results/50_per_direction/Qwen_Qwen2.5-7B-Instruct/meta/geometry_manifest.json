@@ -1,0 +1,59 @@
+{
+  "config": {
+    "axes": [
+      "story_v2",
+      "story_v1",
+      "harm",
+      "persona",
+      "eval",
+      "length"
+    ],
+    "band": [
+      11,
+      25
+    ],
+    "cos_null_band": 0.050111482858579574,
+    "disattenuation": "spearman_brown",
+    "floor": "split_half_cos",
+    "seed": 20260731
+  },
+  "env": {
+    "argv": [
+      "geometry.py",
+      "Qwen/Qwen2.5-7B-Instruct"
+    ],
+    "git_diff_sha": "dfdafd03f121bb23f13cc01ddbc04f7561bc0800ece744003c87994724c1b0ea",
+    "git_dirty": true,
+    "git_sha": "100bf8d245cf8b700570ee1210c472fe90772cde",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-01T17:28:24",
+    "wall_s": 0.53
+  },
+  "inputs": {
+    "direction_run_keys": {
+      "eval": "e87bd5c4bec3defc14fcc539c0989ae97036437c02b88a0bdb28f8f8acf8ff02",
+      "harm": "9fc5ff3495dc266d0084b0ad425452d38a0ca51b0c24e0660dafa6ab1f9863df",
+      "length": "a934fb5aa51f06e80d48edb488d03128c6beaedc1db03e3d07afe43c1f27552b",
+      "persona": "f4d31ddd77c3cccf3cf3c4554abade143456f2645a754a547524e1126984330a",
+      "story_v1": "1eb784fb7c2a3aa43bebb50caf6575786f6333941ff8f646185ec5d95f26ac02",
+      "story_v2": "e647e5ec626696de8f2cde0865b9e3a6bff9703943303f70329721ddaf8ddb8c"
+    },
+    "view_keys": {
+      "eval": "042fa563faa867de819fd39742f654a197cdfa2d5c1ac12ea0dec16b5a686f6c",
+      "harm": "65d73e6ea78a70e11a71e8899d4ac1ee8f81e93f19ed711131baeed90f9d6577",
+      "length": "55ff607714669855276bc6d7813402e6b496de961267efbdd9d710b6d362e775",
+      "persona": "df0b82f5bbd28425b1d014043471c2a10aa7ea44de0a409ebf7399e9f5d9bb0a",
+      "story_v1": "573807d7dd960a9a04e69b99e29a57031f871aef1cc1b80dea533b79be508ce4",
+      "story_v2": "0c942c06aaa0e7c34bb71450149acbacc1862d811faa9c492e9efbdde221aadb"
+    }
+  },
+  "notes": [
+    "archived prior run 812c04f1"
+  ],
+  "run_key": "a1c247d4d110c2c75297989f2b93dc8cb55a2ebbe7797baa8261a5047421df3e",
+  "status": "complete",
+  "stem": "geometry"
+}
