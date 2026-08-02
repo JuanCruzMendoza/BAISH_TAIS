@@ -742,11 +742,6 @@ baseline run. `jb_success_split.py` joins the judge output and runs last. §3.1�
 
 ---
 
-## 4. Unchanged from the previous regime
-
-Nothing in `steering_jailbreaks/` depends on the extraction dataset size — it consumes vectors, not
-pairs. Section 5 below is that experiment, carried over with only the `σ_act`/`τ` reference-corpus
-change noted in §0.6.
 
 ---
 
