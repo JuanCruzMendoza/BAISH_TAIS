@@ -201,7 +201,20 @@ required, exactly these names:
 
 ## 11. Before you write the file
 
-Run these checks on your own 40 pairs and fix what fails:
+**Do not write your own validator.** One already exists and is the same one your batch will be
+judged by. Write your file, then from the `story_mode_v2` directory run:
+
+```
+python check_diversity.py batches/batch_NN.jsonl
+```
+
+Fix everything under `HARD failures`, re-run once to confirm zero, and stop. Budget your effort:
+drafting the 40 pairs is the work, not building tooling. Length deltas are the most common failure —
+count words as `[A-Za-z0-9][A-Za-z0-9'\-]*` (hyphenated forms are ONE word) while drafting, not after.
+
+The checker covers: word counts, |Δ|, pronouns, endings, ASCII, criterial overlap, tense/polarity
+consistency, duplicate contexts, content 5-gram collisions, near-duplicates, and per-style opener
+concentration. It does not check these, so confirm them yourself:
 
 1. Every text 60–90 words; every pair \|Δ\| ≤ 3.
 2. Zero first/second-person pronouns, both arms.

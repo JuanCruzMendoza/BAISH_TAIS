@@ -1,5 +1,8 @@
 # Narrativity pairs v2 — data statement
 
+> **Scale-up.** The 65 hand-written pairs below are the reference set. The dataset for extraction is
+> the 1,000-pair scale-up built from them — see the final section, *The 1,000-pair set*.
+
 ## Objective
 
 Extract the narrativity/fictionality direction from a **request-free** contrast: a short fictional
@@ -146,3 +149,81 @@ these 16 means the probe is reading surface form — averaging that in would hid
   field as the eval-awareness axis. 8 pairs, so a small +eval component on the negative pole is
   possible; check `cos(story, eval)` against the per-style breakdown before trusting the pooled
   vector.
+
+---
+
+# The 1,000-pair set
+
+800 train / 200 held-out, written by 25 authors against `AUTHORING_SPEC.md`, one **disjoint topic
+domain** each. Domain disjointness is what makes context collisions structurally impossible, and the
+five held-out domains (mining, cold/preservation, signals, toys/models, water supply) appear nowhere
+in train — so held-out AUROC measures topic generalisation, not recall.
+
+| file | rows | |
+|---|---|---|
+| `pairs_1k.jsonl` | 800 | train |
+| `pairs_1k_heldout.jsonl` | 200 | held-out |
+| `narrativity_1k_pairs.csv` | 1,000 | wide, both prompts rendered |
+| `narrativity_1k_texts.csv` | 2,000 | long, `label` 1 = narrative |
+| `batches/batch_01..25.jsonl` | 40 each | per-author source, `src_id` traces every row |
+
+`merge_batches.py` renumbers to `v2k-tr-####` / `v2k-ho-####` and renders the CSVs;
+`check_diversity.py` audits. Same preamble, added at render time.
+
+## What changed from the 65
+
+Styles 8 -> 16 (added `glossary`, `legal_def`, `rules`, `catalogue`, `criticism`, `conceptual`,
+`quantitative`, `morphology`), each with a mandated dominant construction so they cannot collapse
+into one template. Narrative modes 4 -> 8 (added `chronicle`, `free_indirect`, `reported`,
+`episodic`), plus 24 genre tags crosscutting realism. `procedural` still absent — a procedure is a
+generic narrative.
+
+## Achieved
+
+| | |
+|---|---|
+| split | 800 train / 200 held-out |
+| `nonnarr_style` | `criterial` 125; `encyclopedic`/`statistical`/`taxonomy`/`technical`/`topographic` 59; other ten 58 |
+| `narr_mode` | 125 each of 8 |
+| `realism` | 500 / 500 |
+| `tense_polarity` | `default` 400, `reversed` 250, `both_past` 250, `both_present` 100 |
+| tense | narrative 650 past / 350 present; non-narrative 500 / 500 |
+| genre / domain / context | 24 / 25 / **1,000 distinct of 1,000** |
+| words | narrative 64-84 (mean 74.3), non-narrative 64-85 (mean 74.1), max abs delta **3** |
+| `criterial` shared content types | 8-16 (mean 11.0) |
+
+Slightly longer than the hand-written 65 (mean 74 vs 69). Within-pair matching is what matters and
+holds at abs delta <= 3 on all 1,000.
+
+## Diversity audit
+
+`check_diversity.py` over all 2,000 texts: **0 hard failures.**
+
+- **0 content 5-gram collisions** between any two texts (function words ignored), so no two authors
+  reused a five-word content sequence.
+- **0 near-duplicate pairs** at Jaccard >= 0.35 on content-word 4-shingles.
+- 0 duplicate `pair_id` or `context`; 0 context or domain shared across splits.
+- Per-style opener concentration under threshold after one repair pass.
+
+One convergence was caught and fixed: 19 of 58 `conceptual` texts opened "Whether X is A or B...",
+because the spec's example construction for that style began that way. Eleven were reopened with
+distinct nominal heads (`Argument over whether`, `The dispute whether`, ...). The same failure had
+appeared in the first 4-batch wave on `legal_def` / `criticism` / `catalogue`, which is why §8 of the
+spec now bans reusing the example openers outright. **Template convergence across independent authors
+is the characteristic failure at this scale** — a probe trained on it measures template recall, not
+narrativity, and only a cross-author check catches it.
+
+## Residual soft findings
+
+The checker reports per-batch counts of eventive verbs, temporal connectives and mid-sentence
+capitals in non-narrative arms; these are informational, not failures. Totals run 2-17 eventive per
+40-pair batch, spot-checked as participles, nominals ("shutter leaves", "screw turns") and
+generic-functional predicates rather than event sequences. Batches 16, 18, 19, 21, 25 sit at the top
+of that range and are the first place to look if the axis turns out contaminated.
+
+## Carried over unchanged
+
+Fictionality inside the positive arm; third person and no first/second person; no harm content; the
+predicate-type rule; non-narrative arms non-assertive about contested facts. The caveats in
+*Not controlled* above apply identically, including that `statistical` (59 pairs) imports
+measurement vocabulary shared with the eval-awareness axis.
