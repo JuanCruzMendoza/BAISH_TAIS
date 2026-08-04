@@ -414,7 +414,8 @@ def load_pairs(dataset, split="train", append_task=False, subsample=None):
 # --------------------------------------------------------------------- views
 
 
-def build_view(dataset, split, hash_fn, append_task=False, subsample=None, token_info=None):
+def build_view(dataset, split, hash_fn, append_task=False, subsample=None, token_info=None,
+               poles=None):
     """Ordered rows + content-derived view_key. Written before any forward pass.
 
     `token_info(text) -> dict` is merged into each row. Used to record the final
@@ -423,9 +424,16 @@ def build_view(dataset, split, hash_fn, append_task=False, subsample=None, token
 
     `subsample` both drives the sampling and is recorded, so a changed sampler moves
     the view_key even when {n, seed} are unchanged (spec 0.8).
+
+    `poles` restricts which arms are cached; default is every arm the loader supplies.
+    Passing ["pos"] makes a single-arm view -- no contrast, so downstream can only read
+    absolute levels, but it also caches nothing it will not use.
     """
     src, pairs = load_pairs(dataset, split, append_task=append_task, subsample=subsample)
-    poles = ["pos", "neg"] + (["neg2"] if pairs and "neg2" in pairs[0] else [])
+    avail = [p for p in ("pos", "neg", "neg2") if pairs and p in pairs[0]]
+    poles = [p for p in (poles or avail) if p in avail]
+    if not poles:
+        raise ValueError(f"{dataset}/{split}: no requested pole exists, have {avail}")
     rows, texts = [], {}
     for p in pairs:
         for pole in poles:

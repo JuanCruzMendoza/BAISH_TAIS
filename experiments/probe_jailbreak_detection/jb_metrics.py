@@ -1,15 +1,27 @@
-"""Spec 3.1-3.4: aggregate the jailbreak readouts. CPU only.
+"""Spec 3: what fraction of the 100 jailbreaks does each probe read as its direction?
 
     python jb_metrics.py <model>
+    python jb_metrics.py <model> --threshold neg_p90
 
-3.1 is the primary test and it is paired within-row: framed `prompt` vs bare
-`request`. Spec 0.7 requires cluster-mean aggregation *before* testing, so every
-paired number is reported three ways -- by row, by `template_id`, by `request` -- and
-the smallest n is the one that counts.
+One number per cell: `pct_reads`, the percentage of jailbreak prompts whose readout
+clears the probe's threshold. Reported per probe x band layer, sliced by jailbreak
+group, and averaged over the band.
 
-3.2's family test is between-group and therefore confounded with source and length;
-it carries no interval (Clopper-Pearson does not apply to a Mann-Whitney statistic)
-and is reported with both confounds measured alongside it.
+**Threshold.** Default `midpoint`: tau = (mean(pos) + mean(neg)) / 2 on the probe's
+own reference poles, pooled train + held-out (65 points each). Same rule as
+probe_select's `acc_at_train_thr`, so the two experiments cut in the same place. A
+jailbreak counts when its readout falls on the positive pole's side of that boundary.
+
+Its one weakness, worth watching in `ref_tpr`: the mean of a pole is pulled by its
+tail, so a wide positive pole drags tau upward and makes the bar stricter for a reason
+unrelated to where the boundary should sit. `--threshold` switches to the alternatives
+below, from permissive to strict: `neg_median`, `neg_p90`, `neg_p95`, `gap_mid`,
+`midpoint`, `pos_p5`.
+
+An accuracy-maximising threshold is *not* available: the extraction diagonals are
+AUROC 1.000, so the poles are perfectly separated and every tau inside the gap ties.
+
+Band layers only (spec 0.3).
 """
 import argparse
 import csv
@@ -21,158 +33,105 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from experiments.common import config as cfg, manifest as mf, metrics as met
+from experiments.common import config as cfg, manifest as mf
 
-FICTION = ("fiction_narrative", "hybrid")     # spec 3.2's positive side
-MIN_GROUP = 5                                 # below this a group cell says nothing
-CLUSTERS = {"row": None, "template": "template_id", "request": "request_sha8"}
+MIN_GROUP = 5        # below this a group percentage is not worth printing
 
+# tau from the probe's own reference poles, permissive -> strict. With the poles
+# perfectly separated, `neg_p95` sits at the bottom edge of the empty gap and `pos_p5`
+# at the top, so those two bracket the answer; `gap_mid` is the max-margin point
+# between them and `midpoint` (the default) bisects the pole *means*.
+THRESHOLDS = {
+    "neg_median": lambda pos, neg: float(np.median(neg)),
+    "neg_p90": lambda pos, neg: float(np.quantile(neg, 0.90)),
+    "neg_p95": lambda pos, neg: float(np.quantile(neg, 0.95)),
+    "gap_mid": lambda pos, neg: float(0.5 * (np.quantile(neg, 0.95)
+                                             + np.quantile(pos, 0.05))),
+    "midpoint": lambda pos, neg: float(0.5 * (pos.mean() + neg.mean())),
+    "pos_p5": lambda pos, neg: float(np.quantile(pos, 0.05)),
+}
 
-def paired_cell(pos, neg, cluster_ids=None):
-    """Cluster-mean first, then test (spec 0.7). Never anti-conservative."""
-    if cluster_ids is not None:
-        _, pos = met.cluster_means(pos, cluster_ids)
-        _, neg = met.cluster_means(neg, cluster_ids)
-    ci = met.auroc_ci(pos, neg)
-    return {"auroc": ci["auroc"], "ci_lo": ci["ci_lo"], "ci_hi": ci["ci_hi"],
-            "wins": ci["wins"], "ties": ci["ties"], "n": ci["n"],
-            "cohens_dz": met.cohens_dz(pos, neg),
-            "mean_delta": float(np.mean(np.asarray(pos) - np.asarray(neg)))}
-
-
-# --------------------------------------------------------------- 3.1 layer profile
-
-def layer_rows(probes, framed, bare, rows, Lp1):
-    out = []
-    for i, a in enumerate(probes):
-        for l in range(Lp1):
-            for label, key in CLUSTERS.items():
-                ids = [r[key] for r in rows] if key else None
-                out.append({"probe": a, "layer": l, "depth": round(l / (Lp1 - 1), 4),
-                            "cluster": label,
-                            **paired_cell(framed[i, :, l], bare[i, :, l], ids)})
-    return out
+GROUPS = {"family": "family", "source": "source", "technique": "technique"}
 
 
-# ------------------------------------------------------------------- 3.1 subgroups
+def slices(rows):
+    """(group_kind, group, row indices). `all` first, then each grouping field.
 
-def group_rows(probes, framed, bare, rows, band, best):
-    """Per family / source / technique / JBB category, at the probe's own-best layer.
-
-    `category` is restricted to `base_task_source == 'jbb'`: the other rows are
-    AdvBench-derived, 300 of them with an empty category (spec 3.3).
+    `category` is restricted to base_task_source == 'jbb': the rest are AdvBench-
+    derived, 300 of them with an empty category (spec 3.3).
     """
-    kinds = {"family": lambda r: r["family"], "source": lambda r: r["source"],
-             "technique": lambda r: r["technique"],
-             "category": lambda r: r["category"] if r["base_task_source"] == "jbb" else None}
-    out = []
-    for i, a in enumerate(probes):
-        l = best[a]
-        for kind, keyf in kinds.items():
-            groups = {}
-            for j, r in enumerate(rows):
-                g = keyf(r)
-                if g:
-                    groups.setdefault(g, []).append(j)
-            for g, idx in sorted(groups.items()):
-                if len(idx) < MIN_GROUP:
-                    continue
-                sub = [rows[j] for j in idx]
-                for label, key in CLUSTERS.items():
-                    ids = [r[key] for r in sub] if key else None
-                    cell = paired_cell(framed[i, idx, l], bare[i, idx, l], ids)
-                    out.append({"probe": a, "layer": l, "group_kind": kind, "group": g,
-                                "cluster": label, "n_rows": len(idx), **cell,
-                                "band_mean_auroc": float(np.mean(
-                                    [paired_cell(framed[i, idx, k], bare[i, idx, k],
-                                                 ids)["auroc"] for k in band]))})
-    return out
+    yield "all", "all", list(range(len(rows)))
+    for kind, key in GROUPS.items():
+        groups = {}
+        for j, r in enumerate(rows):
+            groups.setdefault(r[key], []).append(j)
+        for g, idx in sorted(groups.items()):
+            yield kind, g, idx
+    jbb = {}
+    for j, r in enumerate(rows):
+        if r["base_task_source"] == "jbb" and r["category"]:
+            jbb.setdefault(r["category"], []).append(j)
+    for g, idx in sorted(jbb.items()):
+        yield "category", g, idx
 
 
-# ---------------------------------------------------------- 3.2 family + confounds
+def _gap_position(pos, neg, tau):
+    """Where tau falls in [p95(neg), p5(pos)]: 0 permissive edge, 1 strict edge.
 
-def family_rows(probes, framed, bare, rows, best):
-    """Between-group: does fiction framing move the probe more than nonfiction?
-
-    Run on the within-row delta, not the absolute readout, so the prompt-distribution
-    offset that 2.1 warns about cancels before the groups are compared.
+    nan when p5(pos) <= p95(neg), i.e. the poles overlap at those quantiles and there
+    is no empty gap to place tau inside. Real extraction axes read AUROC 1.000 so a gap
+    exists; a nan here says the reference separation is weaker than assumed.
     """
-    fic = [j for j, r in enumerate(rows) if r["family"] in FICTION]
-    non = [j for j, r in enumerate(rows) if r["family"] == "nonfiction_other"]
-    ntok = np.array([float(r["n_tokens_framed"] or 0) for r in rows])
-    out = []
-    for i, a in enumerate(probes):
-        l = best[a]
-        d = framed[i, :, l] - bare[i, :, l]
-        rec = {"probe": a, "layer": l, "scope": "pooled",
-               "n_fiction": len(fic), "n_nonfiction": len(non),
-               "wrappers_fiction": len({rows[j]["template_id"] for j in fic}),
-               "wrappers_nonfiction": len({rows[j]["template_id"] for j in non}),
-               "auroc_delta": met.unpaired_auroc(d[fic], d[non]),
-               "auroc_absolute": met.unpaired_auroc(framed[i, fic, l], framed[i, non, l]),
-               # Length is confounded with family (spec 3.2): median chars 973 fiction
-               # vs 409 nonfiction. Both controls travel with the number.
-               "spearman_delta_ntokens": met.spearman(d, ntok),
-               "median_ntok_fiction": float(np.median(ntok[fic])),
-               "median_ntok_nonfiction": float(np.median(ntok[non]))}
-        out.append(rec)
-        for src in sorted({r["source"] for r in rows}):
-            f = [j for j in fic if rows[j]["source"] == src]
-            n = [j for j in non if rows[j]["source"] == src]
-            if not f or not n:
-                continue
-            out.append({"probe": a, "layer": l, "scope": f"within_source:{src}",
-                        "n_fiction": len(f), "n_nonfiction": len(n),
-                        "wrappers_fiction": len({rows[j]["template_id"] for j in f}),
-                        "wrappers_nonfiction": len({rows[j]["template_id"] for j in n}),
-                        "auroc_delta": met.unpaired_auroc(d[f], d[n]),
-                        "auroc_absolute": met.unpaired_auroc(framed[i, f, l],
-                                                             framed[i, n, l]),
-                        "spearman_delta_ntokens": float("nan"),
-                        "median_ntok_fiction": float(np.median(ntok[f])),
-                        "median_ntok_nonfiction": float(np.median(ntok[n]))})
-    return out
+    lo, hi = float(np.quantile(neg, 0.95)), float(np.quantile(pos, 0.05))
+    return float((tau - lo) / (hi - lo)) if hi > lo else float("nan")
 
 
-def length_rows(probes, framed, bare, rows, best):
-    """AUROC inside n_token deciles (spec 3.2): does the paired result survive length?"""
-    ntok = np.array([float(r["n_tokens_framed"] or 0) for r in rows])
-    out = []
-    for i, a in enumerate(probes):
-        l = best[a]
-        for b in met.auroc_within_bins(framed[i, :, l], bare[i, :, l], ntok):
-            out.append({"probe": a, "layer": l, **b})
-    return out
-
-
-# ------------------------------------------------------------- 3.4 calibrated form
-
-def calibrated_rows(probes, framed, bare, ref, band):
-    """Ordinal only, per spec 3.4: a 65-point reference cannot carry a percentile.
-
-    For `harm` this is the whole test (every jailbreak row is harmful, so the probe has
-    no contrast here): if framed readouts sit inside the harmful pole's range,
-    jailbreaks do not flip internal harmfulness (2507.11878).
-    """
+def rate_rows(probes, framed, ref, rows, band, Lp1, rule):
+    tau_fn = THRESHOLDS[rule]
     out = []
     for i, a in enumerate(probes):
         pos, neg = ref[a]["pos"].numpy(), ref[a]["neg"].numpy()
         for l in band:
-            row = {"probe": a, "layer": l, "n_ref": pos.shape[0]}
-            for name, x in (("framed", framed[i, :, l]), ("bare", bare[i, :, l])):
-                for pole, r in (("pos", pos[:, l]), ("neg", neg[:, l])):
-                    sd = r.std(ddof=1)
-                    row[f"z_{name}_vs_{pole}"] = float((x.mean() - r.mean())
-                                                       / sd) if sd > 0 else float("nan")
-                    row[f"frac_{name}_above_{pole}_median"] = float(
-                        (x > np.median(r)).mean())
-                    row[f"frac_{name}_inside_{pole}_range"] = float(
-                        ((x >= r.min()) & (x <= r.max())).mean())
-            out.append(row)
+            tau = tau_fn(pos[:, l], neg[:, l])
+            x = framed[i, :, l]
+            diag = {"threshold": tau,
+                    # What the bar costs on the reference set. ref_tpr low means tau is
+                    # too strict for anything to pass, which a low pct_reads would
+                    # otherwise be misread as "jailbreaks are not narrative".
+                    "ref_fpr": float((neg[:, l] > tau).mean()),
+                    "ref_tpr": float((pos[:, l] > tau).mean()), "n_ref": pos.shape[0],
+                    # Where tau sits inside the empty gap between the poles: 0 = the
+                    # permissive edge (top of the negative pole), 1 = the strict edge
+                    # (bottom of the positive pole). Shows how much the rule matters.
+                    "gap_position": _gap_position(pos[:, l], neg[:, l], tau)}
+            for kind, g, idx in slices(rows):
+                if len(idx) < MIN_GROUP:
+                    continue
+                hit = int((x[idx] > tau).sum())
+                out.append({"probe": a, "layer": l, "depth": round(l / (Lp1 - 1), 4),
+                            "group_kind": kind, "group": g, "n": len(idx),
+                            "n_reads": hit, "pct_reads": 100.0 * hit / len(idx), **diag})
     return out
 
 
-# --------------------------------------------------------------------- helpers
+def band_rows(rate, band):
+    """Mean pct_reads over the band, per probe x slice."""
+    by = {}
+    for r in rate:
+        by.setdefault((r["probe"], r["group_kind"], r["group"]), []).append(r)
+    out = []
+    for (a, kind, g), rs in by.items():
+        p = np.array([r["pct_reads"] for r in rs])
+        out.append({"probe": a, "group_kind": kind, "group": g, "n": rs[0]["n"],
+                    "pct_reads_mean": float(p.mean()),
+                    "pct_reads_min": float(p.min()), "pct_reads_max": float(p.max()),
+                    "n_layers": len(rs), "band_lo": band[0], "band_hi": band[-1],
+                    "ref_tpr_mean": float(np.mean([r["ref_tpr"] for r in rs])),
+                    "ref_fpr_mean": float(np.mean([r["ref_fpr"] for r in rs])),
+                    "gap_position_mean": float(np.mean([r["gap_position"] for r in rs]))})
+    return sorted(out, key=lambda r: (r["group_kind"] != "all", r["group_kind"],
+                                      r["group"], r["probe"]))
+
 
 def write_csv(path, rows):
     keys = list(dict.fromkeys(k for r in rows for k in r))
@@ -186,6 +145,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("model")
     ap.add_argument("--tag", default=None)
+    ap.add_argument("--threshold", default="midpoint", choices=list(THRESHOLDS))
     args = ap.parse_args()
 
     lay = cfg.Layout("probe_jailbreak_detection", args.model, args.tag, acts_cache=False)
@@ -196,70 +156,62 @@ def main():
     R = torch.load(up, weights_only=False)
 
     probes = R["probes"]
-    framed, bare = R["framed"].numpy(), R["bare"].numpy()
+    framed = R["framed"].numpy()
     Lp1 = R["n_layers"] + 1
     band = cfg.band(R["n_layers"])
-    best = {a: int(R["best_layer"][a]) for a in probes}
     with (lay.csv / "jb_readout_rows.csv").open(encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f))
     assert [r["row_id"] for r in rows] == list(R["row_ids"]), "row order drifted"
 
-    prof = layer_rows(probes, framed, bare, rows, Lp1)
-    grp = group_rows(probes, framed, bare, rows, band, best)
-    fam = family_rows(probes, framed, bare, rows, best)
-    ln = length_rows(probes, framed, bare, rows, best)
-    cal = calibrated_rows(probes, framed, bare, R["ref"], band)
+    rate = rate_rows(probes, framed, R["ref"], rows, band, Lp1, args.threshold)
+    bands = band_rows(rate, band)
 
-    stem = mf.stem("jb_metrics")
-    config = {"probes": probes, "best_layers": best, "clusters": list(CLUSTERS),
-              "min_group": MIN_GROUP, "fiction_families": list(FICTION),
-              "band": [band[0], band[-1]], "interval": "clopper_pearson", "seed": cfg.SEED}
+    stem = mf.stem("jb_metrics", args.threshold)
+    config = {"probes": probes, "threshold_rule": args.threshold,
+              "reference": "pooled train+heldout poles", "band": [band[0], band[-1]],
+              "layers": band, "min_group": MIN_GROUP, "arms": ["framed"],
+              "seed": cfg.SEED}
     inputs = {"jb_view_key": R["jb_view_key"], "jb_readout_run_key": R.get("run_key")}
 
     with mf.Run(lay, stem, config, inputs) as run:
-        write_csv(run.artefact("_paired.csv"), prof)
-        write_csv(run.artefact("_groups.csv"), grp)
-        write_csv(run.artefact("_family.csv"), fam)
-        write_csv(run.artefact("_length.csv"), ln)
-        write_csv(run.artefact("_calibrated.csv"), cal)
+        write_csv(run.artefact("_rate.csv"), rate)
+        write_csv(run.artefact("_band.csv"), bands)
 
-        print(f"{len(rows)} rows, band {band[0]}-{band[-1]}\n")
-        print("3.1 primary paired test, framed vs bare, at each probe's own-best layer")
-        print("  " + "probe".ljust(10) + "L".rjust(4)
-              + "".join(f"{c} auroc (n)".rjust(26) for c in CLUSTERS))
+        print(f"{len(rows)} jailbreak prompts, band L{band[0]}-{band[-1]} "
+              f"({len(band)} layers), threshold = {args.threshold} "
+              f"on {rate[0]['n_ref']} reference points per pole\n")
+        print("pct of jailbreaks the probe reads as its direction, band mean")
+        print("  " + "probe".ljust(10) + "pct".rjust(7) + "min-max".rjust(14)
+              + "ref_tpr".rjust(9) + "ref_fpr".rjust(9) + "gap_pos".rjust(9))
         for a in probes:
-            cells = []
-            for c in CLUSTERS:
-                r = next(x for x in prof if x["probe"] == a and x["layer"] == best[a]
-                         and x["cluster"] == c)
-                cells.append(f"{r['auroc']:.3f} [{r['ci_lo']:.2f},{r['ci_hi']:.2f}] "
-                             f"n={r['n']}".rjust(26))
-            print("  " + a.ljust(10) + str(best[a]).rjust(4) + "".join(cells))
+            r = next(x for x in bands if x["probe"] == a and x["group_kind"] == "all")
+            print("  " + a.ljust(10) + f"{r['pct_reads_mean']:6.1f}%"
+                  + f"{r['pct_reads_min']:.0f}-{r['pct_reads_max']:.0f}%".rjust(14)
+                  + f"{r['ref_tpr_mean']:.2f}".rjust(9)
+                  + f"{r['ref_fpr_mean']:.2f}".rjust(9)
+                  + (f"{r['gap_position_mean']:+.2f}"
+                     if r["gap_position_mean"] == r["gap_position_mean"]
+                     else "no gap").rjust(9))
+        print("  ref_tpr: near 1.0 the bar is passable, so a low pct is a real finding; "
+              "low ref_tpr\n  means tau is too strict to conclude anything. gap_pos: "
+              "where tau sits between the\n  poles, 0 = permissive edge, 1 = strict edge; "
+              "outside [0,1] the pole means are being\n  dragged by a tail, 'no gap' means "
+              "the poles overlap at the 5/95 quantiles.")
 
-        print("\n3.2 family test on the within-row delta (no interval: Mann-Whitney)")
-        print("  " + "probe".ljust(10) + "pooled".rjust(9) + "wrappers".rjust(12)
-              + "rho(delta,ntok)".rjust(17) + "  within-source cells")
-        for a in probes:
-            p = next(x for x in fam if x["probe"] == a and x["scope"] == "pooled")
-            ws = [f"{x['scope'].split(':')[1]} {x['auroc_delta']:.2f} "
-                  f"({x['n_fiction']}v{x['n_nonfiction']})"
-                  for x in fam if x["probe"] == a and x["scope"] != "pooled"]
-            print("  " + a.ljust(10) + f"{p['auroc_delta']:.3f}".rjust(9)
-                  + f"{p['wrappers_fiction']}v{p['wrappers_nonfiction']}".rjust(12)
-                  + f"{p['spearman_delta_ntokens']:+.3f}".rjust(17)
-                  + "  " + ("; ".join(ws) or "none with both sides"))
-
-        print("\n3.4 calibrated (band means): where do framed readouts sit vs the poles?")
-        print("  " + "probe".ljust(10) + "z vs pos".rjust(10) + "z vs neg".rjust(10)
-              + "frac>pos med".rjust(14) + "frac in pos range".rjust(19))
-        for a in probes:
-            c = [x for x in cal if x["probe"] == a]
-            m = lambda k: float(np.mean([x[k] for x in c]))
-            print("  " + a.ljust(10) + f"{m('z_framed_vs_pos'):+.2f}".rjust(10)
-                  + f"{m('z_framed_vs_neg'):+.2f}".rjust(10)
-                  + f"{m('frac_framed_above_pos_median'):.2f}".rjust(14)
-                  + f"{m('frac_framed_inside_pos_range'):.2f}".rjust(19))
-        print("\n  3.5 (success split) needs experiment 4's judge labels and runs later.")
+        for kind in ("family", "source", "category"):
+            sub = [x for x in bands if x["group_kind"] == kind]
+            if not sub:
+                continue
+            gs = list(dict.fromkeys(x["group"] for x in sub))
+            print(f"\nby {kind} (band mean pct)")
+            print("  " + "probe".ljust(10) + "".join(g[:13].rjust(15) for g in gs))
+            for a in probes:
+                cells = []
+                for g in gs:
+                    m = next((x for x in sub if x["probe"] == a and x["group"] == g), None)
+                    cells.append(("-" if m is None
+                                  else f"{m['pct_reads_mean']:.0f}% (n={m['n']})").rjust(15))
+                print("  " + a.ljust(10) + "".join(cells))
 
 
 if __name__ == "__main__":

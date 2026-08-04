@@ -50,7 +50,11 @@ def write_acts_manifest(layout, payload):
 
 
 def load_view_matrix(layout, view):
-    """-> {pole: [n_pairs, L+1, d] float32}, rows in view order."""
+    """-> {pole: [n_pairs, L+1, d] float32}, rows in view order.
+
+    A single-pole view is allowed (spec 3 reads jailbreak prompts with no contrast
+    arm); the pos/neg checks below are contrast checks and only apply when both exist.
+    """
     order = {}
     for r in view["rows"]:
         order.setdefault(r["pole"], []).append(r)
@@ -65,9 +69,10 @@ def load_view_matrix(layout, view):
         if len({r["prompt_sha16"] for r in rows}) == 1 and len(rows) > 1:
             raise RuntimeError(f"pole {pole!r} is a single repeated prompt")
         out[pole] = np.stack([read(layout, r["prompt_sha16"]) for r in rows]).astype("float32")
-    dup = sum(a == b for a, b in zip([r["prompt_sha16"] for r in order["pos"]],
-                                     [r["prompt_sha16"] for r in order["neg"]]))
-    if dup:
-        raise RuntimeError(f"{dup} pairs have identical pos and neg prompts")
+    if "neg" in order:
+        dup = sum(a == b for a, b in zip([r["prompt_sha16"] for r in order["pos"]],
+                                         [r["prompt_sha16"] for r in order["neg"]]))
+        if dup:
+            raise RuntimeError(f"{dup} pairs have identical pos and neg prompts")
     out["pair_ids"] = ids
     return out
