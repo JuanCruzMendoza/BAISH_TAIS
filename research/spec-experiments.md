@@ -1287,19 +1287,25 @@ role-drifted activations. Our axis points toward story with a *ceiling*, so the 
 their p25 is **p75**. Taking p25 on a ceiling is not the paper's setting: on a two-pole mixture it
 clamps every framed prompt below the bare-request mean, roughly 3–4σ more aggressive.
 
+Their own words confirm the mirror rather than just the arithmetic: p25 "is also approximately where
+the mean Assistant response activation projection lies in the distribution" — i.e. the percentile at
+which their *positive* pole's mean sits. Ours is the story pole, so that lands near p75.
+
 **One config — no τ sweep and no layer sweep.**
 
 | knob | value | source |
 |---|---|---|
-| `τ[l]` | **p75** per layer (`floor` variant: p25) | the paper's single p25 threshold, sign-mirrored |
+| `τ[l]` | **p75** per layer (`floor` variant: p25) | the paper's chosen p25, sign-mirrored |
 | `--layers` | **`steer_band`** — 0.70–0.90 of L, i.e. L20–25 at L=28 | the paper's own depth fraction, **and** matched to `ablate`'s widest config (§5.4.0) |
 
 `cap` is a **variant** (§5.4c's gating below), so it gets one setting rather than a grid. Two reasons a
 τ sweep was wrong here:
 
 - **A τ sweep is cap's strength grid**, the analogue of `add`'s α — and sweeping strength before knowing
-  the intervention does anything is backwards. `{50, 75, 90, 95}` spans aggressive to near-no-op; take
-  the paper's point and sweep only if p75 shows an effect worth characterising.
+  the intervention does anything is backwards. `{50, 75, 90, 95}` spans aggressive to near-no-op; sweep
+  only if p75 shows an effect worth characterising. **Note this is not "the paper used one config"** —
+  they swept `{1, 25, 50, 75}` and reported p25 as the most Pareto-optimal on capability-preservation
+  vs harm-reduction. Borrowing their *answer* without their sweep is the deliberate choice here.
 - **q = 95 is past the resolution §0.6 states.** The two-pole corpus is 200 prompts on the
   `50_per_direction` pass, and §0.6 puts the limit at ~p90 there. p95 of 200 points sits between the
   190th and 191st order statistic — estimable, but not a well-defined setting.
