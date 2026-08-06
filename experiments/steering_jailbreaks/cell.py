@@ -30,6 +30,12 @@ CLAMP = {"story_v2": "ceil", "story_v1": "ceil", "persona": "ceil",
          "harm": "floor", "eval": "floor"}
 AXES = ["story_v2", "story_v1", "persona", "harm", "eval"]
 
+# Spec 0.5: the sign of `add` that restores refusal. 5.4 never needs it -- its mode
+# mapping puts every `add` cell on the set where the positive push is the hypothesis --
+# but 5.6 steers story/persona additively, so the sign has to come back.
+RESTORE_SIGN = {"story_v2": -1.0, "story_v1": -1.0, "persona": -1.0,
+                "harm": +1.0, "eval": +1.0}
+
 
 def load_probe(src, axis):
     stem = mf.stem("directions", axis)
@@ -129,6 +135,17 @@ def run(script, model_id, tag, rows, prompt_set, direction, mode, layer_spec, ar
     inputs = {"unit_ids": [r["unit_id"] for r in rows],
               "direction_run_key": None if probe is None else probe.get("run_key")}
 
+    return emit(lay, src, stem, config, inputs, rows, specs, layers, tok, model,
+                batch_size, max_batch_tokens, max_new_tokens)
+
+
+def emit(lay, src, stem, config, inputs, rows, specs, layers, tok, model,
+         batch_size, max_batch_tokens, max_new_tokens):
+    """Generate one cell's rows under `specs` and close its manifest.
+
+    Shared by steer_single / steer_induce (a direction's own vector) and steer_pairs
+    (a projected vector), so both write the same artefacts under the same resume rules.
+    """
     probes = final_layer_probes(src, AXES)
     with mf.Run(lay, stem, config, inputs, resumable=True) as run_:
         done = run_.resume_from(".jsonl")

@@ -18,13 +18,25 @@ DEFAULT_TAG = "base"
 
 BAND_LO, BAND_HI = 0.40, 0.90
 
+# The steering window, matched to the Assistant Axis paper's depth fraction: it caps
+# Qwen3-32B at layers 46-53 of 64 (0.72-0.83) and Llama-3.3-70B at 56-71 of 80
+# (0.70-0.89). 0.70-0.90 spans both. This is the widest *joint* config (spec 5.4.0);
+# the reporting band above stays 0.40-0.90 and remains the ceiling on any layer spec.
+STEER_LO, STEER_HI = 0.70, 0.90
+
 
 def band(L):
     """Reporting band (spec 0.3). Every layer is still swept."""
     return list(range(round(BAND_LO * L), round(BAND_HI * L) + 1))
 
 
-LAYER_SPEC = "22 | 18-25 | 18,22,25 | frac:0.70-0.90 | band   (no 'all'; band is the ceiling)"
+def steer_band(L):
+    """Widest joint steering config (spec 5.4.0), at the paper's depth fraction."""
+    return list(range(round(STEER_LO * L), round(STEER_HI * L) + 1))
+
+
+LAYER_SPEC = ("22 | 18-25 | 18,22,25 | frac:0.70-0.90 | steer_band | band"
+              "   (no 'all'; the reporting band is the ceiling)")
 
 
 def parse_layers(spec, L):
@@ -37,7 +49,9 @@ def parse_layers(spec, L):
     if s == "all":
         raise ValueError(f"'all' is not a layer spec: band is the ceiling ({b[0]}-{b[-1]}), "
                          f"spec 5.4.0")
-    if s == "band":
+    if s == "steer_band":
+        out = steer_band(L)
+    elif s == "band":
         out = b
     elif s.startswith("frac:"):
         lo, hi = s[5:].split("-")
@@ -60,8 +74,8 @@ def parse_layers(spec, L):
 def layer_stem(spec):
     """The unresolved spec, as it appears in a stem (spec 0.1)."""
     s = str(spec).strip()
-    if s == "band":
-        return "band"
+    if s in ("band", "steer_band"):
+        return s
     if s.startswith("frac:"):
         return "f" + s[5:]
     return "L" + s.replace(",", "_")

@@ -918,8 +918,8 @@ so the effective n is tens, not hundreds.
 | §5.5's induce direction at all | **yes**, and its set is the *larger* half of the 100 rows if baseline ASR < 50% |
 | a *large* ASR swing on `story_v2 × ablate × all` | **yes**, and it is the §5.7 headline check worth doing at 1 cell |
 | degeneration rate per cell (the pilot's 44/48 failure mode) | **yes** — it is a per-cell rate, not a per-row contrast |
-| **coverage across depth** — whether the effect appears at *any* of the 3 layers or in the joint `band` | **yes**, and that is what §5.4.0's 4 configs are for |
-| whether the effective region is contiguous or a single spike | **no** — 3 points cannot resolve that. `band` moving while no single layer does is the multi-layer-necessity signal instead (§5.4.0) |
+| **coverage across depth** — whether the effect appears at *any* of the 3 layers or in the joint `steer_band` | **yes**, and that is what §5.4.0's 4 configs are for |
+| whether the effective region is contiguous or a single spike | **no** — 3 points cannot resolve that. `steer_band` moving while no single layer does is the multi-layer-necessity signal instead (§5.4.0) |
 | ranking layer configs or α values against each other | **no** — that is §0.7's layer-ranking problem again, and it needs the full set. More configs would not change it: a sweep gives coverage, not resolution |
 | any *null* result ("story ablation does not restore refusal") | **no.** A null at effective n ≈ 30 is not a null. Scale up before writing one down |
 
@@ -1046,13 +1046,24 @@ no new semantics, so a swept cell and the same cell run alone are byte-comparabl
 | `22` | one layer |
 | `18-25` | inclusive integer range |
 | `18,22,25` | explicit list |
-| `frac:0.70-0.90` | `round(0.70·L) .. round(0.90·L)` (§0.3) |
-| `band` | the §0.3 report band, `round(0.40·L) .. round(0.90·L)` — **the widest set allowed** |
+| `frac:0.70-0.90` | `round(0.70·L) .. round(0.90·L)` |
+| **`steer_band`** | **0.70–0.90 of L** — L20–25 at L=28. The **widest joint steering config** |
+| `band` | the §0.3 report band, 0.40–0.90 — L11–25 at L=28. **The ceiling on any spec** |
 
-**`band` is the hard ceiling: there is no `all`.** No joint set may exceed the §0.3 band (L11–25 at
-L=28, 15 of 29 layers), and the script **rejects** a `--layers` spec that resolves outside it rather
-than silently clipping — a clipped set would be recorded in the manifest as the set the user asked
-for. Sweeps are bounded the same way: `--sweep-layers band` is the widest sweep extent.
+**Two bands, and they are different objects.** `band` is §0.3's reporting region and bounds what may
+be steered at all; `steer_band` is the joint window the interventions actually use.
+
+**`steer_band` is set to the Assistant Axis paper's depth fraction**, not to the reporting band. The
+paper caps Qwen3-32B at layers 46–53 of 64 (depth 0.72–0.83) and Llama-3.3-70B at 56–71 of 80
+(0.70–0.89); **0.70–0.90 reproduces the latter almost exactly** (56–72 at L=80) and spans the former.
+Steering the full 0.40–0.90 reporting band would be a much wider intervention than anything the
+source result rests on.
+
+**`band` is the hard ceiling: there is no `all`.** No set may exceed the §0.3 band, and the script
+**rejects** a spec resolving outside it rather than silently clipping — a clipped set would be
+recorded in the manifest as the set the user asked for. Single layers anywhere inside the reporting
+band remain legal, which is what keeps §5.4.0's per-direction layers (L14–22) available even though
+they sit below `steer_band`.
 
 Why the cap: steering embeddings and the last few blocks is outside the region any of the source
 results live in (§0.3), it is where degeneration is most likely, and the band is the region
@@ -1081,11 +1092,11 @@ layers. Each row also carries `n_layers_steered` and the resolved list (§5.4's 
 
 | stage | configs per direction | how |
 |---|---|---|
-| **first pass** (`50_per_direction`), `ablate` / `add` | **4** — 3 single layers + `band` | `--sweep-layers <L1>,<L2>,<L3>` then `--layers band` |
+| **first pass** (`50_per_direction`), `ablate` / `add` | **4** — 3 single layers + `steer_band` | `--sweep-layers <L1>,<L2>,<L3>` then `--layers steer_band` |
 | **first pass**, `cap` | **1** | `--layers band` at τ = p75 |
-| **full experiments** | layers chosen from `probe_jailbreak_detection` (§3), plus `band` | — |
+| **full experiments** | layers chosen from `probe_jailbreak_detection` (§3), plus `steer_band` | — |
 
-**`cap` and `ablate` use the same `band`.** Both are the widest-config arm of the same slot
+**`cap` and `ablate` use the same `steer_band`.** Both are the widest-config arm of the same slot
 (story/persona on successes, §5.4a), so they must span identical layers or a `cap`-vs-`ablate`
 difference confounds mode with layer set — and `cap`-as-graded-alternative-to-`ablate` is the entire
 point of running it. This overrides the paper's own 12.5% window; recorded in §6.7.
@@ -1104,12 +1115,12 @@ Given in own-best-first order; cells are keyed by layer number, so the stem is `
 rank. **These are absolute indices for L=28** — another model needs them re-derived from §3, not
 rescaled.
 
-**`band` is the matched config, and it is what carries cross-direction comparison.** The 3 single
+**`steer_band` is the matched config, and it is what carries cross-direction comparison.** The 3 single
 layers are each direction's own-best sites, so they are *not* comparable across directions: a
 story-vs-persona difference at L17 vs L19 confounds direction with layer (§2.2's matched-vs-own-best
-distinction). The `band` cell is identical for every direction **and for both `ablate` and `cap`**
+distinction). The `steer_band` cell is identical for every direction **and for both `ablate` and `cap`**
 (§5.4c), which makes it the one config where a cross-direction *or* cross-mode difference is
-attributable. Read own-best cells within a direction, `band` cells across them.
+attributable. Read own-best cells within a direction, `steer_band` cells across them.
 
 **One consequence of these particular triples, so a null is not over-read.** `eval` (14,15,16), `harm`
 (20,21,22) and both story axes (15–18) are near-adjacent, and adjacent layers agree on nearly every
@@ -1122,9 +1133,18 @@ way.
 **What 3 layers gives up, stated so it is not over-read.** §5.0 already establishes that this pass
 cannot rank layer configs at n ≈ 30, so the 15-layer sweep bought coverage rather than resolution —
 and 3 layers keeps the coverage question ("is there *any* depth where this moves") while giving up the
-finer one ("is the effective region contiguous or a single spike"). The `band` cell is what partly
-covers the loss: **`band` moving behaviour while none of the 3 single layers do is the Assistant Axis
-multi-layer-necessity result, not a null.** That is why `band` stays in every mode's config set.
+finer one ("is the effective region contiguous or a single spike"). The `steer_band` cell is what partly
+covers the loss: **`steer_band` moving behaviour while none of the 3 single layers do is the Assistant Axis
+multi-layer-necessity result, not a null.** That is why `steer_band` stays in every mode's config set.
+
+**One caveat that arrived with `steer_band` = 0.70–0.90.** The per-direction singles were selected on
+§3 and mostly sit *shallower* than that window: at L=28, `story_v2` (15,17,18) and `eval` (14,15,16)
+have **no** overlap with L20–25, `persona` contributes only L21, `harm` all three. So for those
+directions the joint-vs-single comparison is **also a depth comparison**, not purely jointness. Read
+"`steer_band` moves, singles do not" as multi-layer necessity only for `harm`; for the others it is
+confounded and the honest statement is that the effect is at 0.70–0.90 and not at the probe-best
+depth. Adding one single-layer cell inside `steer_band` per direction would resolve it for 4 extra
+cells, and is the cheapest fix if this comparison turns out to matter.
 
 **Choosing the full-scale layers from §3 rather than §1.2 is the better call**, and worth saying why:
 §1.2 selects the layer that best separates *extraction pairs*, while §3 selects on the **jailbreak
@@ -1150,7 +1170,7 @@ stream across the whole band, not injected at one site, which is Arditi's formul
 §0.3 band (§5.4.0; Arditi ablates every layer, §6.7). Narrower *joint* sets are the ablation-width
 question; `--sweep-layers band` is the separate depth question (§5.4.0). **Joint ablation needs no
 strength correction:** the projection is idempotent per layer and removes rather than injects, so
-ablating all 15 band layers at once is not "15× stronger" in the way §5.4b's additive push is — layer
+ablating all 6 `steer_band` layers at once is not "6× stronger" in the way §5.4b's additive push is — layer
 count and effect size are not confounded
 here, which is another reason it is the default. Activation-hook version only; weight orthogonalisation (the
 equivalent permanent edit, orthogonalising every matrix that writes to the residual stream) only if
@@ -1167,7 +1187,7 @@ joint set, `N = |joint set|`
 **`N` is the cell's own joint width, never the sweep's extent.** `--sweep-layers 14,18,22` gives 3 cells
 at `N = 1`, so each is `α/√1 = α` — identical to running that layer alone and directly comparable to
 the pilot's single-layer α calibration. Only `--layers` (or `--sweep-layers --width`) raises `N`; on the
-first pass that is the `band` cell alone, at `N = 15`.
+first pass that is the `steer_band` cell alone, at `N = 6` (L20–25 at L=28).
 
 α grid **{+0.5, +1}** — **one-sided and positive throughout, no α = 0**. `σ[l]` from the §0.6
 framed-prompt corpus. Direct carry-over of `initial_tests` §3: at |α| = 1, 44/48 cells were degenerate
@@ -1193,7 +1213,7 @@ things: α = 0 would re-measure §5.2's baseline, whereas the no-op arm register
 them, which is the only thing that catches a *plumbing* difference between the steered harness and
 plain generation. Keep the arm, drop the grid point.
 
-**Joint `add` runs the same four layer configs as `ablate`** (3 single + `band`, §5.4.0), but unlike
+**Joint `add` runs the same four layer configs as `ablate`** (3 single + `steer_band`, §5.4.0), but unlike
 `ablate` and `cap` it *accumulates*: an unnormalised push at N layers injects N times the norm, so
 `--layers 22 --alpha 0.5` and `--layers frac:0.70-0.90 --alpha 0.5` would be wildly different
 strengths and the 4-config × α grid would not be a grid over two independent knobs. **Hence the
@@ -1235,7 +1255,7 @@ clamps every framed prompt below the bare-request mean, roughly 3–4σ more agg
 | knob | value | source |
 |---|---|---|
 | `τ[l]` | **p75** per layer (`floor` variant: p25) | the paper's single p25 threshold, sign-mirrored |
-| `--layers` | **`band`** — L11–25 at L=28 | **matched to `ablate`'s widest config**, §5.4.0 |
+| `--layers` | **`steer_band`** — 0.70–0.90 of L, i.e. L20–25 at L=28 | the paper's own depth fraction, **and** matched to `ablate`'s widest config (§5.4.0) |
 
 `cap` is a **variant** (§5.4c's gating below), so it gets one setting rather than a grid. Two reasons a
 τ sweep was wrong here:
@@ -1247,11 +1267,12 @@ clamps every framed prompt below the bare-request mean, roughly 3–4σ more agg
   `50_per_direction` pass, and §0.6 puts the limit at ~p90 there. p95 of 200 points sits between the
   190th and 191st order statistic — estimable, but not a well-defined setting.
 
-**The layer span deliberately departs from the paper.** Its windows were 12.5% of L (Qwen3-32B, layers
-46–53 of 64) and 20% (Llama-3.3-70B, 56–71 of 80), which at L=28 would be `frac:0.70-0.825` = L20–23.
-Using `band` instead costs paper-faithfulness and buys the only comparison that matters here: `cap`
-against `ablate` at an identical layer set. Since `cap` exists in this design purely as `ablate`'s
-graded alternative, a mode difference confounded with a layer difference would be useless. §6.7.
+**The layer span is now paper-faithful and matched at once**, which it was not in an earlier draft.
+The paper's windows are 12.5% of L (Qwen3-32B, 46–53 of 64, depth 0.72–0.83) and 20% (Llama-3.3-70B,
+56–71 of 80, depth 0.70–0.89). `steer_band` = 0.70–0.90 reproduces the Llama window almost exactly
+and spans the Qwen one, so porting the paper's setting and matching `ablate`'s widest config no longer
+pull in opposite directions — `cap` and `ablate` differ only in mode, which is the comparison `cap` is
+run to make.
 
 The paper reports that capping at **multiple layers simultaneously is necessary** for any useful
 effect — i.e. *joint* steering specifically, not a sweep (§5.4.0). So single-layer `cap` is expected
@@ -1260,7 +1281,7 @@ as a negative but is not the experiment. `τ[l]` is estimated **per layer**, so 
 independent thresholds and needs no strength correction — same as `ablate`, unlike `add`.
 
 If `cap` earns a fuller treatment, the escalation order is: `frac:0.70-0.90` (the 20% span) and
-`band` for width, then q ∈ {50, 90} for strength. Not before.
+`steer_band` for width, then q ∈ {50, 90} for strength. Not before.
 
 **When `cap` earns its keep:** it is input-dependent and one-sided, so it does nothing on prompts
 already inside the normal range, where `ablate` removes the component unconditionally. If `ablate`
@@ -1479,7 +1500,7 @@ principal-angle floor from §2.3.
 
 ### 5.7 Budget
 
-**The `50_per_direction` first pass.** 4 layer configs (3 single + `band`, §5.4.0), 5 directions,
+**The `50_per_direction` first pass.** 4 layer configs (3 single + `steer_band`, §5.4.0), 5 directions,
 ~30 successes for §5.4 and ~70 refusals for §5.5, one mode per (set, direction) per §5.4a, α ∈ {+0.5, +1}:
 
 | stage | set | cells | generations | judge calls |
@@ -1487,7 +1508,7 @@ principal-angle floor from §2.3.
 | baseline, 100 rows greedy | all | — | 100 | 100 |
 | **§5.4 `ablate`** — story_v2 · story_v1 · persona × 4 configs | successes | 12 | ~360 | ~360 |
 | **§5.4 `add` +α** — harm · eval × 4 configs × 2 α | successes | 16 | ~480 | ~480 |
-| **§5.4 `cap` (ceil)** — one config (p75 × `band`, matched to `ablate`) × story_v2 · story_v1 · persona | successes | 3 | ~90 | ~90 |
+| **§5.4 `cap` (ceil)** — one config (p75 × `steer_band`, matched to `ablate`) × story_v2 · story_v1 · persona | successes | 3 | ~90 | ~90 |
 | **§5.5 `add` +α** — story_v2 · story_v1 · persona × 4 configs × 2 α | refusals | 24 | ~1,680 | ~1,680 |
 | **§5.5 `ablate`** — harm · eval × 4 configs | refusals | 8 | ~560 | ~560 |
 | matched `random` arms, per config × α × mode × set | both | ~25 | ~1,200 | ~1,200 |
@@ -1521,7 +1542,7 @@ Full-scale figures, for reference (1,017 rows, ~90 val successes, §3-selected l
 |---|---|---|---|
 | decoding compare | — | 1,050 | 1,050 |
 | baseline | — | 1,017 | 1,017 |
-| `ablate`, §3-selected layers + `band` | ~4 | ~360 | ~360 |
+| `ablate`, §3-selected layers + `steer_band` | ~4 | ~360 | ~360 |
 | `add`, same configs × 2 α `{+0.5, +1}`, each at `α/√N` | 8 | ~720 | ~720 |
 | `cap`, one config *(variant; widen only per §5.4c's escalation order)* | 1 | ~90 | ~90 |
 | all directions × {`ablate` + `add`} + the `random` control | | ~13,000 | ~13,000 |
@@ -1540,7 +1561,7 @@ The α grid is what remains expensive, and it is unavoidable for `harm`/`eval` (
 burned 48 cells discovering that α = 1 breaks the model; α and the layer-config count are the two
 levers, and they multiply.
 
-**§5.5's cheap first cell is `harm` × `ablate` × `band`** — parameter-free, no α grid, and it is the
+**§5.5's cheap first cell is `harm` × `ablate` × `steer_band`** — parameter-free, no α grid, and it is the
 one cell whose prediction (§5.4a: ablating harm reduces refusal) is both strong and previously
 untestable. Run it alongside §5.7's `story_v2` opener; between them the two cells cover necessity and
 sufficiency for ~60 generations total.
@@ -1659,9 +1680,9 @@ restricted and flagged) and §3.1 (the paired `prompt` vs `request` contrast is 
 | steering unit `σ_act` | mean residual norm on **lmsys-chat-1m** | median residual norm on the **framed** jailbreak prompts | no external corpus loaded; a norm carries no pole structure, so it is read on exactly the distribution the interventions run on (§0.6) |
 | **primary intervention** | Assistant Axis: activation capping. Arditi: directional ablation | **directional ablation (Arditi)**; capping demoted to a variant | parameter-free — no α, τ, percentile, reference corpus or sign convention to mis-port — and it is the standard intervention in this literature, so results compare directly to Arditi and 2507.11878. §5.4(a) |
 | capping τ *(variant only)* | p25 of projections over **912,000 persona-mapping rollouts**, at response tokens | p75 (mirrored sign) over the **two-pole** corpus — framed prompts + bare requests — at the prompt's last token, **single threshold, no sweep** | 65-pair tables cannot support a percentile; the two poles are what the percentile sits between, which is why τ's corpus differs from `σ_act`'s (§0.6); sign mirrors the percentile (§5.4c) |
-| capping layer span | one window per model, 12.5% or 20% of L (Qwen3-32B L46–53 of 64; Llama-3.3-70B L56–71 of 80) | **the §0.3 band**, L11–25 of 28 — identical to `ablate`'s widest config | `cap` exists here only as `ablate`'s graded alternative in the same slot (§5.4a), so the two must span the same layers or a mode difference confounds with a layer difference. Deliberate loss of faithfulness for the comparison that the mode is being run to make (§5.4.0, §5.4c) |
+| capping layer span | one window per model, 12.5% or 20% of L (Qwen3-32B L46–53 of 64, depth 0.72–0.83; Llama-3.3-70B L56–71 of 80, depth 0.70–0.89) | **`steer_band`**, 0.70–0.90 of L — L20–25 of 28 | a faithful port of the paper's depth fraction (it reproduces the Llama window almost exactly and spans the Qwen one) that is *also* identical to `ablate`'s widest config, so `cap` and `ablate` differ only in mode (§5.4.0, §5.4c) |
 | ablation site | Arditi ablates every component writing to the residual stream (weight orthogonalisation) | residual-stream activation hook, all positions | reversible and mode-switchable; escalate to weight orthogonalisation only if the hook version moves nothing or a permanent artefact is wanted |
-| **ablation depth** | Arditi ablates at **every layer** | **capped at the §0.3 band** (L11–25 of 28); no `--layers all`, and out-of-band specs are rejected rather than clipped | embeddings and the last few blocks are outside the region any source result lives in, are where degeneration is most likely, and a cell outside the band cannot be read against §1.2's layer selection. §5.4.0. **Consequence: a null is a null about band-restricted ablation**, not about ablating the axis everywhere — say so rather than citing Arditi's result as the matched comparison |
+| **ablation depth** | Arditi ablates at **every layer** | widest joint config is **`steer_band`**, 0.70–0.90 of L (L20–25 of 28); the §0.3 band is the hard ceiling, there is no `--layers all`, and out-of-band specs are rejected rather than clipped | embeddings and the last few blocks are outside the region any source result lives in, are where degeneration is most likely, and a cell outside the reporting band cannot be read against §1.2's layer selection. §5.4.0. **Consequence: a null is a null about ablation over 0.70–0.90**, not about ablating the axis everywhere — say so rather than citing Arditi's result as the matched comparison |
 
 ### 6.8 Smaller things, folded in above
 

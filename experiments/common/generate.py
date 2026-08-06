@@ -51,6 +51,30 @@ def _one_batch(tok, model, texts, max_new_tokens):
     return rows
 
 
+@torch.no_grad()
+def prefill_states(tok, model, prompts, specs=None, batch_size=8, max_batch_tokens=16384):
+    """Final-layer state at the last prompt token, under `specs`. No generation.
+
+    One forward pass per batch, so a whole prompt set costs seconds. This is what makes
+    spec 5.6's matched-self-effect arm measurable: scan alpha until the probe readout
+    moves as far as the unprojected run moved it, without generating at every candidate.
+    """
+    idx = {p: i for i, p in enumerate(prompts)}
+    ntok = {p: len(mdl.token_ids(tok, p)) for p in dict.fromkeys(prompts)}
+    out = [None] * len(prompts)
+    cap = hk.FinalCapture()
+    with hk.installed(model, specs or [], capture=cap):
+        for batch in plan_batches(list(ntok), ntok, batch_size, max_batch_tokens):
+            enc = tok([mdl.templated(tok, p) for p in batch], return_tensors="pt",
+                      padding=True, add_special_tokens=False)
+            enc = {k: v.to(model.device) for k, v in enc.items()}
+            cap.h = None
+            model(**enc)
+            for j, p in enumerate(batch):
+                out[idx[p]] = cap.h[j]
+    return torch.stack(out)
+
+
 def run(tok, model, rows, sink, done, batch_size, max_batch_tokens, max_new_tokens,
         specs=None, probes=None, progress=None):
     """Generate for every row not already in `done`, appending one JSONL line each.
