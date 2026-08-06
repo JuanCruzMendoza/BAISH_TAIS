@@ -114,13 +114,15 @@ def prefill_states(tok, model, prompts, specs=None, batch_size=8, max_batch_toke
 
 
 def run(tok, model, rows, sink, done, batch_size, max_batch_tokens, max_new_tokens,
-        specs=None, probes=None, progress=None, decode=None):
+        specs=None, probes=None, progress=None, decode=None, counter=None):
     """Generate for every row not already in `done`, appending one JSONL line each.
 
     rows: [{unit_id, prompt, n_tokens, ...}] -- extra keys are copied to the output.
     specs: hook specs from hooks.build, or None for the unsteered pass.
     probes: {name: u_final [d]} for the manipulation check at layer L (spec 5.4).
     decode: sampling config, or None for greedy (spec 5.1).
+    counter: **the same dict passed to hooks.build**, so `hook_calls` counts this cell's
+        hooks. A fresh dict here would count nothing -- the hooks close over the caller's.
     """
     ntok = {r["unit_id"]: r.get("n_tokens") or 0 for r in rows}
     by_id = {r["unit_id"]: r for r in rows}
@@ -128,7 +130,7 @@ def run(tok, model, rows, sink, done, batch_size, max_batch_tokens, max_new_toke
     # Carry each batch's index in the *full* plan, so a resumed run seeds its batches
     # exactly as an uninterrupted one would.
     todo = [(i, b) for i, b in enumerate(batches) if any(u not in done for u in b)]
-    counter = {"calls": 0}
+    counter = {"calls": 0} if counter is None else counter
     capture = hk.FinalCapture() if probes else None
     n_done = 0
 

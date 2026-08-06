@@ -163,7 +163,8 @@ def main():
             stem = mf.stem(SCRIPT, f"{a_name}-perp-{b_name}", cfg.layer_stem(args.layers),
                            f"a{a:g}", arm)
             ut = torch.from_numpy(np.ascontiguousarray(u)).float()
-            specs = hk.build("add", layers, ut, {"calls": 0}, alpha=a, sigma=sigma)
+            counter = {"calls": 0}
+            specs = hk.build("add", layers, ut, counter, alpha=a, sigma=sigma)
             config = {"direction": a_name, "projected_out": b_name, "arm": arm,
                       "mode": "add", "prompt_set": PROMPT_SET,
                       "layers_spec": str(args.layers), "layers": layers,
@@ -181,7 +182,8 @@ def main():
                       "direction_run_key": pa.get("run_key"),
                       "projected_run_key": pb.get("run_key")}
             cell.emit(lay, src, stem, config, inputs, rows, specs, layers, tok, model,
-                      args.batch_size, args.max_batch_tokens, args.max_new_tokens, decode)
+                      args.batch_size, args.max_batch_tokens, args.max_new_tokens, decode,
+                      counter)
 
 
 if __name__ == "__main__":
