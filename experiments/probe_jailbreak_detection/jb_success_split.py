@@ -151,10 +151,25 @@ def main():
                          f"baseline (spec 3.5). Run gen_baseline.py then "
                          f"judge_strongreject.py on its .jsonl.")
     bman = mf.load_upstream(bpath)
-    if bman["inputs"]["jb_view_key"] != R["jb_view_key"]:
-        raise SystemExit("gen_baseline and jb_readout ran on different jailbreak views; "
-                         "the join would silently mismatch rows")
     judged = sets.baseline_judged(args.model, args.tag)
+
+    # What makes the join valid is that both sides used the same *rows*, not the same
+    # view_key. Caching the bare-request arm for `cap` adds `neg` rows to the view, which
+    # moves view_key while leaving the 100 framed prompts identical -- and jailbreak_rows
+    # filters to pole == "pos" anyway. So compare row identity and only note the keys.
+    same_view = bman["inputs"]["jb_view_key"] == R["jb_view_key"]
+    missing = [r["row_id"] for r in rows if str(r["row_id"]) not in judged]
+    if missing:
+        raise SystemExit(
+            f"{len(missing)} of {len(rows)} readout rows are absent from the judged "
+            f"baseline (e.g. {missing[:3]}). The baseline did not generate for these "
+            f"rows, so there is nothing to join"
+            + ("" if same_view else "; the two jb_view_keys also differ, so the "
+                                    "baseline likely ran on a different subsample"))
+    if not same_view:
+        print(f"  note: view_key differs from jb_readout's (expected if the bare-request "
+              f"arm was cached for cap); all {len(rows)} rows matched by row_id")
+
     label = split_rows(rows, judged)
     counts = {k: label.count(k) for k in ("success", "refusal", "degenerate", "unjudged")}
     if min(counts["success"], counts["refusal"]) < MIN_SIDE:
@@ -175,7 +190,9 @@ def main():
     if bsum.exists():
         with bsum.open(encoding="utf-8-sig", newline="") as f:
             judge_model = next(csv.DictReader(f), {}).get("judge_model")
-    inputs = {"jb_view_key": R["jb_view_key"], "jb_readout_run_key": R.get("run_key"),
+    inputs = {"jb_view_key": R["jb_view_key"],
+              "baseline_jb_view_key": bman["inputs"]["jb_view_key"],
+              "jb_readout_run_key": R.get("run_key"),
               "baseline_run_key": bman["run_key"], "judge_model": judge_model}
 
     with mf.Run(lay, stem, config, inputs) as run:
