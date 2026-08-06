@@ -200,12 +200,16 @@ def _(MODEL, REPO, TAG, mo, pathlib):
 def _(API_KEY):
     import os
     JUDGE_MODEL = "gpt-4o-mini"
+    # Judging is one API call per row and was serial: ~2.5 s/row, so ~2.5 h for the
+    # full pass. 8-way brings that to ~20 min. Raise only if the account's rate limit
+    # allows -- 429s are retried with backoff, but a wall of them just wastes time.
+    JUDGE_CONC = "8"
     if API_KEY.value:
         os.environ["OPENAI_API_KEY"] = API_KEY.value
         print("key set;", JUDGE_MODEL, "will grade")
     else:
         print("no key yet - the judge cells will refuse until one is pasted above")
-    return (JUDGE_MODEL,)
+    return JUDGE_CONC, JUDGE_MODEL
 
 
 @app.cell
@@ -248,10 +252,10 @@ def _(mo):
 
 
 @app.cell
-def _(JUDGE_MODEL, sh, ungraded):
+def _(JUDGE_CONC, JUDGE_MODEL, sh, ungraded):
     for _f in ungraded("gen_decoding_compare*.jsonl"):
         sh("python", "experiments/steering_jailbreaks/judge_strongreject.py", str(_f),
-           "--judge-model", JUDGE_MODEL)
+           "--judge-model", JUDGE_MODEL, "--concurrency", JUDGE_CONC)
     return
 
 
@@ -315,9 +319,10 @@ def _(mo):
 
 
 @app.cell
-def _(JUDGE_MODEL, SJ_META, sh):
+def _(JUDGE_CONC, JUDGE_MODEL, SJ_META, sh):
     sh("python", "experiments/steering_jailbreaks/judge_strongreject.py",
-       str(SJ_META / "gen_baseline.jsonl"), "--judge-model", JUDGE_MODEL)
+       str(SJ_META / "gen_baseline.jsonl"), "--judge-model", JUDGE_MODEL,
+       "--concurrency", JUDGE_CONC)
     return
 
 
@@ -470,13 +475,13 @@ def _(mo):
 
 
 @app.cell
-def _(JUDGE_MODEL, sh, ungraded):
+def _(JUDGE_CONC, JUDGE_MODEL, sh, ungraded):
     _gens = ungraded()
     print(f"{len(_gens)} generation files to grade")
     for _i, _f in enumerate(_gens, 1):
         print(f"[{_i}/{len(_gens)}] {_f.name}")
         sh("python", "experiments/steering_jailbreaks/judge_strongreject.py", str(_f),
-           "--judge-model", JUDGE_MODEL)
+           "--judge-model", JUDGE_MODEL, "--concurrency", JUDGE_CONC)
     return
 
 

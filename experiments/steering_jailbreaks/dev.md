@@ -182,6 +182,10 @@ At this tag `aggregate.py` reports layer configs and α side by side and **refus
   columns only, with no API call.
 - **The 3-way label comes from the judge**, asked for after the rubric block so the rubric text stays
   byte-identical. `template_sha` covers the added instruction, so editing it invalidates the cache.
+- **`--concurrency 8`** on the judge. One call per row at ~2.5 s means ~2.5 h serial for the pass;
+  8-way makes it ~20 min. Grades are unchanged (same prompts, same cache keys) — only the row order
+  in `_judged.jsonl` becomes completion order, which nothing reads. 429/5xx retry with backoff;
+  a permanent 4xx raises at once.
 - **Judge: `gpt-4o-mini`** at `temperature=0` (`--judge-model`; `claude-*` routes to Anthropic).
   ~4,850 calls at ~1.1k in / 0.25k out ≈ $1.50 — the judge sees the *bare* request, never the
   jailbreak wrapper. The id is in the cache key, so switching judges re-grades rather than mixes.
