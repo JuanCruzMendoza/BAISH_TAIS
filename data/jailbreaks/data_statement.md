@@ -19,7 +19,10 @@ non-narrative contrast arm.
 | JBC (AIM) | 32 | – | 32 | – | – |
 | **total** | **1,017** | **472** | **153** | **306** | **86** |
 
-Split 307 val / 710 test. 424 distinct wrappers. Base tasks: 660 rows over 32 JBB
+Split 307 val / 710 test. 424 distinct `template_id`s, but only 22 are true reused
+templates (StrongREJECT 15, DeepInception 6, JBC's `aim` 1) applied across 233 rows;
+the rest — In-the-Wild, Jailbreak Mimicry, PAIR (784 rows) — are one-off prompts with
+no literal reuse. Base tasks: 660 rows over 32 JBB
 behaviors (17–23 uses each, all 10 JBB categories present), 357 rows over 339 distinct
 AdvBench requests. Prompt length p50 1,012 / p90 3,619 / p99 8,886 chars.
 
