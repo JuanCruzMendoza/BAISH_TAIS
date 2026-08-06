@@ -99,11 +99,13 @@ def _(mo):
 
 
 @app.cell
-def _(MODEL, REPO, subprocess, sys):
-    subprocess.run([sys.executable, f"{REPO}/experiments/extraction/cache_activations.py",
-                     MODEL, "--dataset", "jailbreaks", "--split", "all",
-                     "--subsample-n", "100", "--poles", "pos", "--tag", "50_per_direction"],
-                    cwd=REPO, check=True)
+def _(MODEL, TAG, sh):
+    # No --poles: cache BOTH arms. jb_readout reads only m["pos"], so the two-pole view
+    # serves it fine, and cap's tau needs the bare requests (spec 0.6). Caching pos-only
+    # here and re-caching later would move the view_key between jb_readout and the
+    # steering runs -- which is exactly the mismatch that has to be reasoned about twice.
+    sh("python", "experiments/extraction/cache_activations.py", MODEL, "--tag", TAG,
+       "--dataset", "jailbreaks", "--split", "all", "--subsample-n", "100")
     return
 
 
@@ -160,22 +162,15 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Prerequisite — re-cache the jailbreaks with **both** poles
+    ### Prerequisite — the jailbreaks cache
 
-    The probe-detection cell above cached `--poles pos` (framed prompts only). `cap`
-    places its threshold on the **two-pole** corpus (framed prompts *and* bare requests,
-    spec 0.6), so the negative arm has to exist. Dropping `--poles` caches only what is
-    missing: the 100 already-cached framed blobs are skipped.
+    Already done by the probe-detection section, which caches **both** poles. `cap`'s
+    threshold sits on the two-pole corpus (framed prompts *and* bare requests, spec 0.6),
+    so there is no separate re-cache step and no `view_key` drift between what
+    `jb_readout` read and what the steering runs read.
 
-    Skip this cell only if you also drop every `--mode cap` job below.
+    Nothing to run here.
     """)
-    return
-
-
-@app.cell
-def _(MODEL, TAG, sh):
-    sh("python", "experiments/extraction/cache_activations.py", MODEL, "--tag", TAG,
-       "--dataset", "jailbreaks", "--split", "all", "--subsample-n", "100")
     return
 
 
