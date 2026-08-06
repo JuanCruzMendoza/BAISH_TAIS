@@ -24,6 +24,49 @@ def band(L):
     return list(range(round(BAND_LO * L), round(BAND_HI * L) + 1))
 
 
+LAYER_SPEC = "22 | 18-25 | 18,22,25 | frac:0.70-0.90 | band   (no 'all'; band is the ceiling)"
+
+
+def parse_layers(spec, L):
+    """Layer-spec grammar (spec 5.4.0) -> sorted layers. Out-of-band specs are rejected.
+
+    Clipping would record the set the caller asked for while steering another one.
+    """
+    s = str(spec).strip()
+    b = band(L)
+    if s == "all":
+        raise ValueError(f"'all' is not a layer spec: band is the ceiling ({b[0]}-{b[-1]}), "
+                         f"spec 5.4.0")
+    if s == "band":
+        out = b
+    elif s.startswith("frac:"):
+        lo, hi = s[5:].split("-")
+        out = list(range(round(float(lo) * L), round(float(hi) * L) + 1))
+    elif "," in s:
+        out = [int(x) for x in s.split(",")]
+    elif "-" in s:
+        lo, hi = s.split("-")
+        out = list(range(int(lo), int(hi) + 1))
+    else:
+        out = [int(s)]
+    out = sorted(dict.fromkeys(out))
+    outside = [l for l in out if not b[0] <= l <= b[-1]]
+    if not out or outside:
+        raise ValueError(f"layer spec {spec!r} -> {out or '[]'}; {outside} outside the band "
+                         f"{b[0]}-{b[-1]} (spec 5.4.0 rejects rather than clips)")
+    return out
+
+
+def layer_stem(spec):
+    """The unresolved spec, as it appears in a stem (spec 0.1)."""
+    s = str(spec).strip()
+    if s == "band":
+        return "band"
+    if s.startswith("frac:"):
+        return "f" + s[5:]
+    return "L" + s.replace(",", "_")
+
+
 def model_slug(model_id):
     return model_id.replace("/", "_")
 

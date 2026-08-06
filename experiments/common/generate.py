@@ -1,0 +1,102 @@
+"""Batched greedy generation with batch-granular resume (spec 0.10 / 0.11).
+
+Batching is the rule, not `batch_size=1`: greedy decoding is bit-reproducible at a
+*fixed* batch size and fixed composition, which is what the length sort plus the token
+budget give. Resume therefore skips whole batches -- dropping completed rows from a
+batch would change its padding and generate the survivors under different conditions.
+"""
+import torch
+
+from . import hooks as hk
+from . import model as mdl
+
+
+def plan_batches(units, ntok, batch_size, max_batch_tokens):
+    """Length-sorted batches under a padded-token budget.
+
+    Planned over the *full* unit set so the plan is a function of the cell's inputs and
+    not of what is left to do (spec 0.11).
+    """
+    order = sorted(units, key=lambda x: ntok.get(x, 0))
+    batches, cur = [], []
+    for x in order:
+        trial = cur + [x]
+        longest = max(ntok.get(y, 0) for y in trial)
+        if cur and (len(trial) > batch_size or len(trial) * longest > max_batch_tokens):
+            batches.append(cur)
+            cur = [x]
+        else:
+            cur = trial
+    if cur:
+        batches.append(cur)
+    return batches
+
+
+@torch.no_grad()
+def _one_batch(tok, model, texts, max_new_tokens):
+    enc = tok([mdl.templated(tok, t) for t in texts], return_tensors="pt",
+              padding=True, add_special_tokens=False)
+    enc = {k: v.to(model.device) for k, v in enc.items()}
+    assert enc["attention_mask"][:, -1].all(), "right padding would steer a pad tail"
+    n_in = enc["input_ids"].shape[-1]
+    out = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False,
+                         pad_token_id=tok.pad_token_id or tok.eos_token_id)
+    eos = tok.eos_token_id
+    rows = []
+    for seq in out[:, n_in:]:
+        ids = seq.tolist()
+        stop = ids.index(eos) if eos in ids else len(ids)
+        rows.append({"response": tok.decode(ids[:stop], skip_special_tokens=True),
+                     "out_tokens": stop, "hit_cap": int(eos not in ids)})
+    return rows
+
+
+def run(tok, model, rows, sink, done, batch_size, max_batch_tokens, max_new_tokens,
+        specs=None, probes=None, progress=None):
+    """Generate for every row not already in `done`, appending one JSONL line each.
+
+    rows: [{unit_id, prompt, n_tokens, ...}] -- extra keys are copied to the output.
+    specs: hook specs from hooks.build, or None for the unsteered pass.
+    probes: {name: u_final [d]} for the manipulation check at layer L (spec 5.4).
+    """
+    ntok = {r["unit_id"]: r.get("n_tokens") or 0 for r in rows}
+    by_id = {r["unit_id"]: r for r in rows}
+    batches = plan_batches(list(by_id), ntok, batch_size, max_batch_tokens)
+    todo = [b for b in batches if any(u not in done for u in b)]
+    counter = {"calls": 0}
+    capture = hk.FinalCapture() if probes else None
+    n_done = 0
+
+    with hk.installed(model, specs or [], capture=capture):
+        for batch in todo:
+            counter["calls"] = 0
+            got = _one_batch(tok, model, [by_id[u]["prompt"] for u in batch], max_new_tokens)
+            readouts = [{}] * len(batch)
+            if capture is not None and capture.h is not None:
+                readouts = [{f"read_{k}": float(capture.h[i] @ v) for k, v in probes.items()}
+                            for i in range(len(batch))]
+            for u, g, rd in zip(batch, got, readouts):
+                sink.write_row({**{k: v for k, v in by_id[u].items() if k != "prompt"},
+                                **g, **rd, "hook_calls": counter["calls"],
+                                "n_in_batch": len(batch)})
+            n_done += len(batch)
+            if progress:
+                progress(n_done, sum(len(b) for b in todo))
+    return {"n_batches": len(batches), "n_batches_run": len(todo), "n_rows_run": n_done,
+            "hook_calls_last": counter["calls"]}
+
+
+class Sink:
+    """Append-only JSONL, flushed and fsynced per row (spec 0.11)."""
+
+    def __init__(self, fh):
+        self.fh = fh
+        self.n = 0
+
+    def write_row(self, row):
+        import json
+        import os
+        self.fh.write(json.dumps(row, default=str) + "\n")
+        self.fh.flush()
+        os.fsync(self.fh.fileno())
+        self.n += 1
