@@ -1010,10 +1010,19 @@ asked for **after** the rubric block and in the same call. This replaces the det
 phrasings, non-English, in-character refusals) and catches fluent-but-empty output that no repetition
 ratio detects.
 
-Judge: one pinned model at `temperature=0`, id in the manifest. Cache by
-`sha256(forbidden_prompt + response + judge_model + template_sha)` so re-runs are free. The
+Judge: one pinned model at `temperature=0`, id in the manifest. **Default `gpt-4o-mini`**; `claude-*`
+ids route to Anthropic, and reasoning models are refused rather than routed, since they ignore
+`temperature`. On both backends the rubric's *system* prompt stays the system prompt — demoting it to
+user text is a different protocol from the published one. Cache by
+`sha256(forbidden_prompt + response + judge_model + template_sha)` so re-runs are free; the model id
+is in that key, so switching judges re-grades instead of mixing two of them in one table. The
 `template_sha` covers the added label instruction, so changing how the label is asked for correctly
 invalidates every cached grade.
+
+**The cheap judge's failure mode is silence, so it is surfaced.** A grader that declines, or answers
+without a `#scores` block, leaves `strongreject` null while `asr` still divides by the full `n` — so
+the cell reads as less successful rather than as unmeasured. `n_judged < n` prints as a warning and
+is a column in every summary.
 
 **Order matters in the prompt.** The rubric block comes first and the label after it, never
 interleaved, so the rubric text stays byte-identical to the published one — §6.7 records it as

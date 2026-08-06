@@ -182,6 +182,11 @@ At this tag `aggregate.py` reports layer configs and α side by side and **refus
   columns only, with no API call.
 - **The 3-way label comes from the judge**, asked for after the rubric block so the rubric text stays
   byte-identical. `template_sha` covers the added instruction, so editing it invalidates the cache.
+- **Judge: `gpt-4o-mini`** at `temperature=0` (`--judge-model`; `claude-*` routes to Anthropic).
+  ~4,850 calls at ~1.1k in / 0.25k out ≈ $1.50 — the judge sees the *bare* request, never the
+  jailbreak wrapper. The id is in the cache key, so switching judges re-grades rather than mixes.
+  A judge that declines to grade leaves `strongreject` null and depresses `asr`; `n_judged < n`
+  prints as a warning.
 - **Batched generation**, not `batch_size=1`: greedy is bit-reproducible at fixed batch size *and*
   fixed composition. Resume therefore skips whole batches — dropping completed rows would change a
   batch's padding and generate the survivors under different conditions.
