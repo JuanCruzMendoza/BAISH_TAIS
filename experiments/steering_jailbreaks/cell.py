@@ -95,7 +95,8 @@ def stem_for(script, direction, mode, layer_spec, alpha, tau_q, arm):
 
 
 def run(script, model_id, tag, rows, prompt_set, direction, mode, layer_spec, arm,
-        alpha, tau_q, n_layers, tok, model, batch_size, max_batch_tokens, max_new_tokens):
+        alpha, tau_q, n_layers, tok, model, batch_size, max_batch_tokens, max_new_tokens,
+        decoding="greedy", decode=None):
     """Run one cell and return its manifest run_key."""
     src = cfg.acts_layout(model_id, tag)
     lay = cfg.Layout(sets.EXPERIMENT, model_id, tag, acts_cache=False)
@@ -129,18 +130,18 @@ def run(script, model_id, tag, rows, prompt_set, direction, mode, layer_spec, ar
               "tau_q": tau_q if mode == "cap" else None,
               "tau": tau, "tau_n_ref": n_ref,
               "clamp": CLAMP.get(direction) if mode == "cap" else None,
-              "decoding": "greedy", "max_new_tokens": max_new_tokens,
+              "decoding": decoding, "decode": decode, "max_new_tokens": max_new_tokens,
               "batch_size": batch_size, "max_batch_tokens": max_batch_tokens,
               "position": "all_tokens", "n_rows": len(rows), "seed": cfg.SEED}
     inputs = {"unit_ids": [r["unit_id"] for r in rows],
               "direction_run_key": None if probe is None else probe.get("run_key")}
 
     return emit(lay, src, stem, config, inputs, rows, specs, layers, tok, model,
-                batch_size, max_batch_tokens, max_new_tokens)
+                batch_size, max_batch_tokens, max_new_tokens, decode)
 
 
 def emit(lay, src, stem, config, inputs, rows, specs, layers, tok, model,
-         batch_size, max_batch_tokens, max_new_tokens):
+         batch_size, max_batch_tokens, max_new_tokens, decode=None):
     """Generate one cell's rows under `specs` and close its manifest.
 
     Shared by steer_single / steer_induce (a direction's own vector) and steer_pairs
@@ -152,6 +153,7 @@ def emit(lay, src, stem, config, inputs, rows, specs, layers, tok, model,
         with run_.open_append(".jsonl") as fh:
             info = gen.run(tok, model, rows, gen.Sink(fh), done, batch_size,
                            max_batch_tokens, max_new_tokens, specs=specs, probes=probes,
+                           decode=decode,
                            progress=lambda i, n: print(f"    {i}/{n}", end="\r"))
         if info["n_rows_run"] and info["hook_calls_last"] == 0:
             raise RuntimeError(f"{stem}: hooks never fired -- the intervention did nothing")

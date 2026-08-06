@@ -94,6 +94,29 @@ def paired(rows):
     return out
 
 
+def decoding(rows):
+    """Spec 5.1: ASR per decoding config, averaged over seeds. The pick reads this."""
+    by = {}
+    for r in rows:
+        if r["prompt_set"] == "decoding":
+            by.setdefault(r["decoding"], []).append(r)
+    out = []
+    for label, cells in sorted(by.items()):
+        asr = [num(c["asr"]) for c in cells]
+        out.append({
+            "decoding": label, "n_seeds": len(cells), "n_rows": cells[0]["n"],
+            "asr_mean": round(sum(asr) / len(asr), 1),
+            "asr_min": min(asr), "asr_max": max(asr),
+            "asr_spread": round(max(asr) - min(asr), 1),
+            "strongreject_mean": round(sum(num(c["strongreject"]) for c in cells) / len(cells), 4),
+            "pct_degenerate_mean": round(
+                sum(num(c["pct_degenerate"]) for c in cells) / len(cells), 1),
+            "hit_cap_rate_mean": round(
+                sum(num(c["hit_cap_rate"]) for c in cells) / len(cells), 4),
+            "deterministic": label == "greedy"})
+    return out
+
+
 def write(path, rows):
     if not rows:
         return
@@ -114,7 +137,9 @@ def main():
     if not cells:
         raise SystemExit("no *_summary.csv: run judge_strongreject.py on each cell first")
 
-    targets = with_controls(cells)
+    steering = [r for r in cells if r["prompt_set"] != "decoding"]
+    targets = with_controls(steering)
+    dec = decoding(cells)
     stem = mf.stem("aggregate")
     config = {"tag": cfg.tag(args.tag), "n_cells": len(cells),
               "n_excluded": len(excluded), "rank_layers": cfg.tag(args.tag) not in NO_RANK_TAGS}
@@ -124,10 +149,24 @@ def main():
         write(run.artefact("_cells.csv"), cells)
         write(run.artefact("_controls.csv"), targets)
         write(run.artefact("_paired.csv"), paired(targets))
+        write(run.artefact("_decoding.csv"), dec)
 
         print(f"{len(cells)} cells -> {len(targets)} target cells with controls")
         for s, why in excluded:
             print(f"  ! excluded {s}: {why}")
+        if dec:
+            print("\ndecoding comparison (spec 5.1) -- pick one and pass it to every "
+                  "later script:")
+            print("  " + "config".ljust(12) + "seeds  ASR (mean/min-max)   degen%  "
+                  "determ.")
+            for r in dec:
+                print(f"  {r['decoding']:12}{r['n_seeds']:5}  "
+                      f"{r['asr_mean']:5.1f}% {r['asr_min']:5.1f}-{r['asr_max']:<5.1f} "
+                      f"{r['pct_degenerate_mean']:8.1f}  {str(r['deterministic'])}")
+            print("  Higher ASR leaves more headroom to restore refusal; greedy makes a "
+                  "steering delta\n  steering rather than sampling. A sampled pick turns "
+                  "ASR into a rate over n>=5 samples\n  per cell and multiplies 5.4 "
+                  "(spec 5.1).")
         if cfg.tag(args.tag) in NO_RANK_TAGS:
             print(f"\ntag {cfg.tag(args.tag)}: layer configs and alphas are reported side by "
                   f"side and NOT ranked.\n  At ~30 rows clustered to template_id the ordering "

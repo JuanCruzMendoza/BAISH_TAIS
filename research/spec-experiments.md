@@ -944,10 +944,24 @@ never an overwrite.
 `temp=0.7, top_p=0.9`; `temp=1.0, top_p=0.95` — sampled configs ×3 seeds. 150 × (1+3+3) = 1,050
 generations, `max_new_tokens=512` (record `hit_cap`).
 
-**On the `50_per_direction` pass this script is skipped, not shrunk.** Its 150 rows are already more
-than the whole 100-row subset, and its only output is a decoding decision — for which §5.1's own
-recommendation (greedy everywhere) is the pre-registered answer. Take greedy on the first pass and run
-this script at scale-up, when there is something to condition on.
+**On the `50_per_direction` pass it runs at 50 rows, not 150.** 150 rows is more than half the whole
+subset, and the comparison exists to *inform* the pass rather than to be a third of it. Stratified by
+source × family with a floor of 1 per non-empty cell, so a small source is represented rather than
+rounded away. 7 cells × 50 = **350 generations**, ≈8% of the pass.
+
+**The metric is ASR** = % of rows the rubric scores above zero (not refused *and* at least minimally
+convincing and specific). Not the compliance rate: a compliance with no substance scores 0, and
+counting it would flatter the sampled configs, which produce more of exactly that.
+
+**Report `asr_min`/`asr_max` across seeds, not just the mean.** The spread is what the sampled options
+cost: it bounds how much of a later steering delta could be seed noise, which is the whole reason §5.1
+leans greedy. Greedy has one cell because it is deterministic.
+
+**The chosen decoding must reach every later script.** `--decoding` / `--decode-seed` on
+`gen_baseline.py`, `steer_single.py`, `steer_induce.py`, `steer_pairs.py`, all resolved through one
+registry so a label cannot mean different things in different scripts. It is inside every cell's
+`run_key`, so changing it invalidates downstream cells rather than silently mixing decodings, and a
+sampling config with no seed is refused rather than run irreproducibly.
 
 **"Which is better" needs a criterion, and the two candidates conflict.** Higher baseline ASR gives
 more headroom to restore refusal; greedy gives determinism, so a steering delta is steering and not
@@ -1505,7 +1519,8 @@ principal-angle floor from §2.3.
 
 | stage | set | cells | generations | judge calls |
 |---|---|---|---|---|
-| baseline, 100 rows greedy | all | — | 100 | 100 |
+| **decoding compare** (§5.1) — 50 rows × 7 cells | decoding | 7 | ~350 | ~350 |
+| baseline, 100 rows at the chosen decoding | all | — | 100 | 100 |
 | **§5.4 `ablate`** — story_v2 · story_v1 · persona × 4 configs | successes | 12 | ~360 | ~360 |
 | **§5.4 `add` +α** — harm · eval × 4 configs × 2 α | successes | 16 | ~480 | ~480 |
 | **§5.4 `cap` (ceil)** — one config (p75 × `steer_band`, matched to `ablate`) × story_v2 · story_v1 · persona | successes | 3 | ~90 | ~90 |
@@ -1513,9 +1528,9 @@ principal-angle floor from §2.3.
 | **§5.5 `ablate`** — harm · eval × 4 configs | refusals | 8 | ~560 | ~560 |
 | matched `random` arms, per config × α × mode × set | both | ~25 | ~1,200 | ~1,200 |
 | in-harness no-op, one per mode × set (§5.4's arm table) | both | ~5 | ~250 | ~250 |
-| **total** | | **~90** | **~4,400** | **~4,400** |
+| **total** | | **~97** | **~4,750** | **~4,750** |
 
-**~4,400 generations ≈ 2–3 h** on an RTX Pro 6000 Blackwell at `batch_size=8` / 512 new tokens
+**~4,750 generations ≈ 2–3 h** on an RTX Pro 6000 Blackwell at `batch_size=8` / 512 new tokens
 (a 7B in bf16 is ~14 GB against 96 GB, so memory is not a constraint — batch 16–32 is available). At
 `batch_size=16` / 256 tokens it is closer to **1 h**. Confirm achieved throughput on the first cell
 before committing to all ~90.
@@ -1540,7 +1555,7 @@ Full-scale figures, for reference (1,017 rows, ~90 val successes, §3-selected l
 
 | stage | cells per direction | generations | judge calls |
 |---|---|---|---|
-| decoding compare | — | 1,050 | 1,050 |
+| decoding compare, 150 rows × 7 cells | 7 | 1,050 | 1,050 |
 | baseline | — | 1,017 | 1,017 |
 | `ablate`, §3-selected layers + `steer_band` | ~4 | ~360 | ~360 |
 | `add`, same configs × 2 α `{+0.5, +1}`, each at `α/√N` | 8 | ~720 | ~720 |

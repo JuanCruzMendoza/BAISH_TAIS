@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from experiments.common import config as cfg, model as mdl
+from experiments.common import config as cfg, generate as gen, model as mdl
 from experiments.steering_jailbreaks import cell, sets
 
 SCRIPT = "steer_single"
@@ -31,6 +31,9 @@ def add_cell_args(ap):
     ap.add_argument("--width", type=int, default=1, help="joint width of each swept cell")
     ap.add_argument("--alpha", type=float, default=0.5, help="add only; positive throughout (spec 5.4b)")
     ap.add_argument("--tau-q", type=float, default=75.0, help="cap only; percentile of the two-pole corpus")
+    ap.add_argument("--decoding", default="greedy", choices=list(gen.DECODINGS),
+                    help="spec 5.1; must match gen_baseline's, or the sets do not apply")
+    ap.add_argument("--decode-seed", type=int, default=None, help="required if sampling")
     ap.add_argument("--max-new-tokens", type=int, default=512)
     ap.add_argument("--batch-size", type=int, default=8)
     ap.add_argument("--max-batch-tokens", type=int, default=16384)
@@ -67,6 +70,7 @@ def resolve(args, prompt_set):
 
 def run(args, script, prompt_set, want):
     direction, mode = resolve(args, prompt_set)
+    decode = gen.resolve_decode(args.decoding, args.decode_seed)
     tok, model = mdl.load(args.model)
     n_layers = model.config.num_hidden_layers
 
@@ -82,7 +86,8 @@ def run(args, script, prompt_set, want):
     for spec in specs:
         cell.run(script, args.model, args.tag, rows, prompt_set, direction, mode, spec,
                  args.arm, args.alpha, args.tau_q, n_layers, tok, model,
-                 args.batch_size, args.max_batch_tokens, args.max_new_tokens)
+                 args.batch_size, args.max_batch_tokens, args.max_new_tokens,
+                 decoding=args.decoding, decode=decode)
 
 
 if __name__ == "__main__":

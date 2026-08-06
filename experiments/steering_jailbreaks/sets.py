@@ -6,6 +6,7 @@ checked against its `prompt_sha16`, so the steering set is provably the same row
 `probe_jailbreak_detection` read out.
 """
 import json
+import random
 import sys
 from pathlib import Path
 
@@ -43,6 +44,29 @@ def jailbreak_rows(model_id, tag, tok=None, split="all"):
                      "request_sha8": mf.sha256_obj(m["request"])[:8],
                      "category": m["category"], "split": m["split"]})
     return view, rows
+
+
+def stratified(rows, n, seed):
+    """n rows stratified by source x family, seed pinned (spec 5.1).
+
+    Proportional allocation with a floor of 1 per non-empty cell, so a small source is
+    represented rather than rounded away; ties inside a cell break on a seeded shuffle of
+    unit_id, which makes the subset a function of (n, seed) alone.
+    """
+    if n >= len(rows):
+        return list(rows)
+    cells = {}
+    for r in rows:
+        cells.setdefault((r["source"], r["family"]), []).append(r)
+    # views._largest_remainder is the canonical allocator; reused rather than re-derived.
+    alloc = views._largest_remainder({k: len(v) for k, v in cells.items()}, n, floor=1)
+    rng = random.Random(seed)
+    out = []
+    for k in sorted(cells):
+        picks = sorted(cells[k], key=lambda r: r["unit_id"])
+        rng.shuffle(picks)
+        out.extend(picks[: alloc[k]])
+    return sorted(out, key=lambda r: r["unit_id"])
 
 
 def baseline_judged(model_id, tag):

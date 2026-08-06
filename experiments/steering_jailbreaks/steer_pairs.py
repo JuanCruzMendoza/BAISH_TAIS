@@ -94,6 +94,8 @@ def main():
     ap.add_argument("--layers", default="steer_band", help=cfg.LAYER_SPEC)
     ap.add_argument("--alpha", type=float, default=0.5, help="magnitude; sign from spec 0.5")
     ap.add_argument("--arms", default=",".join(ARMS))
+    ap.add_argument("--decoding", default="greedy", choices=list(gen.DECODINGS))
+    ap.add_argument("--decode-seed", type=int, default=None, help="required if sampling")
     ap.add_argument("--max-new-tokens", type=int, default=512)
     ap.add_argument("--batch-size", type=int, default=8)
     ap.add_argument("--max-batch-tokens", type=int, default=16384)
@@ -106,6 +108,7 @@ def main():
         raise SystemExit("(story_v2, story_v1) is not a valid pair: at cos +0.76 the "
                          "orthogonal residual is construction noise (spec 5.6)")
     arms = [a for a in args.arms.split(",") if a]
+    decode = gen.resolve_decode(args.decoding, args.decode_seed)
 
     src = cfg.acts_layout(args.model, args.tag)
     lay = cfg.Layout(sets.EXPERIMENT, args.model, args.tag, acts_cache=False)
@@ -170,7 +173,7 @@ def main():
                       "alpha_scan": trace if arm == "perp_effect" else None,
                       "cos_ab_band": round(float(cosv[layers].mean()), 4),
                       "cos_null_band": round(null, 4), "lopo_cos_stability": stab,
-                      "tau_q": None, "decoding": "greedy",
+                      "tau_q": None, "decoding": args.decoding, "decode": decode,
                       "max_new_tokens": args.max_new_tokens, "batch_size": args.batch_size,
                       "max_batch_tokens": args.max_batch_tokens, "position": "all_tokens",
                       "n_rows": len(rows), "seed": cfg.SEED}
@@ -178,7 +181,7 @@ def main():
                       "direction_run_key": pa.get("run_key"),
                       "projected_run_key": pb.get("run_key")}
             cell.emit(lay, src, stem, config, inputs, rows, specs, layers, tok, model,
-                      args.batch_size, args.max_batch_tokens, args.max_new_tokens)
+                      args.batch_size, args.max_batch_tokens, args.max_new_tokens, decode)
 
 
 if __name__ == "__main__":

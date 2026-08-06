@@ -20,10 +20,14 @@ def main():
     ap.add_argument("model")
     ap.add_argument("--tag", default=None)
     ap.add_argument("--split", default="all", choices=["all", "val", "test"])
+    ap.add_argument("--decoding", default="greedy", choices=list(gen.DECODINGS),
+                    help="spec 5.1; whatever gen_decoding_compare picked")
+    ap.add_argument("--decode-seed", type=int, default=None, help="required if sampling")
     ap.add_argument("--max-new-tokens", type=int, default=512)
     ap.add_argument("--batch-size", type=int, default=8)
     ap.add_argument("--max-batch-tokens", type=int, default=16384)
     args = ap.parse_args()
+    decode = gen.resolve_decode(args.decoding, args.decode_seed)
 
     lay = cfg.Layout(sets.EXPERIMENT, args.model, args.tag, acts_cache=False)
     print(f"run {lay}")
@@ -31,7 +35,8 @@ def main():
     view, rows = sets.jailbreak_rows(args.model, args.tag, tok=tok, split=args.split)
 
     stem = mf.stem("gen_baseline")
-    config = {"split": args.split, "decoding": "greedy", "max_new_tokens": args.max_new_tokens,
+    config = {"split": args.split, "decoding": args.decoding, "decode": decode,
+              "max_new_tokens": args.max_new_tokens,
               "batch_size": args.batch_size, "max_batch_tokens": args.max_batch_tokens,
               "n_rows": len(rows), "seed": cfg.SEED}
     inputs = {"jb_view_key": view["view_key"], "source_files": view["source_files"],
@@ -42,6 +47,7 @@ def main():
         with run.open_append(".jsonl") as fh:
             info = gen.run(tok, model, rows, gen.Sink(fh), done,
                            args.batch_size, args.max_batch_tokens, args.max_new_tokens,
+                           decode=decode,
                            progress=lambda i, n: print(f"  {i}/{n}", end="\r"))
         print(f"\n{len(rows)} rows, {len(done)} cached, {info['n_rows_run']} generated "
               f"in {info['n_batches_run']}/{info['n_batches']} batches")

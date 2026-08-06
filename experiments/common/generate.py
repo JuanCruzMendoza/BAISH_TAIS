@@ -32,14 +32,47 @@ def plan_batches(units, ntok, batch_size, max_batch_tokens):
     return batches
 
 
+GREEDY = {"do_sample": False}
+
+# Spec 5.1's candidate decodings. One registry, so gen_decoding_compare measures exactly
+# what the later scripts can be told to use -- a label that only one script understands is
+# how a comparison stops applying to the runs it was meant to inform.
+DECODINGS = {
+    "greedy": GREEDY,
+    "t0.7p0.9": {"do_sample": True, "temperature": 0.7, "top_p": 0.9},
+    "t1.0p0.95": {"do_sample": True, "temperature": 1.0, "top_p": 0.95},
+}
+
+
+def resolve_decode(label, seed=None):
+    if label not in DECODINGS:
+        raise SystemExit(f"unknown decoding {label!r}; choose from {list(DECODINGS)}")
+    kw = dict(DECODINGS[label])
+    if kw["do_sample"]:
+        if seed is None:
+            raise SystemExit(f"decoding {label!r} samples, so it needs an explicit seed: "
+                             f"without one the run is not reproducible (spec 0.10)")
+        kw["seed"] = seed
+    return kw
+
+
 @torch.no_grad()
-def _one_batch(tok, model, texts, max_new_tokens):
+def _one_batch(tok, model, texts, max_new_tokens, decode=None):
+    """decode: {do_sample, temperature, top_p, seed} -- GREEDY when None.
+
+    The seed is set per batch, so a sampled run is reproducible given the same seed and
+    the same batching plan, exactly as the greedy runs are.
+    """
+    decode = dict(decode or GREEDY)
+    seed = decode.pop("seed", None)
+    if seed is not None:
+        torch.manual_seed(seed)
     enc = tok([mdl.templated(tok, t) for t in texts], return_tensors="pt",
               padding=True, add_special_tokens=False)
     enc = {k: v.to(model.device) for k, v in enc.items()}
     assert enc["attention_mask"][:, -1].all(), "right padding would steer a pad tail"
     n_in = enc["input_ids"].shape[-1]
-    out = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False,
+    out = model.generate(**enc, max_new_tokens=max_new_tokens, **decode,
                          pad_token_id=tok.pad_token_id or tok.eos_token_id)
     eos = tok.eos_token_id
     rows = []
@@ -76,12 +109,13 @@ def prefill_states(tok, model, prompts, specs=None, batch_size=8, max_batch_toke
 
 
 def run(tok, model, rows, sink, done, batch_size, max_batch_tokens, max_new_tokens,
-        specs=None, probes=None, progress=None):
+        specs=None, probes=None, progress=None, decode=None):
     """Generate for every row not already in `done`, appending one JSONL line each.
 
     rows: [{unit_id, prompt, n_tokens, ...}] -- extra keys are copied to the output.
     specs: hook specs from hooks.build, or None for the unsteered pass.
     probes: {name: u_final [d]} for the manipulation check at layer L (spec 5.4).
+    decode: sampling config, or None for greedy (spec 5.1).
     """
     ntok = {r["unit_id"]: r.get("n_tokens") or 0 for r in rows}
     by_id = {r["unit_id"]: r for r in rows}
@@ -94,7 +128,8 @@ def run(tok, model, rows, sink, done, batch_size, max_batch_tokens, max_new_toke
     with hk.installed(model, specs or [], capture=capture):
         for batch in todo:
             counter["calls"] = 0
-            got = _one_batch(tok, model, [by_id[u]["prompt"] for u in batch], max_new_tokens)
+            got = _one_batch(tok, model, [by_id[u]["prompt"] for u in batch],
+                             max_new_tokens, decode)
             readouts = [{}] * len(batch)
             if capture is not None and capture.h is not None:
                 readouts = [{f"read_{k}": float(capture.h[i] @ v) for k, v in probes.items()}
