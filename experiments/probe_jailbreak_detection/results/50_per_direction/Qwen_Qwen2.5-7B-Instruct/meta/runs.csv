@@ -1,0 +1,3 @@
+timestamp,script,stem,run_key,git_sha,git_dirty,outcome,resumed_from,wall_s,argv
+2026-08-04T14:40:52,jb_readout.py,jb_readout,4cf7773f8b6398f5,26320b0bc8a9,True,written,0,0.0,"Qwen/Qwen2.5-7B-Instruct --tag 50_per_direction"
+2026-08-04T14:40:54,jb_metrics.py,jb_metrics__midpoint,5b83afc4653d7605,26320b0bc8a9,True,written,0,0.1,"Qwen/Qwen2.5-7B-Instruct --tag 50_per_direction"

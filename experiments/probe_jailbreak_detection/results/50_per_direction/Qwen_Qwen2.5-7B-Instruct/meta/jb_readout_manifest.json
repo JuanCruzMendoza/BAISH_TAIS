@@ -1,0 +1,72 @@
+{
+  "config": {
+    "axes": [
+      "story_v2",
+      "story_v1",
+      "harm",
+      "persona",
+      "eval",
+      "length"
+    ],
+    "n_rows": 100,
+    "poles": [
+      "pos"
+    ],
+    "position": "last_token",
+    "readout": "(h - mu) . u_hat",
+    "reference": "train+heldout poles",
+    "seed": 20260731,
+    "split": "all",
+    "subsample": {
+      "family_alloc": {
+        "fiction_narrative": 35,
+        "hybrid": 20,
+        "nonfiction_other": 15,
+        "roleplay_persona": 30
+      },
+      "filter": "prompt != request",
+      "max_per_template": 2,
+      "n": 100,
+      "seed": 20260731,
+      "strategy": "template_diverse"
+    }
+  },
+  "env": {
+    "argv": [
+      "/marimo/BAISH_TAIS/experiments/probe_jailbreak_detection/jb_readout.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "50_per_direction"
+    ],
+    "git_diff_sha": "d440de4172fcf66fc52f2f17c8363584015e03d4772a3387b65d54bdc1c9664c",
+    "git_dirty": true,
+    "git_sha": "26320b0bc8a98c90d01ed8eb9eba5032206cbd39",
+    "host": "500ef7d1-35a5-4f58-a447-7eb181d4292f-t4g44",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.11",
+    "resumed_from": 0,
+    "timestamp": "2026-08-04T14:40:52",
+    "wall_s": 0.03
+  },
+  "inputs": {
+    "direction_run_keys": {
+      "eval": "e87bd5c4bec3defc14fcc539c0989ae97036437c02b88a0bdb28f8f8acf8ff02",
+      "harm": "9fc5ff3495dc266d0084b0ad425452d38a0ca51b0c24e0660dafa6ab1f9863df",
+      "length": "a934fb5aa51f06e80d48edb488d03128c6beaedc1db03e3d07afe43c1f27552b",
+      "persona": "f4d31ddd77c3cccf3cf3c4554abade143456f2645a754a547524e1126984330a",
+      "story_v1": "1eb784fb7c2a3aa43bebb50caf6575786f6333941ff8f646185ec5d95f26ac02",
+      "story_v2": "e647e5ec626696de8f2cde0865b9e3a6bff9703943303f70329721ddaf8ddb8c"
+    },
+    "jb_view_key": "653256d0b302bc2fa1ff7b90d5c6eefa7568d3f56614780b233d238dbc0d3621",
+    "source_files": [
+      {
+        "path": "data/jailbreaks/jailbreaks.csv",
+        "sha256": "85b15b7957de7f980835a32ab2a47113431f43f1d3dfa3414767ae1c8f21b0f3"
+      }
+    ]
+  },
+  "notes": [],
+  "run_key": "4cf7773f8b6398f565eebf2a6dd0acb92ed2202e82e8190119745f600618d28b",
+  "status": "complete",
+  "stem": "jb_readout"
+}
