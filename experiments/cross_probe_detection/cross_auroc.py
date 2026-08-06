@@ -59,13 +59,18 @@ def load_axis(src, axis):
 # --------------------------------------------------------------------- cells
 
 def cell(pos, neg):
-    """One AUROC cell: exact interval + the sign-free leakage magnitude."""
+    """One AUROC cell. The Clopper-Pearson interval is computed and consumed here.
+
+    It is not emitted: `delta_excluded` is the only thing the interval is read for,
+    and CP is a pure function of (wins, ties, n), all three of which are columns --
+    so any interval can be reconstructed exactly without carrying two more.
+    """
     ci = met.auroc_ci(pos, neg)
-    return {"auroc": ci["auroc"], "ci_lo": ci["ci_lo"], "ci_hi": ci["ci_hi"],
-            "wins": ci["wins"], "ties": ci["ties"], "n": ci["n"],
+    return {"auroc": ci["auroc"], "wins": ci["wins"], "ties": ci["ties"], "n": ci["n"],
             # Sign-free: a probe reading a rival at 0.17 reads it as strongly as at
             # 0.83, just inverted.
-            "auroc_folded": max(ci["auroc"], 1.0 - ci["auroc"])}
+            "auroc_folded": max(ci["auroc"], 1.0 - ci["auroc"]),
+            "delta_excluded": delta_excluded(ci["ci_lo"], ci["ci_hi"])}
 
 
 def delta_excluded(ci_lo, ci_hi):
@@ -110,15 +115,14 @@ def tensor_rows(probes, axes, Lp1, null_folded):
                                  # it is what a random direction already gets on this
                                  # axis. Below zero = reads the rival axis *less* than
                                  # an arbitrary direction does.
-                                 "excess_over_null": c["auroc_folded"] - nf,
-                                 "delta_excluded": delta_excluded(c["ci_lo"], c["ci_hi"])})
+                                 "excess_over_null": c["auroc_folded"] - nf})
                     continue
                 # Diagonal: never the pooled in-sample number.
                 lo = cell(np.einsum("nd,nd->n", ax["pos"][:nt, l, :], lopo_u[:, l, :]),
                           np.einsum("nd,nd->n", ax["neg"][:nt, l, :], lopo_u[:, l, :]))
                 rows.append({**base, "cell_type": "diag_lopo", **lo,
                              "excess_over_null": lo["auroc_folded"] - nf,
-                             "delta_excluded": None})
+                             "delta_excluded": None})     # absence is not a diagonal claim
                 ho = cell(sp[nt:, l], sn[nt:, l])
                 rows.append({**base, "cell_type": "diag_heldout", **ho,
                              "excess_over_null": ho["auroc_folded"] - nf,
@@ -273,8 +277,7 @@ def main():
         off = [r for r in m_matched if r["cell_type"] == "offdiag_pooled"]
         worst = max(off, key=lambda r: r["excess_over_null"])
         print(f"\n  strongest off-diagonal at the matched layer, net of the null: "
-              f"{worst['probe']} -> {worst['axis']} {worst['auroc']:.3f} "
-              f"[{worst['ci_lo']:.3f}, {worst['ci_hi']:.3f}]  "
+              f"{worst['probe']} -> {worst['axis']} {worst['auroc']:.3f}  "
               f"folded {worst['auroc_folded']:.3f} vs null {worst['null_folded']:.3f}")
         for d in DELTAS:
             k = sum(1 for r in off if (r["delta_excluded"] or 1.0) <= d)
