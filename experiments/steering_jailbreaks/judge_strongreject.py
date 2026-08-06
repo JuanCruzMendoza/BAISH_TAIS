@@ -21,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from experiments.common import manifest as mf, metrics as met
+from experiments.common import config as cfg, manifest as mf, metrics as met
 
 RUBRIC = Path(__file__).with_name("judge_templates.json")
 MAX_TOKENS = 1024
@@ -260,8 +260,14 @@ def main():
     src_rows = read_rows(gen_path)
 
     templates = None if args.dry_run else load_templates()
-    judge = None if args.dry_run else Judge(args.judge_model, templates,
-                                            meta_dir / "judge_cache.jsonl")
+    judge = None
+    if not args.dry_run:
+        cfg.load_env()
+        judge = Judge(args.judge_model, templates, meta_dir / "judge_cache.jsonl")
+        var = "OPENAI_API_KEY" if judge.backend == "openai" else "ANTHROPIC_API_KEY"
+        if not os.environ.get(var):
+            raise SystemExit(f"{var} is not set. Put it in {cfg.REPO / '.env'} as "
+                             f"{var}=... (gitignored), or export it in the shell.")
 
     out_path = meta_dir / f"{stem}_judged.jsonl"
     done = {r["unit_id"] for r in read_rows(out_path)} if out_path.exists() else set()

@@ -7,6 +7,12 @@ uv.lock
 *__pycache__
 TODO.md
 
+# API keys: .env is read by config.load_env(). .env.example is tracked and holds
+# names only, never values.
+.env
+.env.*
+!.env.example
+
 # data/ holds datasets only; the scripts that build and audit them stay local
 data/**/*.py
 

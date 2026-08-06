@@ -25,6 +25,31 @@ BAND_LO, BAND_HI = 0.40, 0.90
 STEER_LO, STEER_HI = 0.70, 0.90
 
 
+def load_env(path=None):
+    """Read REPO/.env into os.environ. Gitignored; holds API keys.
+
+    A variable already set in the environment always wins, so a shell export beats a
+    stale .env rather than being silently replaced by it. Returns the names loaded --
+    never the values, which must not reach a log or a manifest.
+    """
+    p = Path(path) if path else REPO / ".env"
+    if not p.exists():
+        return []
+    loaded = []
+    for line in p.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.removeprefix("export ").split("=", 1)
+        k, v = k.strip(), v.strip()
+        if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+            v = v[1:-1]
+        if k and k not in os.environ:
+            os.environ[k] = v
+            loaded.append(k)
+    return loaded
+
+
 def band(L):
     """Reporting band (spec 0.3). Every layer is still swept."""
     return list(range(round(BAND_LO * L), round(BAND_HI * L) + 1))
