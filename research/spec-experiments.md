@@ -57,10 +57,11 @@ distinguish runs meant to coexist:
 | `extract_direction.py --direction story` | `extract_direction__story` |
 | `probe_select.py --direction story` | `probe_select__story` |
 | `cross_auroc.py` (matched / own-best, §2.2) | `cross_auroc__matched`, `cross_auroc__ownbest` |
-| `steer.py --direction story_v2 --mode ablate --layers band` | `steer__story_v2__ablate__band` |
-| `steer.py --direction harm --mode add --layers 22 --alpha 0.1` | `steer__harm__add__L22__a0.1` |
-| `steer.py --direction harm --mode add --layers frac:0.70-0.90 --alpha 0.1` | `steer__harm__add__f0.70-0.90__a0.1` |
-| `steer.py --direction story_v2 --mode ablate --sweep-layers 11-13` | **three** stems: `steer__story_v2__ablate__L11`, `…__L12`, `…__L13` |
+| `steer_single.py --direction story_v2 --mode ablate --layers steer_band` | `steer_single__story_v2__ablate__steer_band` |
+| `steer_single.py --direction harm --mode add --layers 22 --alpha 0.5` | `steer_single__harm__add__L22__a0.5` |
+| `steer_single.py --direction story_v2 --mode cap --layers steer_band --tau-q 75` | `steer_single__story_v2__cap__steer_band__q75` |
+| `steer_single.py --arm noop --layers steer_band` | `steer_single__noop__steer_band` — no direction, one per layer set |
+| `steer_single.py --direction story_v2 --mode ablate --sweep-layers 15,17,18` | **three** stems: `steer_single__story_v2__ablate__L15`, `…__L17`, `…__L18` |
 
 Semantic knobs only — the full resolved config lives in the manifest (§0.10), not in a 20-field
 filename.
@@ -871,6 +872,19 @@ inside the held-out **harmful** distribution, jailbreaks do not flip internal ha
 
 Plan §5 step 2 ("apply to *successful* fiction jailbreaks") needs ASR labels from experiment 4's
 baseline run. `jb_success_split.py` joins the judge output and runs last. §3.1–3.4 run now.
+
+**What the join buys**: the two sets §5.4 and §5.5 steer are defined by the baseline judge, so this
+is the observational version of §5's causal test — *does a probe already read the jailbreaks that
+worked differently from the ones the model refused?* Unpaired AUROC(success vs refusal) per probe ×
+band layer, alongside §3's `pct_reads` on each side at the same τ. The set definitions are imported
+from `steering_jailbreaks.sets`, never re-derived, and the two `jb_view_key`s must match or the run
+refuses; degenerate rows are in neither set.
+
+Two things bound it. **No exact interval applies** — the contrast is unpaired, so §0.7's
+Clopper–Pearson does not (`metrics.unpaired_auroc`); at ~40 vs ~40 an AUROC near 0.5 is unreadable
+and the `template_id` cluster counts are reported per side so the effective n is visible. And
+**length is confounded** exactly as in §3.2, so the same contrast is run on `n_tokens` alone
+(`auroc_len`): a probe that does not beat it is separating the sets by prompt length.
 
 ---
 

@@ -12,6 +12,8 @@ python experiments/extraction/cache_activations.py Qwen/Qwen2.5-7B-Instruct \
 # CPU
 python jb_readout.py Qwen/Qwen2.5-7B-Instruct --tag 50_per_direction
 python jb_metrics.py Qwen/Qwen2.5-7B-Instruct --tag 50_per_direction
+# after steering_jailbreaks/gen_baseline.py + judge_strongreject.py (spec 3.5)
+python jb_success_split.py Qwen/Qwen2.5-7B-Instruct --tag 50_per_direction
 ```
 
 Needs `extract_direction.py` per axis and its cached `train` + `heldout` views: the threshold is
@@ -82,6 +84,30 @@ Two tables, **band layers only** (L11–25, §0.3).
 | `pct_reads_min`, `pct_reads_max` | spread across band layers — a wide range means the layer choice matters |
 | `n_layers`, `band_lo`, `band_hi` | which layers were averaged |
 | `ref_tpr_mean`, `ref_fpr_mean`, `gap_position_mean` | the three threshold diagnostics, band-averaged |
+
+## The success split (§3.5, `jb_success_split.py`)
+
+**Objective:** does a probe already read the jailbreaks that worked differently from the ones the
+model refused? The observational version of experiment 5's causal test, on the same rows and the
+same two sets — imported from `steering_jailbreaks.sets`, so "successful" cannot mean two things.
+Degenerate rows are in neither set. Runs after `gen_baseline.py` + `judge_strongreject.py`.
+
+**`jb_success_split__<rule>_rate.csv`** — per probe × band layer × slice (`all`, `family`; a slice
+needs ≥5 rows on **both** sides).
+
+| column | meaning |
+|---|---|
+| `auroc` | **the headline**: unpaired AUROC of the readout, successes vs refusals. >0.5 = the ones that worked read higher on the axis |
+| `mean_success`, `mean_refusal` | raw readouts, so the sign is readable |
+| `pct_reads_success`, `pct_reads_refusal`, `threshold` | §3's headline on each side, same τ rule |
+
+**`jb_success_split__<rule>_band.csv`** — the same collapsed over the band, plus `auroc_len`.
+
+Two limits, both reported rather than worked around. The contrast is **unpaired**, so §0.7's exact
+interval does not apply and at ~40 vs ~40 an AUROC near 0.5 is unreadable — `template_id` cluster
+counts per side are printed so the effective n is visible. And **length is confounded** as in §3.2,
+so `auroc_len` runs the identical contrast on `n_tokens` alone: a probe that does not beat it is
+separating the two sets by prompt length.
 
 ## Notes
 
