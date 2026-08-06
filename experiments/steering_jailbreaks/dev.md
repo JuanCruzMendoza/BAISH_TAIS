@@ -176,9 +176,9 @@ At this tag `aggregate.py` reports layer configs and α side by side and **refus
 
 ### Notes
 
-- **The rubric is not in the repo.** `judge_strongreject.py` requires `judge_templates.json` with
-  `strongreject_rubric_system` and `strongreject_rubric` copied verbatim from `dsbowen/strong_reject`;
-  §5.3 forbids paraphrase, so the script refuses to invent one. `--dry-run` scores the detector
+- **The rubric is in the repo**, `judge_templates.json`, both strings byte-identical to
+  `dsbowen/strong_reject` with the upstream URL and sha256 recorded alongside them.
+  §5.3 forbids paraphrase, so `judge_strongreject.py` refuses to start without it. `--dry-run` scores the detector
   columns only, with no API call.
 - **The 3-way label comes from the judge**, asked for after the rubric block so the rubric text stays
   byte-identical. `template_sha` covers the added instruction, so editing it invalidates the cache.

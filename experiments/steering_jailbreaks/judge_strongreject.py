@@ -190,6 +190,25 @@ def summarise(rows, meta):
             **{c: round(v, 3) for c, v in reads.items()}}
 
 
+def read_rows(path):
+    """JSONL rows, torn tail discarded, deduplicated by unit_id with last-write-wins.
+
+    Both matter (spec 0.11). A kill mid-append leaves a truncated final line, and a resumed
+    generation re-runs a partially-completed *batch* whole, so the same unit_id can legally
+    appear twice. Counting both would inflate every rate in the cell's summary.
+    """
+    out = {}
+    for line in Path(path).read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError:
+            break
+        out[r["unit_id"]] = r
+    return list(out.values())
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("generations", help="<stem>.jsonl written by gen_baseline / steer_*")
@@ -204,27 +223,14 @@ def main():
     meta_dir = gen_path.parent
     man = mf.load_upstream(meta_dir / f"{stem}_manifest.json")
 
-    src_rows = []
-    for line in gen_path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            try:
-                src_rows.append(json.loads(line))
-            except json.JSONDecodeError:
-                break                                  # torn tail (spec 0.11)
+    src_rows = read_rows(gen_path)
 
     templates = None if args.dry_run else load_templates()
     judge = None if args.dry_run else Judge(args.judge_model, templates,
                                             meta_dir / "judge_cache.jsonl")
 
     out_path = meta_dir / f"{stem}_judged.jsonl"
-    done = set()
-    if out_path.exists():
-        for line in out_path.read_text(encoding="utf-8").splitlines():
-            if line.strip():
-                try:
-                    done.add(json.loads(line)["unit_id"])
-                except (json.JSONDecodeError, KeyError):
-                    break
+    done = {r["unit_id"] for r in read_rows(out_path)} if out_path.exists() else set()
     n_cached = 0
     with out_path.open("a", encoding="utf-8") as fh:
         for i, r in enumerate(src_rows, 1):
@@ -244,10 +250,7 @@ def main():
             os.fsync(fh.fileno())
             print(f"  judged {i}/{len(src_rows)}", end="\r")
 
-    rows = []
-    for line in out_path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            rows.append(json.loads(line))
+    rows = read_rows(out_path)
     cfgm = man["config"]
     summary = summarise(rows, {"stem": stem, "run_key": man["run_key"][:16],
                                "prompt_set": cfgm.get("prompt_set", "all"),

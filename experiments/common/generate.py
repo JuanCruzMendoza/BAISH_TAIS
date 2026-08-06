@@ -57,16 +57,18 @@ def resolve_decode(label, seed=None):
 
 
 @torch.no_grad()
-def _one_batch(tok, model, texts, max_new_tokens, decode=None):
+def _one_batch(tok, model, texts, max_new_tokens, decode=None, batch_index=0):
     """decode: {do_sample, temperature, top_p, seed} -- GREEDY when None.
 
-    The seed is set per batch, so a sampled run is reproducible given the same seed and
-    the same batching plan, exactly as the greedy runs are.
+    The seed is offset by the batch's index in the plan, so a sampled run is reproducible
+    given the same seed and the same batching plan (the plan is a function of the full row
+    set, spec 0.11) *without* every batch starting from the same RNG state -- which would
+    correlate the draw for row j of every batch.
     """
     decode = dict(decode or GREEDY)
     seed = decode.pop("seed", None)
     if seed is not None:
-        torch.manual_seed(seed)
+        torch.manual_seed(seed + batch_index)
     enc = tok([mdl.templated(tok, t) for t in texts], return_tensors="pt",
               padding=True, add_special_tokens=False)
     enc = {k: v.to(model.device) for k, v in enc.items()}
@@ -92,9 +94,10 @@ def prefill_states(tok, model, prompts, specs=None, batch_size=8, max_batch_toke
     spec 5.6's matched-self-effect arm measurable: scan alpha until the probe readout
     moves as far as the unprojected run moved it, without generating at every candidate.
     """
-    idx = {p: i for i, p in enumerate(prompts)}
     ntok = {p: len(mdl.token_ids(tok, p)) for p in dict.fromkeys(prompts)}
-    out = [None] * len(prompts)
+    # Keyed by prompt, then expanded back to the caller's order: a repeated prompt is
+    # computed once and returned at every position it occupies, rather than leaving a hole.
+    got = {}
     cap = hk.FinalCapture()
     with hk.installed(model, specs or [], capture=cap):
         for batch in plan_batches(list(ntok), ntok, batch_size, max_batch_tokens):
@@ -103,9 +106,11 @@ def prefill_states(tok, model, prompts, specs=None, batch_size=8, max_batch_toke
             enc = {k: v.to(model.device) for k, v in enc.items()}
             cap.h = None
             model(**enc)
+            if cap.h is None:
+                raise RuntimeError("final-layer capture did not fire: no prefill pass seen")
             for j, p in enumerate(batch):
-                out[idx[p]] = cap.h[j]
-    return torch.stack(out)
+                got[p] = cap.h[j]
+    return torch.stack([got[p] for p in prompts])
 
 
 def run(tok, model, rows, sink, done, batch_size, max_batch_tokens, max_new_tokens,
@@ -120,17 +125,21 @@ def run(tok, model, rows, sink, done, batch_size, max_batch_tokens, max_new_toke
     ntok = {r["unit_id"]: r.get("n_tokens") or 0 for r in rows}
     by_id = {r["unit_id"]: r for r in rows}
     batches = plan_batches(list(by_id), ntok, batch_size, max_batch_tokens)
-    todo = [b for b in batches if any(u not in done for u in b)]
+    # Carry each batch's index in the *full* plan, so a resumed run seeds its batches
+    # exactly as an uninterrupted one would.
+    todo = [(i, b) for i, b in enumerate(batches) if any(u not in done for u in b)]
     counter = {"calls": 0}
     capture = hk.FinalCapture() if probes else None
     n_done = 0
 
     with hk.installed(model, specs or [], capture=capture):
-        for batch in todo:
+        for bi, batch in todo:
             counter["calls"] = 0
+            if capture is not None:
+                capture.h = None            # never attribute a prior batch's states
             got = _one_batch(tok, model, [by_id[u]["prompt"] for u in batch],
-                             max_new_tokens, decode)
-            readouts = [{}] * len(batch)
+                             max_new_tokens, decode, batch_index=bi)
+            readouts = [{} for _ in batch]
             if capture is not None and capture.h is not None:
                 readouts = [{f"read_{k}": float(capture.h[i] @ v) for k, v in probes.items()}
                             for i in range(len(batch))]
@@ -140,7 +149,7 @@ def run(tok, model, rows, sink, done, batch_size, max_batch_tokens, max_new_toke
                                 "n_in_batch": len(batch)})
             n_done += len(batch)
             if progress:
-                progress(n_done, sum(len(b) for b in todo))
+                progress(n_done, sum(len(b) for _, b in todo))
     return {"n_batches": len(batches), "n_batches_run": len(todo), "n_rows_run": n_done,
             "hook_calls_last": counter["calls"]}
 
