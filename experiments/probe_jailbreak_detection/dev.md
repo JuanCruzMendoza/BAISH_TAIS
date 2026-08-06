@@ -85,6 +85,31 @@ Two tables, **band layers only** (L11–25, §0.3).
 | `n_layers`, `band_lo`, `band_hi` | which layers were averaged |
 | `ref_tpr_mean`, `ref_fpr_mean`, `gap_position_mean` | the three threshold diagnostics, band-averaged |
 
+## The per-jailbreak table (`jb_readout_table.py`)
+
+**Objective:** the per-row view the other scripts do not give — `jb_readout.pt` is a gitignored
+tensor and `jb_metrics` aggregates to `pct_reads` per probe × layer × group, so no tracked file says
+what a probe read on *one* jailbreak. Columns use the same layer sets `steering_jailbreaks` steers, so
+a cell's manipulation check and the probe's own reading of that prompt sit side by side.
+
+`--sweep <dir>=<layers>` gives one column per layer; `--band` gives one more per direction, the
+**mean** over its layers. Run at the §5.4 layers with `steer_band` shared across directions:
+
+```bash
+python jb_readout_table.py Qwen/Qwen2.5-7B-Instruct --tag 50_per_direction \
+  --sweep story_v2=15,17,18 --sweep story_v1=15,16,20 --sweep persona=17,19,21 \
+  --sweep harm=20,21,22 --sweep eval=14,15,16 --band steer_band
+```
+
+→ `jb_readout_table__steer_band.csv`, 100 rows × 20 readout columns (`<direction>__L17`,
+`<direction>__steer_band`) plus `row_id` and the row metadata.
+
+**Read the numbers as within-column only.** They are raw `(h − μ)·û` projections: magnitude grows
+with depth, so a `steer_band` (L20–25) column is numerically much larger than an L14 one and leans on
+its deepest layers, and two directions' columns are different probes with different norms. A readout
+is also not a detection until it is cut at a threshold, and τ is per probe × layer — `jb_metrics`
+owns that.
+
 ## The success split (§3.5, `jb_success_split.py`)
 
 **Objective:** does a probe already read the jailbreaks that worked differently from the ones the
