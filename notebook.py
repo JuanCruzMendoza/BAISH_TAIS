@@ -13,7 +13,12 @@ def _():
     ROOT = str(pathlib.Path(REPO).parent)
     def sh(*a, cwd=REPO):
         p = subprocess.run(a, cwd=cwd, capture_output=True, text=True)
-        print(p.stdout[-4000:], p.stderr[-2000:]); assert p.returncode == 0, a
+        print(p.stdout[-4000:], p.stderr[-2000:])
+        if p.returncode:
+            # In the exception, not just printed: marimo shows the traceback and the
+            # cell output separately, and `assert ..., a` carried only the argv.
+            raise RuntimeError(f"exit {p.returncode}: {' '.join(map(str, a))}\n"
+                               f"{(p.stderr or p.stdout)[-1500:]}")
         return p
     if pathlib.Path(REPO).exists():
         sh("git", "fetch", "origin"); sh("git", "reset", "--hard", "origin/main")
