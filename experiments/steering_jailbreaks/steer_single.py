@@ -68,10 +68,12 @@ def resolve(args, prompt_set):
     return direction, mode
 
 
-def run(args, script, prompt_set, want):
+def run(args, script, prompt_set, want, tok=None, model=None):
+    """tok/model injected by steer_batch.py, which drives many cells under one load."""
     direction, mode = resolve(args, prompt_set)
     decode = gen.resolve_decode(args.decoding, args.decode_seed)
-    tok, model = mdl.load(args.model)
+    if model is None:
+        tok, model = mdl.load(args.model)
     n_layers = model.config.num_hidden_layers
 
     _, all_rows = sets.jailbreak_rows(args.model, args.tag, tok=tok)

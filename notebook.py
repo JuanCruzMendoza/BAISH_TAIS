@@ -143,8 +143,11 @@ def _(mo):
     | `aggregate`, `jb_success_split` | CPU only |
 
     The judge is the only thing that calls an API. Everything else is local.
-    Each `steer_*` invocation reloads the 7B model, so the wall clock is dominated by
-    ~50 model loads on top of ~4,400 generations.
+
+    5.4 and 5.5 go through `steer_batch.py`, which validates all its jobs and *then*
+    loads the model once — 2 loads for 93 cells instead of 47. Batch size is **32 /
+    65536 padded tokens** everywhere: it sits inside every cell's `run_key`, so it has
+    to be identical across scripts and must not change once the first cell has run.
     """)
     return
 
@@ -228,7 +231,8 @@ def _(mo):
 
 @app.cell
 def _(MODEL, TAG, sh):
-    sh("python", "experiments/steering_jailbreaks/gen_decoding_compare.py", MODEL, "--tag", TAG)
+    sh("python", "experiments/steering_jailbreaks/gen_decoding_compare.py", MODEL, "--tag", TAG,
+       "--batch-size", "32", "--max-batch-tokens", "65536")
     return
 
 
@@ -293,9 +297,9 @@ def _(mo):
 
 
 @app.cell
-def _(DECODE_ARGS, MODEL, TAG, sh):
+def _(BATCH, DECODE_ARGS, MODEL, TAG, sh):
     sh("python", "experiments/steering_jailbreaks/gen_baseline.py", MODEL, "--tag", TAG,
-       *DECODE_ARGS)
+       *BATCH, *DECODE_ARGS)
     return
 
 
@@ -377,8 +381,19 @@ def _():
 
     SUCCESS_JOBS = jobs(HARMEV, STORY, with_cap=True)     # 5.4
     REFUSAL_JOBS = jobs(STORY, HARMEV, with_cap=False)    # 5.5, modes mirrored
-    print(f"5.4: {len(SUCCESS_JOBS)} invocations   5.5: {len(REFUSAL_JOBS)} invocations")
+    print(f"5.4: {len(SUCCESS_JOBS)} jobs   5.5: {len(REFUSAL_JOBS)} jobs")
     return REFUSAL_JOBS, SUCCESS_JOBS
+
+
+@app.cell
+def _(REFUSAL_JOBS, SUCCESS_JOBS):
+    import json
+    # steer_batch reads a JSON list of argv tails and drives them all under one load.
+    for _name, _js in (("success", SUCCESS_JOBS), ("refusal", REFUSAL_JOBS)):
+        open(f"/tmp/jobs_{_name}.json", "w").write(json.dumps(_js))
+    BATCH = ["--batch-size", "32", "--max-batch-tokens", "65536"]
+    print("job files written;", " ".join(BATCH))
+    return (BATCH,)
 
 
 @app.cell(hide_code=True)
@@ -393,10 +408,9 @@ def _(mo):
 
 
 @app.cell
-def _(DECODE_ARGS, MODEL, SUCCESS_JOBS, TAG, sh):
-    for _j in SUCCESS_JOBS:
-        sh("python", "experiments/steering_jailbreaks/steer_single.py", MODEL, "--tag", TAG,
-           *_j, *DECODE_ARGS)
+def _(BATCH, DECODE_ARGS, MODEL, TAG, sh):
+    sh("python", "experiments/steering_jailbreaks/steer_batch.py", MODEL, "--tag", TAG,
+       "--script", "steer_single", "--jobs", "/tmp/jobs_success.json", *BATCH, *DECODE_ARGS)
     return
 
 
@@ -412,10 +426,9 @@ def _(mo):
 
 
 @app.cell
-def _(DECODE_ARGS, MODEL, REFUSAL_JOBS, TAG, sh):
-    for _j in REFUSAL_JOBS:
-        sh("python", "experiments/steering_jailbreaks/steer_induce.py", MODEL, "--tag", TAG,
-           *_j, *DECODE_ARGS)
+def _(BATCH, DECODE_ARGS, MODEL, TAG, sh):
+    sh("python", "experiments/steering_jailbreaks/steer_batch.py", MODEL, "--tag", TAG,
+       "--script", "steer_induce", "--jobs", "/tmp/jobs_refusal.json", *BATCH, *DECODE_ARGS)
     return
 
 
@@ -433,10 +446,10 @@ def _(mo):
 
 
 @app.cell
-def _(DECODE_ARGS, MODEL, TAG, sh):
+def _(BATCH, DECODE_ARGS, MODEL, TAG, sh):
     for _p in ["story_v2,persona", "story_v2,harm", "story_v2,eval", "persona,harm"]:
         sh("python", "experiments/steering_jailbreaks/steer_pairs.py", MODEL, "--tag", TAG,
-           "--pair", _p, "--both-orders", "--layers", "steer_band", *DECODE_ARGS)
+           "--pair", _p, "--both-orders", "--layers", "steer_band", *BATCH, *DECODE_ARGS)
     return
 
 
