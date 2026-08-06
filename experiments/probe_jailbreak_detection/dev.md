@@ -102,7 +102,13 @@ python jb_readout_table.py Qwen/Qwen2.5-7B-Instruct --tag 50_per_direction \
 ```
 
 → `jb_readout_table__steer_band.csv`, 100 rows × 20 readout columns (`<direction>__L17`,
-`<direction>__steer_band`) plus `row_id` and the row metadata.
+`<direction>__steer_band`) plus `row_id`, `prompt_head`, `family`, `category`, `n_tokens`.
+
+`prompt_head` is the opening sentences (≤300 chars, `--head-chars`), whitespace collapsed to one line
+and cut at a sentence end, so a row can be read next to its readouts. Prompts are looked up **by
+`row_id`**, never re-sampled, and each is checked against the `n_chars`/`family`/`category` the
+readout recorded for it — per-row and exact, where the corpus-wide sha is neither. Written
+`utf-8-sig`: the column holds prompt text, and the BOM is what makes Excel render it.
 
 **Read the numbers as within-column only.** They are raw `(h − μ)·û` projections: magnitude grows
 with depth, so a `steer_band` (L20–25) column is numerically much larger than an L14 one and leans on

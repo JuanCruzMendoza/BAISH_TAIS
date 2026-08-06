@@ -17,6 +17,7 @@
       "harm",
       "eval"
     ],
+    "head_chars": 300,
     "n_rows": 100,
     "readout": "(h - mu) . u_hat",
     "seed": 20260731,
@@ -69,20 +70,23 @@
     ],
     "git_diff_sha": null,
     "git_dirty": false,
-    "git_sha": "9dda0f303a0baef64363ccd9be81fcf3563b26db",
+    "git_sha": "7b0d29961a7b5c449ea5212a683cc0ba423e24b9",
     "host": "LAPTOP-11LEDOPR",
     "platform": "Windows-10-10.0.19045-SP0",
     "python": "3.12.2",
     "resumed_from": 0,
-    "timestamp": "2026-08-06T16:08:41",
-    "wall_s": 0.47
+    "timestamp": "2026-08-06T16:23:22",
+    "wall_s": 0.45
   },
   "inputs": {
     "jb_readout_run_key": "4cf7773f8b6398f565eebf2a6dd0acb92ed2202e82e8190119745f600618d28b",
-    "jb_view_key": "653256d0b302bc2fa1ff7b90d5c6eefa7568d3f56614780b233d238dbc0d3621"
+    "jb_view_key": "653256d0b302bc2fa1ff7b90d5c6eefa7568d3f56614780b233d238dbc0d3621",
+    "source_sha_matches_readout": {
+      "data/jailbreaks/jailbreaks.csv": false
+    }
   },
   "notes": [],
-  "run_key": "a16a1d3c42605eb730036aae0e4b88a926c72524277b2a1ebdab3437c9587876",
+  "run_key": "6a9e80220dc6faec8fb2ebe895dbecaea3089782e41381fce92698d6180b01d0",
   "status": "complete",
   "stem": "jb_readout_table__steer_band"
 }
