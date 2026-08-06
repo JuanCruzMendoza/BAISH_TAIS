@@ -270,7 +270,21 @@ def main():
                              f"{var}=... (gitignored), or export it in the shell.")
 
     out_path = meta_dir / f"{stem}_judged.jsonl"
-    done = {r["unit_id"] for r in read_rows(out_path)} if out_path.exists() else set()
+    # Resume is per row, but a row only counts as done if it was graded by *this*
+    # judge. Keying on unit_id alone would skip rows after a --judge-model switch or
+    # an edited label instruction, leaving one file holding two graders' scores --
+    # the same silent mixing the decoding label is guarded against upstream. A
+    # re-graded row is appended and supersedes the old one (read_rows: last wins).
+    stamp = {"judge_model": None if judge is None else args.judge_model,
+             "template_sha": None if judge is None else judge.template_sha}
+    prior = read_rows(out_path) if out_path.exists() else []
+    done = {r["unit_id"] for r in prior
+            if (r.get("judge_model"), r.get("template_sha"))
+            == (stamp["judge_model"], stamp["template_sha"])}
+    n_stale = len({r["unit_id"] for r in prior}) - len(done)
+    if n_stale:
+        print(f"  {n_stale} rows were graded by a different judge or template; "
+              f"re-grading them")
     n_cached = 0
     with out_path.open("a", encoding="utf-8") as fh:
         for i, r in enumerate(src_rows, 1):
@@ -285,7 +299,7 @@ def main():
                 scores = {**parse_scores(raw), "judge_raw": raw[-400:]}
                 if scores["outcome"] is None:
                     scores["outcome"] = det_label(d)
-            fh.write(json.dumps({**r, **d, **scores}, default=str) + "\n")
+            fh.write(json.dumps({**r, **d, **scores, **stamp}, default=str) + "\n")
             fh.flush()
             os.fsync(fh.fileno())
             print(f"  judged {i}/{len(src_rows)}", end="\r")
