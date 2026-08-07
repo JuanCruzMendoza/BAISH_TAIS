@@ -378,10 +378,13 @@ def _():
         for _d in (STORY if with_cap else []):       # graded alternative to ablate
             out.append(["--direction", _d, "--mode", "cap", "--layers", "steer_band",
                         "--tau-q", "75"])
+        # specificity control: one random cell per target cell, since aggregate matches it
+        # on (mode, layers_spec, alpha, tau_q) -- a band-only random leaves every
+        # single-layer and every alpha=1 cell without one (spec 5.4, "same layer set and
+        # same alpha/sqrt(N)").
+        out += [_j + ["--arm", "random"] for _j in list(out)]
         out.append(["--arm", "noop", "--sweep-layers", NOOP_SWEEP])   # zero point per layer set
         out.append(["--arm", "noop", "--layers", "steer_band"])
-        for _d in LAYERS:                            # specificity control, shared config
-            out.append(["--direction", _d, "--arm", "random", "--layers", "steer_band"])
         return out
 
     SUCCESS_JOBS = jobs(HARMEV, STORY, with_cap=True)     # 5.4
@@ -463,7 +466,7 @@ def _(mo):
     mo.md(r"""
     ### 5.3 — judge every steered cell  ·  **API**
 
-    The big one: ~4,400 calls at ~1.1k in / 0.25k out, roughly $1.50 on `gpt-4o-mini`.
+    The big one: ~6,900 calls at ~1.1k in / 0.25k out, roughly $2.30 on `gpt-4o-mini`.
     The judge sees the *bare* request, never the jailbreak wrapper.
 
     Safe to interrupt and re-run. Rows already graded by this judge are skipped, and a

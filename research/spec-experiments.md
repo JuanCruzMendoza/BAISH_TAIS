@@ -1555,9 +1555,9 @@ principal-angle floor from §2.3.
 | **§5.4 `cap` (ceil)** — one config (p75 × `steer_band`, matched to `ablate`) × story_v2 · story_v1 · persona | successes | 3 | ~90 | ~90 |
 | **§5.5 `add` +α** — story_v2 · story_v1 · persona × 4 configs × 2 α | refusals | 24 | ~1,680 | ~1,680 |
 | **§5.5 `ablate`** — harm · eval × 4 configs | refusals | 8 | ~560 | ~560 |
-| matched `random` arms, per config × α × mode × set | both | ~25 | ~1,200 | ~1,200 |
+| matched `random` arms, **one per target cell** (config × α × τ × mode × set) | both | 63 | ~3,000 | ~3,000 |
 | in-harness no-op, one per mode × set (§5.4's arm table) | both | ~5 | ~250 | ~250 |
-| **total** | | **~97** | **~4,750** | **~4,750** |
+| **total** | | **~135** | **~6,550** | **~6,550** |
 
 **~4,750 generations ≈ 2–3 h** on an RTX Pro 6000 Blackwell at `batch_size=8` / 512 new tokens
 (a 7B in bf16 is ~14 GB against 96 GB, so memory is not a constraint — batch 16–32 is available). At

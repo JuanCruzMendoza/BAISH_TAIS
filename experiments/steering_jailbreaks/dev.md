@@ -75,7 +75,8 @@ python judge_strongreject.py <results>/meta/<cell>.jsonl              # per cell
 python aggregate.py $M --tag $T
 ```
 
-Run `story_v2 × ablate × steer_band` first and read its 3-way outcome rate before the other ~89 cells.
+Run `story_v2 × ablate × steer_band` first and read its 3-way outcome rate before the other ~145 cells
+(63 target + 63 random + 20 no-op).
 
 `cap` needs τ from the **two-pole** corpus (framed prompts + bare requests, §0.6), so it requires
 `cache_activations.py --dataset jailbreaks --split all` *without* `--poles pos`. `ablate`/`add` do not.
@@ -117,7 +118,7 @@ runs once per layer set instead of once per direction:
 |---|---|
 | `target` | the intervention |
 | `noop` | hooks registered at the same layers, body disabled. For `ablate`/`cap` it is the **only** zero point, since there is no α=0 |
-| `random` | matched-norm random direction at the same layer set and same `α/√N` — the specificity control |
+| `random` | matched-norm random direction, **one cell per target cell** — same mode, layer set, α/√N and τ. The specificity control; a band-only random would be compared against single-layer targets |
 
 `add` scales by **α/√N**, N = joint width, so a cell's per-layer coefficient is comparable across
 layer counts; `--sweep-layers` cells have N=1, i.e. α unchanged.
