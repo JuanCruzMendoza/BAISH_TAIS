@@ -118,10 +118,17 @@ def decoding(rows):
 
 
 def write(path, rows):
+    """Union of every row's keys, not just the first row's.
+
+    Cells legitimately differ in columns: gen_baseline runs without `probes`, so it has
+    no `read_*` at all, while a steered cell has one per axis -- and `gen_baseline`
+    sorts first, so DictWriter took the narrow row as the header and rejected the rest.
+    """
     if not rows:
         return
+    keys = list(dict.fromkeys(k for r in rows for k in r))
     with Path(path).open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        w = csv.DictWriter(f, fieldnames=keys, restval="")
         w.writeheader()
         w.writerows(rows)
 
