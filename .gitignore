@@ -11,7 +11,7 @@ TODO.md
 # names only, never values.
 .env
 .env.*
-!.env.example
+.env.example
 
 # data/ holds datasets only; the scripts that build and audit them stay local
 data/**/*.py
@@ -38,3 +38,5 @@ audit
 experiments/*/results/*/*/acts/
 experiments/*/results/*/*/vectors/
 experiments/*/results/*/*/meta/_archive/
+
+*.tar
