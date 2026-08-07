@@ -15,8 +15,16 @@ Projection is recomputed **per layer**: u_a[l] and u_b[l] differ, so a joint set
 different a_perp at each layer. Cross-layer projection is meaningless (spec 2.3), which is
 why `band` -- not a single layer -- is the default: it is the only config shared by every
 direction, so a pair result is comparable across pairs.
+
+`unprojected` is plain `add` with u_a, so it depends on **a alone**. Its stem therefore drops
+the `-perp-b` half and it is generated once per (a, layers, alpha) rather than once per
+ordered pair -- at 50_per_direction the old naming produced 8 byte-identical cells for 4
+configs. For the directions whose 5.4 mode is already `add` (harm, eval) it also reproduces
+that steer_single cell exactly, so it is skipped when the twin is present; `--force-unprojected`
+regenerates it anyway.
 """
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -85,6 +93,28 @@ def match_alpha(tok, model, prompts, u, sigma, layers, target, u_final, base,
     return float(best), trace
 
 
+def single_twin(lay, a_name, layer_spec, alpha, config):
+    """The steer_single cell `unprojected` would duplicate, if it exists and matches.
+
+    Same vector, mode, layers, alpha and prompt set means the same generations -- byte
+    identical, since composition is fixed by the prompt set. Compared on the semantic
+    knobs only: steer_single's config carries cap/tau keys this script never sets.
+    """
+    stem = cell.stem_for("steer_single", a_name, "add", layer_spec, alpha, None, "target")
+    path = Path(lay.meta) / f"{stem}_manifest.json"
+    if not path.exists():
+        return None
+    m = json.loads(path.read_text(encoding="utf-8"))
+    if m.get("status") != "complete":
+        return None
+    keys = ("direction", "mode", "prompt_set", "layers", "alpha", "decoding", "decode",
+            "max_new_tokens", "n_rows")
+    prior = m.get("config", {})
+    if any(prior.get(k) != config.get(k) for k in keys):
+        return None
+    return stem
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("model")
@@ -94,6 +124,8 @@ def main():
     ap.add_argument("--layers", default="steer_band", help=cfg.LAYER_SPEC)
     ap.add_argument("--alpha", type=float, default=0.5, help="magnitude; sign from spec 0.5")
     ap.add_argument("--arms", default=",".join(ARMS))
+    ap.add_argument("--force-unprojected", action="store_true",
+                    help="generate the reference arm even when steer_single already has it")
     ap.add_argument("--decoding", default="greedy", choices=list(gen.DECODINGS))
     ap.add_argument("--decode-seed", type=int, default=None, help="required if sampling")
     ap.add_argument("--max-new-tokens", type=int, default=512)
@@ -160,27 +192,40 @@ def main():
         for arm in arms:
             u, a = {"unprojected": (ua, alpha), "perp_alpha": (perp, alpha),
                     "perp_effect": (perp, alpha_eff), "par_norm": (par, alpha)}[arm]
-            stem = mf.stem(SCRIPT, f"{a_name}-perp-{b_name}", cfg.layer_stem(args.layers),
-                           f"a{a:g}", arm)
+            # `unprojected` is u_a alone: no b in the stem, and none in the run_key
+            # either, or the second pair would archive the first pair's manifest and
+            # regenerate the identical rows.
+            solo = arm == "unprojected"
+            stem = mf.stem(SCRIPT, a_name if solo else f"{a_name}-perp-{b_name}",
+                           cfg.layer_stem(args.layers), f"a{a:g}", arm)
             ut = torch.from_numpy(np.ascontiguousarray(u)).float()
             counter = {"calls": 0}
             specs = hk.build("add", layers, ut, counter, alpha=a, sigma=sigma)
-            config = {"direction": a_name, "projected_out": b_name, "arm": arm,
+            config = {"direction": a_name, "projected_out": None if solo else b_name,
+                      "arm": arm,
                       "mode": "add", "prompt_set": PROMPT_SET,
                       "layers_spec": str(args.layers), "layers": layers,
                       "n_layers_steered": len(layers), "alpha": a,
                       "per_layer_coef": hk.per_layer_coef("add", layers, a),
-                      "alpha_unprojected": alpha, "self_effect_target": round(target, 4),
+                      "alpha_unprojected": None if solo else alpha,
+                      "self_effect_target": None if solo else round(target, 4),
                       "alpha_scan": trace if arm == "perp_effect" else None,
-                      "cos_ab_band": round(float(cosv[layers].mean()), 4),
-                      "cos_null_band": round(null, 4), "lopo_cos_stability": stab,
+                      "cos_ab_band": None if solo else round(float(cosv[layers].mean()), 4),
+                      "cos_null_band": None if solo else round(null, 4),
+                      "lopo_cos_stability": stab,
                       "tau_q": None, "decoding": args.decoding, "decode": decode,
                       "max_new_tokens": args.max_new_tokens, "batch_size": args.batch_size,
                       "max_batch_tokens": args.max_batch_tokens, "position": "all_tokens",
                       "n_rows": len(rows), "seed": cfg.SEED}
             inputs = {"unit_ids": [r["unit_id"] for r in rows],
                       "direction_run_key": pa.get("run_key"),
-                      "projected_run_key": pb.get("run_key")}
+                      "projected_run_key": None if solo else pb.get("run_key")}
+            if solo and not args.force_unprojected:
+                twin = single_twin(lay, a_name, args.layers, a, config)
+                if twin is not None:
+                    print(f"  {arm}: identical to {twin} -- skipped. Read that cell as "
+                          f"the reference (--force-unprojected to regenerate)")
+                    continue
             cell.emit(lay, src, stem, config, inputs, rows, specs, layers, tok, model,
                       args.batch_size, args.max_batch_tokens, args.max_new_tokens, decode,
                       counter)

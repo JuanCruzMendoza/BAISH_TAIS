@@ -87,12 +87,12 @@ def nulls(tp, tn, l, rng, n_draws=N_DRAWS):
     shuffled: flip the pos/neg assignment per pair, refit LOPO, rescore. Must sit at
         chance -- anything else means the label reaches the vector through some path
         LOPO does not close.
-    random_dir: score the real data with random unit directions. Its *mean* is 0.5 by
-        symmetry and says nothing; the informative statistic is the sign-corrected
-        mean, `..._abs`. When the contrast is consistent across pairs, sign(delta.r)
-        is shared by every pair, so a single random direction lands near 0 or 1 -- and
-        `_abs` near 1.0 means the separation is a large common-mode offset that any
-        direction recovers, so the *fitted* direction is not what earns the AUROC.
+    random_dir_abs: random unit directions, sign-corrected. The raw mean is 0.5 by
+        symmetry and is not emitted. When the contrast is consistent across pairs,
+        sign(delta.r) is shared by every pair, so a single random direction lands near
+        0 or 1 -- and `_abs` near 1.0 means the separation is a large common-mode
+        offset that any direction recovers, so the *fitted* direction is not what
+        earns the AUROC.
     """
     n, d = tp.shape[0], tp.shape[2]
     sh, rd = [], []
@@ -107,7 +107,7 @@ def nulls(tp, tn, l, rng, n_draws=N_DRAWS):
         r /= np.linalg.norm(r)
         rd.append(met.paired_auroc(tp[:, l, :] @ r, tn[:, l, :] @ r))
     rd = np.array(rd)
-    return float(np.mean(sh)), float(rd.mean()), float(np.maximum(rd, 1 - rd).mean())
+    return float(np.mean(sh)), float(np.maximum(rd, 1 - rd).mean())
 
 
 # ------------------------------------------------------------------ 1.2 tables
@@ -157,37 +157,31 @@ def layer_metrics(args, lay, run):
         s_pos = np.einsum("nd,nd->n", tp[:, l, :], u_lopo)
         s_neg = np.einsum("nd,nd->n", tn[:, l, :], u_lopo)
         lopo_ci = met.auroc_ci(s_pos, s_neg)
-        a_shuffled, a_random, a_random_abs = nulls(tp, tn, l, rng)
+        a_shuffled, a_random_abs = nulls(tp, tn, l, rng)
         gap = s_pos - s_neg
         sd = np.concatenate([s_pos, s_neg]).std(ddof=1)
 
         delta = tp[:, l, :] - tn[:, l, :]
         mpc = float(np.mean([met.cos(delta[i], u_l) for i in range(delta.shape[0])]))
-        stab = float(np.mean([met.cos(lopo[i, l, :], d_full[l]) for i in range(lopo.shape[0])]))
 
         row = {"layer": l, "depth": round(l / (Lp1 - 1), 4),
                "lopo_auroc": lopo_ci["auroc"], "lopo_ci_lo": lopo_ci["ci_lo"],
-               "lopo_ci_hi": lopo_ci["ci_hi"], "lopo_wins": lopo_ci["wins"],
-               "lopo_ties": lopo_ci["ties"], "n_train": lopo_ci["n"],
-               "lopo_sign_p": met.sign_test_p(s_pos, s_neg),
-               "mean_paired_cos": mpc, "lopo_cos_stability": stab,
-               "cohens_dz_train": met.cohens_dz(s_pos, s_neg),
-               # Is the saturation real? Both nulls must sit near 0.5.
-               "null_shuffled_auroc": a_shuffled, "null_random_dir_auroc": a_random,
-               "null_random_dir_abs": a_random_abs,
-               # How much room is there? min margin in pooled-sd units; <=0 means
+               "mean_paired_cos": mpc, "cohens_dz_train": met.cohens_dz(s_pos, s_neg),
+               # Is the saturation real? The shuffled null must sit near 0.5; the
+               # sign-corrected random null near 1.0 means AUROC credits a common-mode
+               # offset rather than the fitted direction.
+               "null_shuffled_auroc": a_shuffled, "null_random_dir_abs": a_random_abs,
+               # How much room is there? margins in pooled-sd units; min <=0 means
                # the classes touch even though AUROC rounded to 1.000.
                "min_pair_margin_sd": float(gap.min() / sd) if sd > 0 else float("nan"),
                "median_pair_margin_sd": float(np.median(gap) / sd) if sd > 0 else float("nan"),
-               "norm": float(np.linalg.norm(d_full[l])),
                "norm_over_sigma": float(np.linalg.norm(d_full[l]) / max(sigma[l], 1e-9))}
 
         if has_tasks:
             # Does the framing axis read the same way over harmful and benign requests?
             # A large gap means the vector is framing x harm, not framing.
             row |= {"lopo_auroc_task_harmful": met.paired_auroc(s_pos[harmful], s_neg[harmful]),
-                    "lopo_auroc_task_benign": met.paired_auroc(s_pos[~harmful], s_neg[~harmful]),
-                    "n_task_harmful": int(harmful.sum()), "n_task_benign": int((~harmful).sum())}
+                    "lopo_auroc_task_benign": met.paired_auroc(s_pos[~harmful], s_neg[~harmful])}
 
         if ho is not None:
             hp = proj(ho["pos"][:, l:l + 1, :], u_full[l:l + 1])[:, 0]
@@ -196,7 +190,7 @@ def layer_metrics(args, lay, run):
             thr = 0.5 * (np.einsum("nd,d->n", tp[:, l, :], u_l).mean()
                          + np.einsum("nd,d->n", tn[:, l, :], u_l).mean())
             row |= {"heldout_auroc": ci["auroc"], "heldout_ci_lo": ci["ci_lo"],
-                    "heldout_ci_hi": ci["ci_hi"], "n_heldout": ci["n"],
+                    "cohens_dz_heldout": met.cohens_dz(hp, hn),
                     "acc_at_train_thr": float(((hp > thr).sum() + (hn <= thr).sum())
                                               / (2 * len(hp)))}
 
@@ -204,7 +198,6 @@ def layer_metrics(args, lay, run):
             lp = np.einsum("nd,d->n", len_ho["pos"][:, l, :], u_l)
             ln = np.einsum("nd,d->n", len_ho["neg"][:, l, :], u_l)
             row["resid_len_auroc"] = met.paired_auroc(lp, ln)
-            row["n_length"] = len(lp)
         if len_dir is not None:
             ul = len_dir["u"].numpy()[l]
             row["len_frac"] = abs(met.cos(d_full[l], ul))
@@ -212,6 +205,12 @@ def layer_metrics(args, lay, run):
         rows.append(row)
 
     sel = select_band(rows, gate=len_ho is not None)
+    # Constant down every column, so they live here rather than in the CSV.
+    sel["n"] = {"train": int(tp.shape[0]),
+                "heldout": int(ho["pos"].shape[0]) if ho is not None else None,
+                "length": int(len_ho["pos"].shape[0]) if len_ho is not None else None}
+    if has_tasks:
+        sel["n"] |= {"task_harmful": int(harmful.sum()), "task_benign": int((~harmful).sum())}
     sel["sanity"] = sanity_summary(rows, train_view, sel, args.direction,
                                    train_view.get("append_task", False))
     write_csv(run.artefact(".csv"), rows)
@@ -229,7 +228,6 @@ def sanity_summary(rows, train_view, sel, direction, append_task=False):
     m = lambda k: float(np.mean([r[k] for r in band]))
     s = {"view": view_sanity(train_view, direction, append_task),
          "band_mean_null_shuffled": m("null_shuffled_auroc"),
-         "band_mean_null_random_dir": m("null_random_dir_auroc"),
          "band_mean_null_random_dir_abs": m("null_random_dir_abs"),
          "band_min_margin_sd": float(np.min([r["min_pair_margin_sd"] for r in band])),
          "band_median_margin_sd": float(np.median([r["median_pair_margin_sd"] for r in band])),
@@ -337,22 +335,24 @@ def transfer_report(args, lay):
         for l in range(Lp1):
             sp = np.einsum("nd,d->n", m["pos"][:, l, :], u[l])
             sn = np.einsum("nd,d->n", m["neg"][:, l, :], u[l])
-            ci = met.auroc_ci(sp, sn)
             rows.append({"probe": label, "layer": l, "depth": round(l / (Lp1 - 1), 4),
-                         "auroc": ci["auroc"], "ci_lo": ci["ci_lo"], "ci_hi": ci["ci_hi"],
-                         "n": ci["n"], "cohens_dz": met.cohens_dz(sp, sn),
+                         "auroc": met.paired_auroc(sp, sn),
+                         # AUROC saturates for every probe here, so d_z is what ranks them.
+                         "cohens_dz": met.cohens_dz(sp, sn),
                          "spearman_readout_dwords": met.spearman(sp - sn, dn)})
             deciles.setdefault(label, {})[l] = met.auroc_within_bins(sp, sn, dn)
 
+    n_pairs = int(m["pos"].shape[0])
     stem = mf.stem("probe_select", args.direction, f"transfer_{args.transfer}")
     config = {"direction": args.direction, "transfer": args.transfer,
               "probes": sorted(probes), "seed": cfg.SEED}
-    inputs = {"view_key": view["view_key"], "source_files": view["source_files"]}
+    inputs = {"view_key": view["view_key"], "source_files": view["source_files"],
+              "n_pairs": n_pairs}
     with mf.Run(lay, stem, config, inputs) as run:
         write_csv(run.artefact(".csv"), rows)
         run.artefact("_deciles.json").write_text(json.dumps(deciles, indent=2), encoding="utf-8")
         band = cfg.band(Lp1 - 1)
-        print(f"transfer {args.transfer}: n={rows[0]['n']} pairs, probes {sorted(probes)}")
+        print(f"transfer {args.transfer}: n={n_pairs} pairs, probes {sorted(probes)}")
         for label in probes:
             mid = [r for r in rows if r["probe"] == label and r["layer"] in band]
             print(f"  {label:10s} band-mean AUROC {np.mean([r['auroc'] for r in mid]):.3f}")
@@ -405,8 +405,7 @@ def main():
 
         s, v = sel["sanity"], sel["sanity"]["view"]
         print(f"  nulls: shuffled {s['band_mean_null_shuffled']:.3f} (want 0.5)   "
-              f"random_dir {s['band_mean_null_random_dir']:.3f} / sign-corrected "
-              f"{s['band_mean_null_random_dir_abs']:.3f}")
+              f"random_dir sign-corrected {s['band_mean_null_random_dir_abs']:.3f}")
         print(f"  margin_sd: min {s['band_min_margin_sd']:+.2f}  med "
               f"{s['band_median_margin_sd']:+.2f}")
         print(f"  final token [{v['source']}]: {v.get('n_distinct_final_pos')} distinct pos / "

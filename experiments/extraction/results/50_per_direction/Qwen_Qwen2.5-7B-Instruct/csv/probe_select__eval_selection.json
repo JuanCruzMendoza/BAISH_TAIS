@@ -19,6 +19,13 @@
   "primary_lopo_auroc": 0.98,
   "primary_resid_len_auroc": 1.0,
   "primary_mean_paired_cos": 0.3319625417677471,
+  "n": {
+    "train": 50,
+    "heldout": 15,
+    "length": 9,
+    "task_harmful": 25,
+    "task_benign": 25
+  },
   "sanity": {
     "view": {
       "n_pairs": 50,
@@ -70,7 +77,6 @@
       "final_separates_poles": false
     },
     "band_mean_null_shuffled": 0.49614285714285716,
-    "band_mean_null_random_dir": 0.5104285714285713,
     "band_mean_null_random_dir_abs": 0.6107142857142859,
     "band_min_margin_sd": -0.20626111328601837,
     "band_median_margin_sd": 0.7334880232810974,

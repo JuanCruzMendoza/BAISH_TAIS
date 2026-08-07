@@ -56,6 +56,21 @@ norm per layer) for experiment 4's steering units.
 **Layer selection (§1.2).** LOPO on the 50 train pairs gives 50 held-out decisions; the 15 held-out
 pairs are report-only and nothing selects on them. 
 
+**Metrics per layer.** `lopo_auroc` + `lopo_ci_lo` (the selector and the band rule's input),
+`heldout_auroc` + `heldout_ci_lo`, `mean_paired_cos`, `cohens_dz_train` and `cohens_dz_heldout`
+(AUROC saturates, so the effect sizes are what rank layers),
+`min_/median_pair_margin_sd`, `norm_over_sigma` (exp 4 steering units), `resid_len_auroc` and
+`len_frac` (the length foil), `acc_at_train_thr` (calibration transfer, the one metric that fails
+where AUROC saturates), and two nulls on the saturation: `null_shuffled_auroc` (pos/neg flipped per
+pair, LOPO refitted — off 0.5 ⇒ the label reaches the vector) and `null_random_dir_abs` (random unit
+directions, sign-corrected — near 1.0 ⇒ a common-mode offset any direction recovers, so AUROC does
+not credit the fitted direction). With appended tasks, `lopo_auroc_task_{harmful,benign}` (§0.2(a)).
+
+Upper CP bounds, win/tie counts, `lopo_sign_p` (the same binomial as `lopo_ci_lo`),
+`lopo_cos_stability` (0.997–0.9998 everywhere — it cannot fail at LOPO), the raw
+`null_random_dir_auroc` (0.5 by symmetry) and `norm` are not emitted. Constant *n* columns live in
+`*_selection.json` and the manifests.
+
 **§1.6 `compare_crossed`.** Matched *n*, 50 vs 50: `directions__story_v2` against
 `directions__story_v1`. Cross-evaluation runs on the other side's **50**, not its 15 — neither vector
 was fitted on the other's data.

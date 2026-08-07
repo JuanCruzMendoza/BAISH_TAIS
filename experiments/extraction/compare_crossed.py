@@ -65,14 +65,10 @@ def main():
         a_neg = np.einsum("nd,d->n", m1["neg"][:, l, :], u_v2[l])
         b_pos = np.einsum("nd,d->n", m2["pos"][:, l, :], u_v1[l])
         b_neg = np.einsum("nd,d->n", m2["neg"][:, l, :], u_v1[l])
-        ci_a, ci_b = met.auroc_ci(a_pos, a_neg), met.auroc_ci(b_pos, b_neg)
         row = {"layer": l, "depth": round(l / (Lp1 - 1), 4),
                "cos_v2_v1": met.cos(d_v2[l], d_v1[l]),
-               "cos_null_band": met.random_cos_band(d_v2.shape[1]),
-               "auroc_v2_on_v1": ci_a["auroc"], "v2_on_v1_ci_lo": ci_a["ci_lo"],
-               "v2_on_v1_ci_hi": ci_a["ci_hi"], "n_v1": ci_a["n"],
-               "auroc_v1_on_v2": ci_b["auroc"], "v1_on_v2_ci_lo": ci_b["ci_lo"],
-               "v1_on_v2_ci_hi": ci_b["ci_hi"], "n_v2": ci_b["n"],
+               "auroc_v2_on_v1": met.paired_auroc(a_pos, a_neg),
+               "auroc_v1_on_v2": met.paired_auroc(b_pos, b_neg),
                "mean_paired_cos_v2": paired_cos(m2["pos"][:, l, :], m2["neg"][:, l, :], u_v2[l]),
                "mean_paired_cos_v1": paired_cos(m1["pos"][:, l, :], m1["neg"][:, l, :], u_v1[l])}
         if d_v1_aud is not None:
@@ -83,11 +79,17 @@ def main():
     if args.curve:
         curve = subsample_curve(lay)
 
+    # Constant down every column, so they live in the manifest, not the CSV.
+    null_band = met.random_cos_band(d_v2.shape[1])
+    n_v2, n_v1 = int(m2["pos"].shape[0]), int(m1["pos"].shape[0])
+
     stem = mf.stem("compare_crossed")
     config = {"matched_n": True, "neg_pole": "prompt_expository", "curve": args.curve,
-              "curve_n": CURVE_N if args.curve else [], "seed": cfg.SEED}
+              "curve_n": CURVE_N if args.curve else [], "cos_null_band": null_band,
+              "seed": cfg.SEED}
     inputs = {"v2_view_key": v2_view["view_key"], "v1_view_key": v1_view["view_key"],
-              "v2_run_key": v2.get("run_key"), "v1_run_key": v1.get("run_key")}
+              "v2_run_key": v2.get("run_key"), "v1_run_key": v1.get("run_key"),
+              "n_v2": n_v2, "n_v1": n_v1}
     with mf.Run(lay, stem, config, inputs) as run:
         with run.artefact(".csv").open("w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, fieldnames=list(dict.fromkeys(k for r in rows for k in r)))
@@ -98,9 +100,9 @@ def main():
 
         band = cfg.band(Lp1 - 1)
         inband = [r for r in rows if r["layer"] in band]
-        print(f"v2 (n={m2['pos'].shape[0]})  vs  v1_50 (n={m1['pos'].shape[0]})   band {band[0]}-{band[-1]}")
+        print(f"v2 (n={n_v2})  vs  v1_50 (n={n_v1})   band {band[0]}-{band[-1]}")
         print(f"  cos(d_v2, d_v1_50)  band mean {np.mean([r['cos_v2_v1'] for r in inband]):+.3f}"
-              f"   null band +/-{rows[0]['cos_null_band']:.3f}")
+              f"   null band +/-{null_band:.3f}")
         print(f"  AUROC v2 -> v1 rows  {np.mean([r['auroc_v2_on_v1'] for r in inband]):.3f}")
         print(f"  AUROC v1 -> v2 pairs {np.mean([r['auroc_v1_on_v2'] for r in inband]):.3f}")
         print(f"  mean_paired_cos      v2 {np.mean([r['mean_paired_cos_v2'] for r in inband]):.3f}"

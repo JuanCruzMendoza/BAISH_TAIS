@@ -9,22 +9,22 @@
   },
   "env": {
     "argv": [
-      "experiments/extraction/probe_select.py",
+      "probe_select.py",
       "Qwen/Qwen2.5-7B-Instruct",
       "--tag",
       "50_per_direction",
       "--direction",
       "persona"
     ],
-    "git_diff_sha": "7e14dce1d70d8541fc2c10e5a492f3fd2c6a7a2e7fe2481741ab6fd59f48f85f",
+    "git_diff_sha": "ba668313c306844c08152cb6471388260f7b16adfc2d64740878f25ea73d5275",
     "git_dirty": true,
-    "git_sha": "5974b2bfab74f9fb0606300c43b0b5de395df9e9",
+    "git_sha": "40c5283bd832953689a6713089ba6ab3b29f00ef",
     "host": "LAPTOP-11LEDOPR",
     "platform": "Windows-10-10.0.19045-SP0",
     "python": "3.12.2",
     "resumed_from": 0,
-    "timestamp": "2026-08-01T15:18:10",
-    "wall_s": 3.1
+    "timestamp": "2026-08-07T20:18:30",
+    "wall_s": 2.56
   },
   "inputs": {
     "view_key": "df0b82f5bbd28425b1d014043471c2a10aa7ea44de0a409ebf7399e9f5d9bb0a"
