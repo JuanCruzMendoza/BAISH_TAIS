@@ -116,11 +116,19 @@ runs once per layer set instead of once per direction:
 | arm | what it is |
 |---|---|
 | `target` | the intervention |
-| `noop` | hooks registered at the same layers, body disabled. Must match the baseline; for `ablate`/`cap` it is the **only** zero point, since there is no α=0 |
+| `noop` | hooks registered at the same layers, body disabled. For `ablate`/`cap` it is the **only** zero point, since there is no α=0 |
 | `random` | matched-norm random direction at the same layer set and same `α/√N` — the specificity control |
 
 `add` scales by **α/√N**, N = joint width, so a cell's per-layer coefficient is comparable across
 layer counts; `--sweep-layers` cells have N=1, i.e. α unchanged.
+
+**The no-op does not reproduce the baseline, and cannot.** It runs on the 30-row success subset,
+the baseline on all 100, so batch composition differs (`n_in_batch` 30 vs 32) and greedy is
+bit-reproducible only at fixed composition (§0.10). Measured: **29/30 responses differ and 6 rows
+flip outcome**, with a hook that provably does nothing. Consequences — the success set is defined at
+one composition and steered at another, so ~5 of its 30 rows do not comply at steer time and the
+no-op's ASR, not 100%, is the reference; and **every comparison must be target vs no-op**, never vs
+the baseline. Cells within a prompt set share composition, so those comparisons differ only by the hook.
 
 ### Projection (§5.6, `steer_pairs.py`)
 
