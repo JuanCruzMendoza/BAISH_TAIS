@@ -40,3 +40,6 @@ experiments/*/results/*/*/vectors/
 experiments/*/results/*/*/meta/_archive/
 
 *.tar
+
+# ckpt_test.py's synthetic tree; the notebook's delete button removes it
+_ckpt_test/

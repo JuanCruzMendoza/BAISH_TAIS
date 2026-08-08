@@ -24,10 +24,18 @@ LFS_LINES = ["*.npy filter=lfs diff=lfs merge=lfs -text",
              "*.jsonl filter=lfs diff=lfs merge=lfs -text"]
 
 ALLOW = ["*/results/**"]
-# vectors/*.pt rebuild from the cache in ~5s, but they are LFS by default and immutable,
-# so they cost one upload and nothing after -- cheaper than remembering to re-run
-# extract_direction. The tarballs are stale exports; *.tar does not match *.tar.gz.
-IGNORE = ["*/meta/_archive/*", "*.tar", "*.tar.gz"]
+# vectors/*.pt are excluded: lopo_d is n x (L+1) x d float32, so a direction's .pt went from
+# ~18 MB at n=50 to ~335 MB at n=800 -- 1.3 GB of the ~3 GB payload for something that
+# rebuilds from the blob cache in seconds. The tarballs are stale exports; *.tar does not
+# match *.tar.gz.
+#
+# CAVEAT: a pulled snapshot therefore has no vectors/. The manifests say `complete` while the
+# .pt is absent, and check_stale does not test for existence, so the first thing that reads a
+# direction fails instead of warning -- probe_select with "run extract_direction.py first",
+# experiments 2-5 on a missing file. After every pull, re-run
+#     python experiments/extraction/extract_direction.py <model> --tag <tag> --direction <axis>
+# per direction (CPU, seconds, run_key unchanged so nothing is archived).
+IGNORE = ["*/meta/_archive/*", "*/vectors/*.pt", "*.tar", "*.tar.gz"]
 
 # upload_folder builds one commit, so two overlapping pushes race on it.
 _lock = threading.Lock()
