@@ -162,14 +162,17 @@ Two per direction, **8 in total**, written to `figures/` by `plot_figures.py` fr
 
 ```bash
 M=<model>; export RUN_TAG=1K_per_direction
-python cache_activations.py $M --dataset story_v2_1k --split train    # GPU, 800 pairs x 2 poles
-python cache_activations.py $M --dataset story_v2_1k --split heldout  # ... x4 directions
+python cache_activations.py $M --dataset story_v2_1k,persona_v2,eval_v2,harm_v2 \
+                               --split train,heldout                 # GPU, one model load
 python extract_direction.py $M --direction story_v2_1k --curve       # CPU; vectors + curve.json
 python probe_select.py      $M --direction story_v2_1k
 python plot_figures.py      $M                                       # all 8 figures
 python -m experiments.common.check_stale $M
 ```
 
-~6,400 train + 1,600 held-out prompts cached in total. Set `$BLOB_STORE` to share blobs with
-`50_per_direction` — the 50 story pairs are byte-identical there and will hit the cache.
+~6,400 train + 1,600 held-out prompts cached in total. `--dataset` / `--split` take comma lists and
+run the cross product in one process — each cell keeps its own view, manifest and run_key, so resume
+and `check_stale` are unchanged, but the model loads once instead of eight times, which is most of
+the wall clock. Set `$BLOB_STORE` to share blobs with `50_per_direction` — the 50 story pairs are
+byte-identical there and will hit the cache.
 

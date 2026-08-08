@@ -73,6 +73,23 @@ def push(repo_id, root=None, token=None, msg="ckpt"):
             allow_patterns=ALLOW, ignore_patterns=IGNORE, commit_message=msg)
 
 
+def try_push(repo_id, root=None, token=None, msg="ckpt"):
+    """push() that warns instead of raising.
+
+    Every push is one commit, and the Hub enforces an undocumented per-window quota on
+    commits: `upload_folder` waits out the RateLimit header and then gives up after 5
+    retries with a 429. That must not kill a cell whose GPU pass already finished -- the
+    blobs are on local disk and the next push picks them up, so a skipped checkpoint
+    costs nothing unless the instance dies first. Keep push() for callers that want the
+    guarantee.
+    """
+    try:
+        return push(repo_id, root=root, token=token, msg=msg)
+    except Exception as e:                                            # noqa: BLE001
+        print(f"! checkpoint SKIPPED ({msg}): {type(e).__name__}: {str(e)[:300]}")
+        return None
+
+
 def pull(repo_id, root=None, token=None):
     """False if nothing is checkpointed yet, so a first run falls through to computing."""
     root = Path(root or cfg.REPO / "experiments")

@@ -95,8 +95,11 @@ def _(mo):
     ## Cache the activations — GPU
 
     ~6,400 train + 1,600 held-out prompts. The only cell that touches the GPU;
-    everything below reads the blob cache. Pushed per dataset, so a crash here costs
-    one dataset rather than all eight.
+    everything below reads the blob cache. All 8 cells run in **one process** — the model
+    load dominated the wall time at 8 invocations — and checkpoint in **one commit**, since
+    every push is a commit and the Hub's quota is a 5-minute window. A rate-limited
+    checkpoint warns and moves on rather than killing the cell; re-running resumes per
+    prompt from the blobs already on disk.
     """)
     return
 
@@ -105,11 +108,12 @@ def _(mo):
 def _(HF_REPO, HF_TOKEN, MODEL, TAG, TIMER, ckpt, sh):
     DIRECTIONS = ["story_v2_1k", "persona_v2", "eval_v2", "harm_v2"]
 
-    for _d in DIRECTIONS:
-        for _sp in ("train", "heldout"):
-            sh("python", "experiments/extraction/cache_activations.py", MODEL,
-               "--tag", TAG, "--dataset", _d, "--split", _sp)
-            ckpt.push(HF_REPO, token=HF_TOKEN.value, msg=f"acts {_d} {_sp}")
+    # One process for all 8 cells: the model load dominates, and 8 invocations paid it
+    # 8 times. Resume is per prompt (content-addressed blobs), so a crash still costs
+    # only the prompts not yet written, not the whole list.
+    sh("python", "experiments/extraction/cache_activations.py", MODEL, "--tag", TAG,
+       "--dataset", ",".join(DIRECTIONS), "--split", "train,heldout")
+    ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="acts")
     cached = TIMER is not None
     return DIRECTIONS, cached
 
@@ -134,7 +138,7 @@ def _(DIRECTIONS, HF_REPO, HF_TOKEN, MODEL, TAG, cached, ckpt, sh):
            "--tag", TAG, "--direction", _d, "--curve")
         sh("python", "experiments/extraction/probe_select.py", MODEL,
            "--tag", TAG, "--direction", _d)
-    ckpt.push(HF_REPO, token=HF_TOKEN.value, msg="directions + probe_select")
+    ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="directions + probe_select")
     extracted = True
     return (extracted,)
 
@@ -154,7 +158,7 @@ def _(HF_REPO, HF_TOKEN, MODEL, TAG, ckpt, extracted, sh):
     assert extracted
     sh("python", "experiments/extraction/plot_figures.py", MODEL, "--tag", TAG,
        "--with-heldout")
-    ckpt.push(HF_REPO, token=HF_TOKEN.value, msg="figures")
+    ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="figures")
     figured = True
     return (figured,)
 
