@@ -18,7 +18,10 @@ from . import prompts as pr
 
 csv.field_size_limit(min(sys.maxsize, 2 ** 31 - 1))
 
-DIRECTIONS = ["story_v2", "story_v1", "harm", "harm_v2", "persona", "eval", "length"]
+DIRECTIONS = ["story_v2", "story_v1", "harm", "harm_v2", "persona", "eval", "length",
+              # 1K_per_direction: 800 train / 200 held-out each. story_v2_1k is a separate
+              # name rather than a bigger story_v2, so the 50-pair tag stays reproducible.
+              "story_v2_1k", "persona_v2", "eval_v2"]
 
 # ------------------------------------------------------------------- readers
 
@@ -102,6 +105,49 @@ def _eval(split, tasks=None):
              "meta": {"id": r["id"], "source": r["source"], "person": r["person"]}}
             for r in _csv(src)]
     return src, _attach(rows, tasks)
+
+
+# ------------------------------------------------- 1K_per_direction (800 / 200)
+# The framing axes carry their task inside the dataset, so `--append-task` is refused
+# rather than ignored (TASK_BAKED below).
+
+
+def _story_v2_1k(split):
+    name = "pairs_1k.jsonl" if split == "train" else "pairs_1k_heldout.jsonl"
+    src = cfg.DATA / "story_mode_v2" / name
+    return src, [{"pair_id": r["pair_id"],
+                  "pos": pr.continuation(r["text_narrative"]),
+                  "neg": pr.continuation(r["text_nonnarrative"]),
+                  "meta": {k: r[k] for k in ("narr_mode", "nonnarr_style", "realism",
+                                             "tense_polarity", "context", "domain", "genre")}}
+                 for r in _jsonl(src)]
+
+
+def _persona_v2(split):
+    name = "pairs.jsonl" if split == "train" else "pairs_heldout.jsonl"
+    src = cfg.DATA / "role_play_v2" / name
+    return src, [{"pair_id": r["pair_id"],
+                  "pos": pr.with_task(r["role_framing"], r["task"]),
+                  "neg": pr.with_task(r["assistant_framing"], r["task"]),
+                  "meta": {"role": r["role"], "stratum": r["stratum"],
+                           "role_form": r["role_form"], "neg_variant": r["neg_variant"],
+                           "neg_form": r["neg_form"], "jbb_index": r["jbb_index"],
+                           "task_id": r["task_id"], "category": r["category"],
+                           "task_harmful": r["label"] == "harmful"}}
+                 for r in _jsonl(src)]
+
+
+def _eval_v2(split):
+    name = "pairs.jsonl" if split == "train" else "pairs_heldout.jsonl"
+    src = cfg.DATA / "eval_v2" / name
+    return src, [{"pair_id": r["pair_id"],
+                  "pos": pr.with_task(r["framing_evaluation"], r["request"]),
+                  "neg": pr.with_task(r["framing_deployment"], r["request"]),
+                  "meta": {"framing_id": r["framing_id"], "framing_source": r["framing_source"],
+                           "framing_person": r["framing_person"], "jbb_index": r["jbb_index"],
+                           "task_id": r["task_id"], "category": r["category"],
+                           "task_harmful": r["label"] == "harmful"}}
+                 for r in _jsonl(src)]
 
 
 def _length(split):
@@ -372,9 +418,11 @@ def _jailbreaks(split, subsample=None):
 _LOADERS = {
     "story_v2": _story_v2, "story_v1": _story_v1, "harm": _harm, "harm_v2": _harm_v2,
     "persona": _persona, "eval": _eval, "length": _length,
+    "story_v2_1k": _story_v2_1k, "persona_v2": _persona_v2, "eval_v2": _eval_v2,
 }
 _SINGLETONS = {"v1_nofiller100": _v1_nofiller100, "v1_curve": _v1_curve}
 FRAMING_ONLY = {"persona", "eval"}
+TASK_BAKED = {"persona_v2", "eval_v2"}     # task is in the pairs file, not appended here
 
 
 def base_tasks(split="train"):
@@ -406,6 +454,9 @@ def load_pairs(dataset, split="train", append_task=False, subsample=None):
         return _jailbreaks(split, subsample)
     if dataset not in _LOADERS:
         raise KeyError(f"unknown dataset {dataset!r}")
+    if dataset in TASK_BAKED and append_task:
+        raise ValueError(f"{dataset}: the task is already in the pairs file; "
+                         f"--append-task would append a second one")
     if dataset in FRAMING_ONLY and append_task:
         return _LOADERS[dataset](split, tasks=base_tasks(split))
     return _LOADERS[dataset](split)

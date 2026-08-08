@@ -32,8 +32,8 @@ round1
 
 audit
 
-# experiments: results/<tag>/<model>/{csv,vectors,acts,meta}
-# csv/ and meta/ stay tracked; the cache and vectors regenerate from the cache in seconds
+# experiments: results/<tag>/<model>/{csv,figures,vectors,acts,meta}
+# csv/, figures/ and meta/ stay tracked; the cache and vectors regenerate from the cache in seconds
 # (lopo_d alone is ~20 MB per direction at d=3584).
 experiments/*/results/*/*/acts/
 experiments/*/results/*/*/vectors/

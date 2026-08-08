@@ -1,10 +1,11 @@
-"""Per-layer probe metrics and the layer-band selection rule (spec 1.2).
+"""Per-layer probe metrics (spec 1.2). Emits the table; it does not pick layers.
 
     python probe_select.py <model> --direction story_v2
     python probe_select.py <model> --direction story_v2 --transfer v1_nofiller100   # 1.2a
 
-LOPO on the 50 train pairs selects; the 15 held-out pairs report. Intervals are
-Clopper-Pearson, never bootstrap (spec 0.7).
+LOPO on the train pairs is the out-of-sample column. Layers are chosen by hand from
+this table and recorded in insights.md. Intervals are Clopper-Pearson, never
+bootstrap (spec 0.7).
 """
 import argparse
 import csv
@@ -18,10 +19,6 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from experiments.common import acts, config as cfg, manifest as mf, metrics as met, views
-
-BAND_TOL = 0.05      # CP lower bound must be within this of the best lopo auroc
-LEN_TOL = 0.10       # |resid_len_auroc - 0.5| gate
-
 
 def load_direction(lay, axis):
     stem = mf.stem("directions", axis)
@@ -139,14 +136,14 @@ def layer_metrics(args, lay, run):
         ho = None
         print("! no held-out view cached: heldout columns will be blank")
 
-    # length foil + len_frac (spec 1.2). Absent -> gate skipped, recorded in the CSV.
+    # length foil + len_frac, report-only: absent at tags that do not cache `length`.
     len_dir = load_direction(lay, "length")
     try:
         len_ho = acts.load_view_matrix(lay, views.read_view(lay, "length", "heldout"))
     except FileNotFoundError:
         len_ho = None
     if len_ho is None:
-        print("! no length heldout view: resid_len_auroc blank, selection gate SKIPPED")
+        print("! no length heldout view: resid_len_auroc / len_frac omitted")
 
     rng = np.random.default_rng(cfg.SEED)
     rows = []
@@ -204,27 +201,29 @@ def layer_metrics(args, lay, run):
 
         rows.append(row)
 
-    sel = select_band(rows, gate=len_ho is not None)
+    band = cfg.band(Lp1 - 1)
     # Constant down every column, so they live here rather than in the CSV.
-    sel["n"] = {"train": int(tp.shape[0]),
-                "heldout": int(ho["pos"].shape[0]) if ho is not None else None,
-                "length": int(len_ho["pos"].shape[0]) if len_ho is not None else None}
+    summary = {"band": band,
+               "n": {"train": int(tp.shape[0]),
+                     "heldout": int(ho["pos"].shape[0]) if ho is not None else None,
+                     "length": int(len_ho["pos"].shape[0]) if len_ho is not None else None}}
     if has_tasks:
-        sel["n"] |= {"task_harmful": int(harmful.sum()), "task_benign": int((~harmful).sum())}
-    sel["sanity"] = sanity_summary(rows, train_view, sel, args.direction,
-                                   train_view.get("append_task", False))
+        summary["n"] |= {"task_harmful": int(harmful.sum()),
+                         "task_benign": int((~harmful).sum())}
+    summary["sanity"] = sanity_summary(rows, train_view, band, args.direction,
+                                       train_view.get("append_task", False))
     write_csv(run.artefact(".csv"), rows)
-    return rows, sel
+    return rows, summary
 
 
-def sanity_summary(rows, train_view, sel, direction, append_task=False):
+def sanity_summary(rows, train_view, band_layers, direction, append_task=False):
     """Verdict on whether a saturated AUROC survives its own controls.
 
     `failures` are correctness problems -- the number would be wrong.
     `warnings` are interpretability problems -- the number is right but does not
     mean what it looks like.
     """
-    band = [r for r in rows if r["layer"] in sel["band"]]
+    band = [r for r in rows if r["layer"] in band_layers]
     m = lambda k: float(np.mean([r[k] for r in band]))
     s = {"view": view_sanity(train_view, direction, append_task),
          "band_mean_null_shuffled": m("null_shuffled_auroc"),
@@ -256,54 +255,6 @@ def sanity_summary(rows, train_view, sel, direction, append_task=False):
     s["passes"] = not fails
     s["failures"], s["warnings"] = fails, warns
     return s
-
-
-def _longest_run(rows, ok):
-    runs, cur = [], []
-    for r, good in zip(rows, ok):
-        if good:
-            cur.append(r)
-        else:
-            if cur:
-                runs.append(cur)
-            cur = []
-    if cur:
-        runs.append(cur)
-    return max(runs, key=len) if runs else []
-
-
-def select_band(rows, gate=True):
-    """Fixed in advance (spec 1.2), so it is not post-hoc.
-
-    The criterion compares each layer's CP lower bound against the *best lower
-    bound*, not against the best point estimate: at a saturated 50/50 the point
-    estimate is 1.00 while its own CP lower bound is 0.929, so a
-    `ci_lo >= max(auroc) - 0.05` rule would reject every layer including the
-    best one. Comparing like with like also rewards precision, and the argmax
-    always qualifies, so the band is never empty.
-    """
-    best_lo = max(r["lopo_ci_lo"] for r in rows)
-    auroc_ok = [r["lopo_ci_lo"] >= best_lo - BAND_TOL for r in rows]
-    gated = [ok and abs(r.get("resid_len_auroc", 0.5) - 0.5) <= LEN_TOL
-             for r, ok in zip(rows, auroc_ok)] if gate else auroc_ok
-
-    band, gate_failed = _longest_run(rows, gated), False
-    if not band:
-        # Every layer that reads its own axis also reads length. Report the
-        # AUROC band and say so loudly rather than returning nothing.
-        band, gate_failed = _longest_run(rows, auroc_ok), True
-
-    top = max(b["mean_paired_cos"] for b in band)
-    primary = min((b for b in band if b["mean_paired_cos"] == top), key=lambda b: b["layer"])
-    return {"band": [b["layer"] for b in band], "primary": primary["layer"],
-            "best_lopo_auroc": max(r["lopo_auroc"] for r in rows),
-            "best_lopo_ci_lo": best_lo, "band_threshold": best_lo - BAND_TOL,
-            "gate_applied": gate and not gate_failed, "gate_failed": gate_failed,
-            "n_pass_length_gate": int(sum(gated)) if gate else None,
-            "primary_depth": primary["depth"],
-            "primary_lopo_auroc": primary["lopo_auroc"],
-            "primary_resid_len_auroc": primary.get("resid_len_auroc"),
-            "primary_mean_paired_cos": primary["mean_paired_cos"]}
 
 
 # ---------------------------------------------------------------- 1.2a transfer
@@ -385,25 +336,27 @@ def main():
 
     stem = mf.stem("probe_select", args.direction)
     view = views.read_view(lay, args.direction, "train")
-    config = {"direction": args.direction, "band_tol": BAND_TOL, "len_tol": LEN_TOL,
-              "selector": "lopo_paired_auroc", "interval": "clopper_pearson",
-              "seed": cfg.SEED}
+    config = {"direction": args.direction, "selection": "manual (insights.md)",
+              "interval": "clopper_pearson", "seed": cfg.SEED}
     inputs = {"view_key": view["view_key"]}
     with mf.Run(lay, stem, config, inputs) as run:
-        rows, sel = layer_metrics(args, lay, run)
-        run.artefact("_selection.json").write_text(json.dumps(sel, indent=2), encoding="utf-8")
-        band = sel["band"]
-        print(f"{args.direction}: best lopo AUROC {sel['best_lopo_auroc']:.3f} "
-              f"(CP lower {sel['best_lopo_ci_lo']:.3f}, band threshold "
-              f"{sel['band_threshold']:.3f})")
-        print(f"  band {band[0]}-{band[-1]} ({len(band)} layers), primary L{sel['primary']} "
-              f"(depth {sel['primary_depth']}, resid_len {sel['primary_resid_len_auroc']})")
-        if sel["gate_failed"]:
-            print("  ! NO layer passed the length gate -- band is AUROC-only and provisional")
-        elif not sel["gate_applied"]:
-            print("  ! length gate not applied (no length heldout view) -- band is provisional")
+        rows, summary = layer_metrics(args, lay, run)
+        run.artefact("_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        band = summary["band"]
+        print(f"{args.direction}: n={summary['n']}  band {band[0]}-{band[-1]}  "
+              f"-- layers are chosen by hand from the CSV, not here")
+        for key in ("cohens_dz_train", "cohens_dz_heldout"):
+            inband = [r for r in rows if r["layer"] in band and key in r]
+            if inband:
+                top = sorted(inband, key=lambda r: -r[key])[:5]
+                print(f"  top {key}: "
+                      + "  ".join(f"L{r['layer']}={r[key]:.2f}" for r in top))
+        mpc = sorted((r for r in rows if r["layer"] in band),
+                     key=lambda r: -r["mean_paired_cos"])[:5]
+        print("  top mean_paired_cos: "
+              + "  ".join(f"L{r['layer']}={r['mean_paired_cos']:.3f}" for r in mpc))
 
-        s, v = sel["sanity"], sel["sanity"]["view"]
+        s, v = summary["sanity"], summary["sanity"]["view"]
         print(f"  nulls: shuffled {s['band_mean_null_shuffled']:.3f} (want 0.5)   "
               f"random_dir sign-corrected {s['band_mean_null_random_dir_abs']:.3f}")
         print(f"  margin_sd: min {s['band_min_margin_sd']:+.2f}  med "

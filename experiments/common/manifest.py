@@ -47,12 +47,15 @@ def stem(script, *parts):
 def artefact_kind(suffix):
     """Where an artefact lives: what you read vs what you don't.
 
-    csv/     tables and *_selection.json — the headline of each script
-    vectors/ *.pt consumed by later experiments
-    meta/    manifests, deciles, run log, archive
+    csv/      tables and *_selection.json / *_summary.json — the headline of each script
+    figures/  *.png plotted from csv/
+    vectors/  *.pt consumed by later experiments
+    meta/     manifests, deciles, run log, archive
     """
-    if suffix.endswith(".csv") or suffix.endswith("_selection.json"):
+    if suffix.endswith(".csv") or suffix.endswith(("_selection.json", "_summary.json")):
         return "csv"
+    if suffix.endswith((".png", ".pdf", ".svg")):
+        return "figures"
     if suffix.endswith(".pt"):
         return "vectors"
     return "meta"
@@ -103,7 +106,7 @@ class Run:
         return getattr(self.layout, kind or artefact_kind(suffix)) / f"{self.stem}{suffix}"
 
     def _own_files(self):
-        for kind in ("csv", "vectors", "meta"):
+        for kind in ("csv", "figures", "vectors", "meta"):
             for p in Path(getattr(self.layout, kind)).glob(f"{self.stem}*"):
                 if p.is_file():
                     yield kind, p

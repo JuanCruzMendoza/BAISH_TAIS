@@ -2,7 +2,8 @@
 
 Layout:
     experiments/<exp>/results/<tag>/<model_slug>/
-        csv/       what you read: metrics tables + *_selection.json
+        csv/       what you read: metrics tables + *_summary.json / *_selection.json
+        figures/   *.png plotted from csv/
         vectors/   *.pt consumed by later experiments (gitignored)
         acts/      blobs/ + views/ activation cache (gitignored)
         meta/      manifests, runs.csv, _archive/, *_deciles.json
@@ -119,15 +120,16 @@ def run_dir(experiment, model_id, tag_=None):
 
 
 class Layout:
-    """The four subdirectories of one <tag>/<model> run."""
+    """The subdirectories of one <tag>/<model> run."""
 
     def __init__(self, experiment, model_id, tag_=None, acts_cache=True):
         self.root = run_dir(experiment, model_id, tag_)
         self.csv = self.root / "csv"
+        self.figures = self.root / "figures"
         self.vectors = self.root / "vectors"
         self.meta = self.root / "meta"
         self.acts = self.root / "acts"
-        for d in (self.csv, self.vectors, self.meta):
+        for d in (self.csv, self.figures, self.vectors, self.meta):
             d.mkdir(parents=True, exist_ok=True)
         # Experiments 2+ only read the cache, which lives under extraction; an empty
         # acts/ under their own results dir would suggest otherwise.
