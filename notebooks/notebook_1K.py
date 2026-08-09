@@ -77,16 +77,25 @@ def _(mo):
 
 
 @app.cell
-def _(HF_REPO, HF_TOKEN, mo, sh):
+def _(HF_REPO, HF_TOKEN, TAG, mo, sh):
     from experiments.common import ckpt
 
     mo.stop(not HF_TOKEN.value, mo.md("*Paste the HF token to start.*"))
+    # SCOPE is not cosmetic: upload_folder emits one commit per 256 files considered, so
+    # an unscoped push also walks every other experiment's results (spec: ckpt.scope).
+    SCOPE = {"experiment": "extraction", "tag": TAG}
     ckpt.setup(HF_REPO, token=HF_TOKEN.value)
-    restored = ckpt.pull(HF_REPO, token=HF_TOKEN.value)
+    restored = ckpt.pull(HF_REPO, token=HF_TOKEN.value, **SCOPE)
+    # NEW EXTRACTION RUN (another model / tag): swap the line above for the one below and
+    # uncomment the matching push in the cache cell. pack=True stores acts/blobs as a
+    # single tar -- 2 commits instead of ~30 -- and unpacks it here so the scripts see the
+    # same tree. Both sides or neither. This tag's blobs are loose on the Hub already, and
+    # pack=True is a no-op when no tar is present, so it is safe to leave enabled.
+    # restored = ckpt.pull(HF_REPO, token=HF_TOKEN.value, pack=True, **SCOPE)
     sh("git", "status", "--short", "experiments")
-    TIMER = ckpt.autopush(HF_REPO, every=3600, token=HF_TOKEN.value)
+    TIMER = ckpt.autopush(HF_REPO, every=3600, token=HF_TOKEN.value, **SCOPE)
     print("restored from Hub:", restored, "| hourly checkpoint armed")
-    return TIMER, ckpt
+    return SCOPE, TIMER, ckpt
 
 
 @app.cell(hide_code=True)
@@ -96,16 +105,24 @@ def _(mo):
 
     ~6,400 train + 1,600 held-out prompts. The only cell that touches the GPU;
     everything below reads the blob cache. All 8 cells run in **one process** — the model
-    load dominated the wall time at 8 invocations — and checkpoint in **one commit**, since
-    every push is a commit and the Hub's quota is a 5-minute window. A rate-limited
-    checkpoint warns and moves on rather than killing the cell; re-running resumes per
-    prompt from the blobs already on disk.
+    load dominated the wall time at 8 invocations — and checkpoint once at the end.
+
+    That push is still ~30 commits: `upload_folder` emits one per 256 files, and 7,731
+    blobs is 7,731 files. Commits are the rationed resource, so the push is scoped to this
+    experiment and tag. A rate-limited checkpoint warns and moves on rather than killing
+    the cell; re-running resumes per prompt from the blobs already on disk.
+
+    **For a new model or tag**, uncomment the `pack=True` lines in this cell *and* the
+    checkpoint cell: the blob cache goes up as one tar, ~2 commits instead of ~30. Not for
+    steering — its ~500 files already cost ~3 commits, and its resume partials have to stay
+    individually addressable. Trade-off: a packed push re-sends the whole tar whenever any
+    blob changes, so pack a finished cache, not a resuming one.
     """)
     return
 
 
 @app.cell
-def _(HF_REPO, HF_TOKEN, MODEL, TAG, TIMER, ckpt, sh):
+def _(HF_REPO, HF_TOKEN, MODEL, SCOPE, TAG, TIMER, ckpt, sh):
     DIRECTIONS = ["story_v2_1k", "persona_v2", "eval_v2", "harm_v2"]
 
     # One process for all 8 cells: the model load dominates, and 8 invocations paid it
@@ -113,7 +130,9 @@ def _(HF_REPO, HF_TOKEN, MODEL, TAG, TIMER, ckpt, sh):
     # only the prompts not yet written, not the whole list.
     sh("python", "experiments/extraction/cache_activations.py", MODEL, "--tag", TAG,
        "--dataset", ",".join(DIRECTIONS), "--split", "train,heldout")
-    ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="acts")
+    ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="acts", **SCOPE)
+    # NEW EXTRACTION RUN: use this instead, together with the pack=True pull above.
+    # ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="acts", pack=True, **SCOPE)
     cached = TIMER is not None
     return DIRECTIONS, cached
 
@@ -131,14 +150,15 @@ def _(mo):
 
 
 @app.cell
-def _(DIRECTIONS, HF_REPO, HF_TOKEN, MODEL, TAG, cached, ckpt, sh):
+def _(DIRECTIONS, HF_REPO, HF_TOKEN, MODEL, SCOPE, TAG, cached, ckpt, sh):
     assert cached
     for _d in DIRECTIONS:
         sh("python", "experiments/extraction/extract_direction.py", MODEL,
            "--tag", TAG, "--direction", _d, "--curve")
         sh("python", "experiments/extraction/probe_select.py", MODEL,
            "--tag", TAG, "--direction", _d)
-    ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="directions + probe_select")
+    ckpt.try_push(HF_REPO, token=HF_TOKEN.value,
+                  msg="directions + probe_select", **SCOPE)
     extracted = True
     return (extracted,)
 
@@ -154,11 +174,11 @@ def _(mo):
 
 
 @app.cell
-def _(HF_REPO, HF_TOKEN, MODEL, TAG, ckpt, extracted, sh):
+def _(HF_REPO, HF_TOKEN, MODEL, SCOPE, TAG, ckpt, extracted, sh):
     assert extracted
     sh("python", "experiments/extraction/plot_figures.py", MODEL, "--tag", TAG,
        "--with-heldout")
-    ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="figures")
+    ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="figures", **SCOPE)
     figured = True
     return (figured,)
 
@@ -188,16 +208,9 @@ def _(TAG, mo):
     Results are on the Hub under `extraction/results/{TAG}/<model_slug>/`; pull them
     locally with `snapshot_download` to write up.
 
-    **The checkpoint excludes `vectors/*.pt`** — `lopo_d` is ~335 MB per direction at
-    n=800, half the payload, and rebuilds from the blob cache in seconds. So a pulled
-    snapshot has the tables and figures but no vectors, and the first thing that reads a
-    direction fails rather than warns. Rebuild them after any pull:
-
-    ```bash
-    for d in story_v2_1k persona_v2 eval_v2 harm_v2; do
-      python experiments/extraction/extract_direction.py $MODEL --tag {TAG} --direction $d --curve
-    done
-    ```
+    The checkpoint **includes `vectors/*.pt`** (~1.3 GB, one commit), so experiments 2–5
+    get the directions straight from a scoped pull instead of downloading 1.6 GB of blobs
+    and re-running `extract_direction` first.
     """)
     return
 

@@ -6,6 +6,7 @@ the guarantee: the results are on the Hub the moment it returns. pull() puts the
 in the tree the scripts read, so run_key resume skips the cells already done.
 """
 import os
+import tarfile
 import threading
 from pathlib import Path
 
@@ -23,22 +24,39 @@ from experiments.common import config as cfg
 LFS_LINES = ["*.npy filter=lfs diff=lfs merge=lfs -text",
              "*.jsonl filter=lfs diff=lfs merge=lfs -text"]
 
-ALLOW = ["*/results/**"]
-# vectors/*.pt are excluded: lopo_d is n x (L+1) x d float32, so a direction's .pt went from
-# ~18 MB at n=50 to ~335 MB at n=800 -- 1.3 GB of the ~3 GB payload for something that
-# rebuilds from the blob cache in seconds. The tarballs are stale exports; *.tar does not
-# match *.tar.gz.
+ALLOW = ["*/results/**"]                # every experiment; scope() narrows it
+# vectors/*.pt are INCLUDED, though they are the biggest thing here: lopo_d is
+# n x (L+1) x d float32, so a direction's .pt grew from ~18 MB at n=50 to ~335 MB at n=800,
+# ~1.3 GB for four. They were excluded until the real constraint turned out to be commits,
+# not bytes -- 4 files is one commit (upload_folder batches 256 files per commit), and Xet
+# uploads those bytes once and dedups after. The alternative was a 1.6 GB blob download plus
+# an extract_direction rebuild at the start of every downstream session, which is what
+# experiments 2-5 would otherwise pay to get a direction they cannot compute themselves.
 #
-# CAVEAT: a pulled snapshot therefore has no vectors/. The manifests say `complete` while the
-# .pt is absent, and check_stale does not test for existence, so the first thing that reads a
-# direction fails instead of warning -- probe_select with "run extract_direction.py first",
-# experiments 2-5 on a missing file. After every pull, re-run
-#     python experiments/extraction/extract_direction.py <model> --tag <tag> --direction <axis>
-# per direction (CPU, seconds, run_key unchanged so nothing is archived).
-IGNORE = ["*/meta/_archive/*", "*/vectors/*.pt", "*.tar", "*.tar.gz"]
+# The tarballs are stale exports; *.tar does not match *.tar.gz.
+IGNORE = ["*/meta/_archive/*", "*.tar", "*.tar.gz"]
 
-# upload_folder builds one commit, so two overlapping pushes race on it.
+# Two overlapping pushes race on the commit they build.
 _lock = threading.Lock()
+
+
+def scope(experiment=None, tag=None):
+    """Which paths a push or pull touches. Always pass the experiment being run.
+
+    upload_folder does NOT make one commit per call: it batches at
+    _commit_api.UPLOAD_BATCH_MAX_NUM_FILES (256) and emits one commit per batch, titled
+    "<msg> (part N)". Measured on the 1K extraction run, 12 push() calls produced 167
+    commits, growing 8 -> 30 per call as the tree grew. Commits are the scarce resource
+    (an undocumented hourly quota, and a 429 mid-split leaves a cell half-uploaded), so
+    what matters is how many files a push considers.
+
+    ALLOW spans every experiment, so an unscoped push from steering_jailbreaks also
+    considers extraction's ~7,700 blobs and costs ~30 commits before writing anything of
+    its own. Scoped, its ~500 files cost ~3.
+    """
+    if experiment is None:
+        return ALLOW
+    return [f"{experiment}/results/{tag}/**"] if tag else [f"{experiment}/results/**"]
 
 
 def _token(token=None):
@@ -65,15 +83,83 @@ def setup(repo_id, token=None):
     return api
 
 
-def push(repo_id, root=None, token=None, msg="ckpt"):
+# ------------------------------------------------------- packed blob cache
+# One tar is one file is one commit, versus ~30 for 7,700 loose blobs. Use it for a new
+# extraction run (another model, another tag); do NOT use it for steering, whose ~500
+# files already cost ~3 commits and whose resume partials must stay individually
+# addressable. push(pack=True) and pull(pack=True) are a pair -- packing one side only
+# leaves a repo nobody can restore.
+BLOB_TAR = "blobs.tar"
+
+
+def _blob_dirs(root, experiment=None, tag=None):
+    pat = f"{experiment or '*'}/results/{tag or '*'}/*/acts/blobs"
+    return [p for p in root.glob(pat) if p.is_dir()]
+
+
+def pack_blobs(root=None, experiment=None, tag=None):
+    """acts/blobs/*.npy -> acts/blobs.tar. Uncompressed: float16 barely gzips."""
     root = Path(root or cfg.REPO / "experiments")
+    out = []
+    for d in _blob_dirs(root, experiment, tag):
+        tar = d.parent / BLOB_TAR
+        files = sorted(d.glob("*.npy"))
+        tmp = tar.with_suffix(".tar.tmp")
+        with tarfile.open(tmp, "w") as tf:
+            for p in files:
+                tf.add(p, arcname=p.name)
+        os.replace(tmp, tar)
+        out.append((tar, len(files)))
+    return out
+
+
+def unpack_blobs(root=None, experiment=None, tag=None, keep_tar=False):
+    """acts/blobs.tar -> acts/blobs/, skipping blobs already on disk.
+
+    Idempotent, and never overwrites: a partially cached local run keeps its own blobs
+    and only gains the ones it was missing.
+    """
+    root = Path(root or cfg.REPO / "experiments")
+    out = []
+    for tar in root.glob(f"{experiment or '*'}/results/{tag or '*'}/*/acts/{BLOB_TAR}"):
+        d = tar.parent / "blobs"
+        d.mkdir(parents=True, exist_ok=True)
+        n = 0
+        with tarfile.open(tar) as tf:
+            for m in tf:
+                if m.isfile() and not (d / m.name).exists():
+                    tf.extract(m, d, filter="data")
+                    n += 1
+        if not keep_tar:
+            tar.unlink()
+        out.append((tar, n))
+    return out
+
+
+def push(repo_id, root=None, token=None, msg="ckpt", experiment=None, tag=None,
+         pack=False):
+    root = Path(root or cfg.REPO / "experiments")
+    api = HfApi(token=_token(token))
+    ignore = list(IGNORE)
     with _lock:
-        return HfApi(token=_token(token)).upload_folder(
+        if pack:
+            # The tar goes up on its own (IGNORE already drops *.tar from the folder
+            # walk), and the loose blobs are held back so the two never diverge.
+            for tar, n in pack_blobs(root, experiment, tag):
+                api.upload_file(path_or_fileobj=str(tar),
+                                path_in_repo=tar.relative_to(root).as_posix(),
+                                repo_id=repo_id, repo_type="dataset",
+                                commit_message=f"{msg}: {BLOB_TAR} ({n} blobs)")
+                tar.unlink()
+            ignore.append("*/acts/blobs/*")
+        return api.upload_folder(
             folder_path=str(root), repo_id=repo_id, repo_type="dataset",
-            allow_patterns=ALLOW, ignore_patterns=IGNORE, commit_message=msg)
+            allow_patterns=scope(experiment, tag), ignore_patterns=ignore,
+            commit_message=msg)
 
 
-def try_push(repo_id, root=None, token=None, msg="ckpt"):
+def try_push(repo_id, root=None, token=None, msg="ckpt", experiment=None, tag=None,
+             pack=False):
     """push() that warns instead of raising.
 
     Every push is one commit, and the Hub enforces an undocumented per-window quota on
@@ -84,25 +170,39 @@ def try_push(repo_id, root=None, token=None, msg="ckpt"):
     guarantee.
     """
     try:
-        return push(repo_id, root=root, token=token, msg=msg)
+        return push(repo_id, root=root, token=token, msg=msg,
+                    experiment=experiment, tag=tag, pack=pack)
     except Exception as e:                                            # noqa: BLE001
         print(f"! checkpoint SKIPPED ({msg}): {type(e).__name__}: {str(e)[:300]}")
         return None
 
 
-def pull(repo_id, root=None, token=None):
-    """False if nothing is checkpointed yet, so a first run falls through to computing."""
+def pull(repo_id, root=None, token=None, experiment=None, tag=None, pack=False):
+    """False if nothing is checkpointed yet, so a first run falls through to computing.
+
+    Scope this too: reads are cheap (Resolvers, 5,000 per 5 min on a free account) but
+    pulling every experiment drags extraction's ~1.6 GB of blobs into a run that only
+    needs its own results.
+
+    `pack=True` unpacks any acts/blobs.tar into acts/blobs/ afterwards, so the tree the
+    scripts read is the same either way and run_key resume still cache-hits. Safe on a
+    repo that stores loose blobs: with no tar present it is a no-op.
+    """
     root = Path(root or cfg.REPO / "experiments")
     root.mkdir(parents=True, exist_ok=True)
     try:
         snapshot_download(repo_id, repo_type="dataset", local_dir=str(root),
-                          token=_token(token), ignore_patterns=[".gitattributes"])
+                          token=_token(token), allow_patterns=scope(experiment, tag),
+                          ignore_patterns=[".gitattributes"])
     except RepositoryNotFoundError:
         return False
+    if pack:
+        for tar, n in unpack_blobs(root, experiment, tag):
+            print(f"unpacked {n} new blobs from {tar.name}")
     return True
 
 
-def autopush(repo_id, every=600, root=None, token=None):
+def autopush(repo_id, every=600, root=None, token=None, experiment=None, tag=None):
     """Returns an Event; set it to stop. A timer is what makes the checkpoint mid-run:
     steer_batch.py is one process for 93 cells, so a per-script push never fires inside
     it."""
@@ -111,7 +211,8 @@ def autopush(repo_id, every=600, root=None, token=None):
     def loop():
         while not stop.wait(every):
             try:
-                push(repo_id, root=root, token=token, msg="auto")
+                push(repo_id, root=root, token=token, msg="auto",
+                     experiment=experiment, tag=tag)
             except Exception as e:
                 print("ckpt failed:", type(e).__name__, e)
 
