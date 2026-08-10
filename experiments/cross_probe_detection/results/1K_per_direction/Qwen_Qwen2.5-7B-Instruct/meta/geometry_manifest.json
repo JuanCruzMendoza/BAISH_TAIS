@@ -1,0 +1,64 @@
+{
+  "config": {
+    "axes": [
+      "story_v2_1k",
+      "persona_v2",
+      "harm_v2",
+      "eval_v2"
+    ],
+    "band": [
+      11,
+      25
+    ],
+    "chosen_layers": {
+      "eval_v2": 9,
+      "harm_v2": 21,
+      "persona_v2": 15,
+      "story_v2_1k": 23
+    },
+    "cos_null_band": 0.050111482858579574,
+    "disattenuation": "spearman_brown",
+    "floor": "split_half_cos",
+    "residual_anchor": "story_v2_1k",
+    "seed": 20260731
+  },
+  "env": {
+    "argv": [
+      "experiments/cross_probe_detection/geometry.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "1K_per_direction",
+      "--axes",
+      "story_v2_1k,persona_v2,harm_v2,eval_v2",
+      "--layers",
+      "story_v2_1k=23,persona_v2=15,harm_v2=21,eval_v2=9"
+    ],
+    "git_diff_sha": "1143dcb6d10bb9b47693ff1fdbdaca19b90a8b5b25262e4581940cfe54640191",
+    "git_dirty": true,
+    "git_sha": "2707957f355c459991e5ca2d4ed4a6b3f264fe83",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-10T10:12:46",
+    "wall_s": 0.62
+  },
+  "inputs": {
+    "direction_run_keys": {
+      "eval_v2": "a4117d8a033896c508acc2a913e5b49d3b272b9d389cf00277f48413a1fbdcbd",
+      "harm_v2": "99b9e0570fc93b8783337bde71d70cf430e660ca4b45781f771b79db0dd2cfff",
+      "persona_v2": "5d633ee109a08c14dec6169434c9185d85fc95a04fd99f2ca885f522e146b917",
+      "story_v2_1k": "84ae50fcfa6902c4ab727d3250a799ffdea5b0e43b10e3141ab6be07662750e9"
+    },
+    "view_keys": {
+      "eval_v2": "1af4eb6274ebfc7ed535f608ad92885c089ac6bcafd7b9930371d42e3c0f7172",
+      "harm_v2": "e073bcc0767e46405ce53857fce5074a3798fa9ff72484952cb4a3ecf9400476",
+      "persona_v2": "3b8dc57b65dd7593533104eae577b078304c826d8f9dd9584e0cc09a0951b49d",
+      "story_v2_1k": "1bb6d9ed64469c8ed917ad42e859aa9b1cf2c99da3b98307bf3ad210b861368f"
+    }
+  },
+  "notes": [],
+  "run_key": "2951a5c9f7a42912f63107e781733a3d8103481873946c4efcea26b7c0b54980",
+  "status": "complete",
+  "stem": "geometry"
+}

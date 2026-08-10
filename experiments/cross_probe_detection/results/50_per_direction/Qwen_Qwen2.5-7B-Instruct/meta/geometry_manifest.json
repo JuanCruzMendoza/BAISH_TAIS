@@ -12,25 +12,29 @@
       11,
       25
     ],
+    "chosen_layers": null,
     "cos_null_band": 0.050111482858579574,
     "disattenuation": "spearman_brown",
     "floor": "split_half_cos",
+    "residual_anchor": "story_v2",
     "seed": 20260731
   },
   "env": {
     "argv": [
-      "geometry.py",
-      "Qwen/Qwen2.5-7B-Instruct"
+      "experiments/cross_probe_detection/geometry.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "50_per_direction"
     ],
-    "git_diff_sha": "dfdafd03f121bb23f13cc01ddbc04f7561bc0800ece744003c87994724c1b0ea",
+    "git_diff_sha": "6c2529941c8c610805644a2be37cc2a1b6dc0ebb92551e8290c5d551b5d80d99",
     "git_dirty": true,
-    "git_sha": "100bf8d245cf8b700570ee1210c472fe90772cde",
+    "git_sha": "2707957f355c459991e5ca2d4ed4a6b3f264fe83",
     "host": "LAPTOP-11LEDOPR",
     "platform": "Windows-10-10.0.19045-SP0",
     "python": "3.12.2",
     "resumed_from": 0,
-    "timestamp": "2026-08-01T17:28:24",
-    "wall_s": 0.53
+    "timestamp": "2026-08-10T10:15:36",
+    "wall_s": 0.83
   },
   "inputs": {
     "direction_run_keys": {
@@ -51,9 +55,9 @@
     }
   },
   "notes": [
-    "archived prior run 812c04f1"
+    "archived prior run a1c247d4"
   ],
-  "run_key": "a1c247d4d110c2c75297989f2b93dc8cb55a2ebbe7797baa8261a5047421df3e",
+  "run_key": "69c7e96b4052b414b9e67caf6df4f3b97e59c8143a10516fab490f15cee8eedd",
   "status": "complete",
   "stem": "geometry"
 }

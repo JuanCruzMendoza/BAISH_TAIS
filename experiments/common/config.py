@@ -97,6 +97,23 @@ def parse_layers(spec, L):
     return out
 
 
+def parse_axis_layers(spec):
+    """'story_v2_1k=23,persona_v2=15' -> {axis: layer}: one chosen layer per direction.
+
+    Manual, not derived: at 1K_per_direction the layers are read off `cohens_dz_train`
+    and live in extraction/insights.md, so they enter as an explicit argument.
+    """
+    out = {}
+    for part in str(spec).split(","):
+        if not part.strip():
+            continue
+        axis, sep, layer = part.partition("=")
+        if not sep:
+            raise ValueError(f"--layers: expected axis=layer, got {part!r}")
+        out[axis.strip()] = int(layer)
+    return out
+
+
 def layer_stem(spec):
     """The unresolved spec, as it appears in a stem (spec 0.1)."""
     s = str(spec).strip()

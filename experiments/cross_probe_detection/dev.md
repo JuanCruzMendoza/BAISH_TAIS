@@ -1,4 +1,6 @@
-# cross_probe_detection — is it one axis or four? (H1)
+
+# 50_per_direction
+## cross_probe_detection — is it one axis or four? (H1)
 
 Spec §2. **Objective:** score every probe from `extraction/` against every axis (paired AUROC, §2.2)
 and measure the geometry between them (cosines, residual fractions, §2.3).
@@ -93,3 +95,97 @@ comparable) or `story_v2` (the reverse residual).
   cos(d_v2, d_v1_audience) = +0.45.
 - `eval`'s split-half cosine is 0.612, so every `eval` comparison is noise-dominated. Needs ~100
   pairs (§0.7); nothing here fixes it.
+
+---
+
+# 1K_per_direction
+
+**Objective.** Same H1 question — one axis or four — at 800/200 pairs and at **one chosen layer per
+direction** instead of a band or a run-time rule.
+
+## Changes vs `50_per_direction`
+
+|              | 50_per_direction                                  | 1K_per_direction                          |
+| ------------ | ------------------------------------------------- | ----------------------------------------- |
+| axes         | 6 (incl. `story_v1` control, `length` foil)       | the 4 rivals; 4×4                         |
+| n per axis   | 65 pooled                                         | **1,000 pooled** (800 train + 200 heldout) |
+| probe layer  | run-time `mean_paired_cos` peak in band           | **manual, one per direction**             |
+| diagonal     | LOPO on train + the held-out split                | **`--diag heldout`**: the deployed vector on the 200 held-out pairs. At 800 train pairs LOPO moves d_z by ~0.005, ~100× below its SE |
+| effect size  | `cohens_dz` trimmed as monotone in `cos_probe_axis` | **`cohens_dz` emitted** — AUROC saturates at n=1000 and cannot rank cells |
+
+### Chosen layers
+
+From `extraction/insights.md` §1K (max `cohens_dz_train`, min train↔held-out gap). They enter as an
+explicit `--layers`, not from any JSON:
+
+| `story_v2_1k` | `persona_v2` | `harm_v2` | `eval_v2` |
+|---|---|---|---|
+| **L23** | **L15** | **L21** | **L9** |
+
+## Design
+
+**Cells.** Off-diagonal = paired AUROC + `cohens_dz` on the target axis's pooled 1,000 pairs.
+Diagonal = **one row**, the deployed vector on the 200 held-out pairs — no LOPO. The vector that
+experiments 3–5 use is the one fitted on all 800, so that is the one the diagonal should answer for;
+LOPO existed to give small n an out-of-sample number and at 800 pairs it no longer changes one.
+The diagonal is on 200 pairs and the off-diagonal on 1,000, which is the price of not refitting.
+
+**Layer convention.** A probe is a (vector, layer) pair, so row *i* is read at **its own** chosen
+layer L_i — the vector is deployed exactly as chosen, and the layer is constant across the row.
+`_matched.csv` (all probes at depth 0.65 → L18) is still emitted as the common-depth control.
+
+**No positive control.** `story_v1` does not exist at this tag, so no off-diagonal cell is *supposed*
+to read high. A matrix of nulls is therefore not self-validating here; the 50-pair tag's
+`story_v2`–`story_v1` cell is the only evidence that the machinery can produce a non-null.
+
+**Cosine, two conventions.** `own_layer` = cos(d_row[L_row], d_col[L_col]) — the deployed comparison,
+but two different bases, so it is not a geometric statement. `matched_to_col` = cos(d_row[L_col],
+d_col[L_col]) — both vectors at one layer, the only convention where the cosine means what it
+usually means. Emitted side by side so the first is never read alone.
+
+## Metrics
+
+Everything from `50_per_direction`, plus:
+
+| column | meaning |
+|---|---|
+| `cohens_dz` | paired effect size of the same cell. Non-saturating: the diagonal spans 1.48–3.74 where AUROC spans 0.964–1.000 |
+| `cohens_dz_folded` | `abs(cohens_dz)` — sign-free, the analogue of `auroc_folded` |
+| `null_dz_folded`, `excess_dz_over_null` | what 20 random unit directions score in `d_z` on that axis and layer, and the cell net of it |
+| `band_mean_cohens_dz` | matrix files only, over L11–25 |
+
+**`cross_auroc_chosen.csv`** replaces `_ownbest.csv` when `--layers` is given (`layer_rule:
+explicit` in the manifest). **`geometry_cos_chosen.csv`** carries `axis_row`, `axis_col`,
+`convention`, `layer_row`, `layer_col`, `cos`, `cos_disattenuated`.
+
+## Figures
+
+`plot_matrices.py`, four 4×4 heatmaps from `csv/` alone:
+
+| figure | cell |
+|---|---|
+| `plot_matrices_auroc.png` | AUROC, probe row at L_row |
+| `plot_matrices_excess_over_null.png` | the same AUROC folded and net of the random-direction null — the only one of the three that can be read on its own |
+| `plot_matrices_cohens_dz.png` | `cohens_dz`, same cells |
+| `plot_matrices_cos_own.png` | cos between the chosen vectors, each at its own layer |
+| `plot_matrices_cos_matched.png` | cos with the row vector re-read at the column's layer |
+
+## Run order
+
+No GPU. Reads `extraction/results/1K_per_direction/<model>/`.
+
+```bash
+M=Qwen/Qwen2.5-7B-Instruct; A=story_v2_1k,persona_v2,harm_v2,eval_v2
+L=story_v2_1k=23,persona_v2=15,harm_v2=21,eval_v2=9
+python cross_auroc.py   $M --tag 1K_per_direction --axes $A --layers $L --diag heldout
+python geometry.py      $M --tag 1K_per_direction --axes $A --layers $L
+python plot_matrices.py $M --tag 1K_per_direction
+```
+
+## Open
+
+- `harm_v2` and `persona_v2` share 159 prompts verbatim (8% each, `extraction/insights.md`), so their
+  cell is measured on overlapping data.
+- Length is uncached at this tag, so no foil enters selection or interpretation.
+- `eval_v2`'s L9 sits **outside** the reporting band L11–25, so its row's `band_*` columns and its
+  null reference are not read at the layer the cell is.

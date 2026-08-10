@@ -1,0 +1,97 @@
+{
+  "config": {
+    "axes": [
+      "story_v2_1k",
+      "persona_v2",
+      "harm_v2",
+      "eval_v2"
+    ],
+    "band": [
+      11,
+      25
+    ],
+    "deltas": [
+      0.6,
+      0.65,
+      0.7,
+      0.75
+    ],
+    "diag": [
+      "heldout"
+    ],
+    "interval": "clopper_pearson",
+    "layer_rule": "explicit",
+    "matched_depth": 0.65,
+    "matched_layer": 18,
+    "n_null_draws": 20,
+    "offdiag_pool": "train+heldout",
+    "probe_layers": {
+      "eval_v2": 9,
+      "harm_v2": 21,
+      "persona_v2": 15,
+      "story_v2_1k": 23
+    },
+    "probes": [
+      "eval_v2",
+      "harm_v2",
+      "persona_v2",
+      "story_v2_1k"
+    ],
+    "seed": 20260731
+  },
+  "env": {
+    "argv": [
+      "experiments/cross_probe_detection/cross_auroc.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "1K_per_direction",
+      "--axes",
+      "story_v2_1k,persona_v2,harm_v2,eval_v2",
+      "--layers",
+      "story_v2_1k=23,persona_v2=15,harm_v2=21,eval_v2=9",
+      "--diag",
+      "heldout"
+    ],
+    "git_diff_sha": "67af61a1e665d5c4a16728dec05ee8d0cdddf406821b69f9efb173ae2ba94c16",
+    "git_dirty": true,
+    "git_sha": "2707957f355c459991e5ca2d4ed4a6b3f264fe83",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-10T10:23:18",
+    "wall_s": 0.66
+  },
+  "inputs": {
+    "direction_run_keys": {
+      "eval_v2": "a4117d8a033896c508acc2a913e5b49d3b272b9d389cf00277f48413a1fbdcbd",
+      "harm_v2": "99b9e0570fc93b8783337bde71d70cf430e660ca4b45781f771b79db0dd2cfff",
+      "persona_v2": "5d633ee109a08c14dec6169434c9185d85fc95a04fd99f2ca885f522e146b917",
+      "story_v2_1k": "84ae50fcfa6902c4ab727d3250a799ffdea5b0e43b10e3141ab6be07662750e9"
+    },
+    "view_keys": {
+      "eval_v2": {
+        "heldout": "dddc3c12201b7efb9be57ac849a6a12d41a8db8c74d34df347b8c054297ac162",
+        "train": "1af4eb6274ebfc7ed535f608ad92885c089ac6bcafd7b9930371d42e3c0f7172"
+      },
+      "harm_v2": {
+        "heldout": "fdac28306aad14f1432f38d542ef453a0521799e15ef6615ae3aa68704baed5d",
+        "train": "e073bcc0767e46405ce53857fce5074a3798fa9ff72484952cb4a3ecf9400476"
+      },
+      "persona_v2": {
+        "heldout": "830de8984ef4aabc6480726ea74bea486b23320c55a545934f81169a4ef0ffbf",
+        "train": "3b8dc57b65dd7593533104eae577b078304c826d8f9dd9584e0cc09a0951b49d"
+      },
+      "story_v2_1k": {
+        "heldout": "f25fd92a1631e4c7de4e17bbc004ee725a51e69913d174fc332777d9d0319b38",
+        "train": "1bb6d9ed64469c8ed917ad42e859aa9b1cf2c99da3b98307bf3ad210b861368f"
+      }
+    }
+  },
+  "notes": [
+    "archived prior run 0554734e"
+  ],
+  "run_key": "d51f257788bf82436ed0003b16b9d7e760f7e0d1c24ab25927c9eb101d7d35ee",
+  "status": "complete",
+  "stem": "cross_auroc"
+}

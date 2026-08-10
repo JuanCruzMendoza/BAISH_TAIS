@@ -1,0 +1,41 @@
+{
+  "config": {
+    "axes": [
+      "story_v2_1k",
+      "persona_v2",
+      "harm_v2",
+      "eval_v2"
+    ],
+    "chosen_layers": {
+      "eval_v2": 9,
+      "harm_v2": 21,
+      "persona_v2": 15,
+      "story_v2_1k": 23
+    }
+  },
+  "env": {
+    "argv": [
+      "experiments/cross_probe_detection/plot_matrices.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "1K_per_direction"
+    ],
+    "git_diff_sha": "ea6db7d65b181acb638b47779e47dcd5c25828d8bb741d6258af26e52003ce0f",
+    "git_dirty": true,
+    "git_sha": "2707957f355c459991e5ca2d4ed4a6b3f264fe83",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-10T10:43:54",
+    "wall_s": 2.77
+  },
+  "inputs": {
+    "cross_auroc_run_key": "d51f257788bf82436ed0003b16b9d7e760f7e0d1c24ab25927c9eb101d7d35ee",
+    "geometry_run_key": "2951a5c9f7a42912f63107e781733a3d8103481873946c4efcea26b7c0b54980"
+  },
+  "notes": [],
+  "run_key": "61a11d66bf3793d37b59ff7b006c439b8d4d3a66a9eb012428be5b92bfec2d4e",
+  "status": "complete",
+  "stem": "plot_matrices"
+}

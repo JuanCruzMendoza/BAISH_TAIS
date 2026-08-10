@@ -28,7 +28,7 @@
     "matched_layer": 18,
     "n_null_draws": 20,
     "offdiag_pool": "train+heldout",
-    "ownbest_layers": {
+    "probe_layers": {
       "eval": 14,
       "harm": 21,
       "length": 13,
@@ -48,18 +48,20 @@
   },
   "env": {
     "argv": [
-      "cross_auroc.py",
-      "Qwen/Qwen2.5-7B-Instruct"
+      "experiments/cross_probe_detection/cross_auroc.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "50_per_direction"
     ],
-    "git_diff_sha": "9efbbf3b4a0cc17cdd0b4f52519d2473f8f83f51b8b008e62effb7a96b835a29",
+    "git_diff_sha": "da6f41ae475be311bf4dd90f133a6f0ed34f45212483a0e113e967d65d3fe4f0",
     "git_dirty": true,
-    "git_sha": "344ba78265bb5159c555b63e864f3b64ee79906b",
+    "git_sha": "2707957f355c459991e5ca2d4ed4a6b3f264fe83",
     "host": "LAPTOP-11LEDOPR",
     "platform": "Windows-10-10.0.19045-SP0",
     "python": "3.12.2",
     "resumed_from": 0,
-    "timestamp": "2026-08-02T09:55:03",
-    "wall_s": 0.57
+    "timestamp": "2026-08-10T10:25:05",
+    "wall_s": 0.66
   },
   "inputs": {
     "direction_run_keys": {
@@ -98,7 +100,7 @@
     }
   },
   "notes": [],
-  "run_key": "443c575539f42aa87d25d2d3fbdc3faab63d36a420f3c54335c7db07e0215c6e",
+  "run_key": "e47a965e01b91df747d1f56167a9ae5a76371663e588c0798ca27a0031cf3595",
   "status": "complete",
   "stem": "cross_auroc"
 }

@@ -1,12 +1,16 @@
 """Spec 2.3: cosines against a within-axis floor, plus residual fractions.
 
     python geometry.py <model>
+    python geometry.py <model> --tag 1K_per_direction \
+        --layers story_v2_1k=23,persona_v2=15,harm_v2=21,eval_v2=9
 
 Geometry is the primary H1 evidence (spec 2.1): the axes' datasets are disjoint and
 their prompt lengths differ by an order of magnitude, so an off-diagonal AUROC null
 could be distribution shift. Cosines are distribution-free.
 
-All comparisons are within-layer -- cosines across layers are meaningless.
+The per-layer tables are within-layer only -- a cosine across layers has no basis
+vector in common. `--layers` adds `_cos_chosen.csv`, which reports both conventions
+side by side precisely so the cross-layer one is never read alone.
 """
 import argparse
 import csv
@@ -22,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from experiments.common import acts, config as cfg, manifest as mf, metrics as met, views
 
 SIBLING = {"story_v2": "story_v1", "story_v1": "story_v2"}
+STORY = ("story_v2", "story_v2_1k")     # reverse-residual anchor; the one present wins
 
 
 def load_probe(src, axis):
@@ -55,9 +60,13 @@ def selfsplit_rows(halves, Lp1):
     return rows
 
 
+def reliabilities(halves, Lp1):
+    return {a: [met.spearman_brown(met.cos(d1[l], d2[l])) for l in range(Lp1)]
+            for a, (d1, d2, _) in halves.items()}
+
+
 def cos_rows(halves, probes, Lp1):
-    rel = {a: [met.spearman_brown(met.cos(d1[l], d2[l])) for l in range(Lp1)]
-           for a, (d1, d2, _) in halves.items()}
+    rel = reliabilities(halves, Lp1)
     rows = []
     for a, b in combinations(probes, 2):
         da, db = probes[a]["d"].numpy(), probes[b]["d"].numpy()
@@ -74,7 +83,32 @@ def cos_rows(halves, probes, Lp1):
     return rows
 
 
-def residual_rows(probes, Lp1):
+def cos_chosen_rows(probes, chosen, rel):
+    """The chosen-layer cosine matrix under both conventions.
+
+    `own_layer`: each vector at its own chosen layer, cos(d_row[L_row], d_col[L_col]).
+    Two different bases, so it is the *deployed* comparison, not a geometric one.
+    `matched_to_col`: cos(d_row[L_col], d_col[L_col]) -- both at the column's layer,
+    the only convention in which the cosine has its usual meaning.
+    """
+    rows = []
+    for a in chosen:                                     # row = probe
+        da = probes[a]["d"].numpy()
+        for b in chosen:                                 # column = axis at its layer
+            db, lb = probes[b]["d"].numpy(), chosen[b]
+            for conv, la in (("own_layer", chosen[a]), ("matched_to_col", lb)):
+                c = met.cos(da[la], db[lb])
+                ra, rb = rel[a][la], rel[b][lb]
+                den = np.sqrt(ra * rb) if ra > 0 and rb > 0 else float("nan")
+                rows.append({"axis_row": a, "axis_col": b, "convention": conv,
+                             "layer_row": la, "layer_col": lb, "cos": c,
+                             "reliability_row": ra, "reliability_col": rb,
+                             "cos_disattenuated": float(c / den) if den == den
+                                                  else float("nan")})
+    return rows
+
+
+def residual_rows(probes, Lp1, anchor=None):
     """resid_frac of each axis against the others, and of each rival against story.
 
     Every `others` basis is the same size: a story variant's sibling is dropped, and
@@ -89,8 +123,8 @@ def residual_rows(probes, Lp1):
         da = probes[a]["d"].numpy()
         rivals = [b for b in canon if b != a and SIBLING.get(a) != b]
         bases = [("others", rivals)]
-        if a != "story_v2" and "story_v2" in names:
-            bases.append(("story_v2", ["story_v2"]))
+        if anchor and a != anchor:
+            bases.append((anchor, [anchor]))
         for label, basis in bases:
             if not basis:
                 continue
@@ -122,6 +156,9 @@ def main():
     ap.add_argument("model")
     ap.add_argument("--tag", default=None)
     ap.add_argument("--axes", default=",".join(views.DIRECTIONS))
+    ap.add_argument("--layers", default=None,
+                    help="axis=layer,... one chosen layer per direction (extraction "
+                         "insights.md); adds _cos_chosen.csv")
     args = ap.parse_args()
 
     src = cfg.acts_layout(args.model, args.tag)
@@ -140,15 +177,29 @@ def main():
         view_keys[a], n_pairs[a] = v["view_key"], m["pos"].shape[0]
 
     Lp1, d_model = next(iter(probes.values()))["u"].shape
-    band = cfg.band(Lp1 - 1)
+    L = Lp1 - 1
+    band = cfg.band(L)
+    anchor = next((s for s in STORY if s in probes), None)
+
+    chosen = cfg.parse_axis_layers(args.layers) if args.layers else None
+    if chosen is not None:
+        bad = [f"{a}=L{l}" for a, l in chosen.items() if not 0 <= l <= L]
+        unknown = [a for a in chosen if a not in probes]
+        missing = [a for a in probes if a not in chosen]
+        if bad or unknown or missing:
+            raise SystemExit(f"--layers: outside 0..{L} {bad}, unknown {unknown}, "
+                             f"missing {missing}")
 
     self_r = selfsplit_rows(halves, Lp1)
     cos_r = cos_rows(halves, probes, Lp1)
-    res_r = residual_rows(probes, Lp1)
+    res_r = residual_rows(probes, Lp1, anchor)
+    chosen_r = (cos_chosen_rows(probes, chosen, reliabilities(halves, Lp1))
+                if chosen is not None else None)
 
     stem = mf.stem("geometry")
     config = {"axes": list(probes), "floor": "split_half_cos", "seed": cfg.SEED,
               "disattenuation": "spearman_brown", "band": [band[0], band[-1]],
+              "residual_anchor": anchor, "chosen_layers": chosen,
               "cos_null_band": met.random_cos_band(d_model)}
     inputs = {"view_keys": view_keys,
               "direction_run_keys": {a: probes[a].get("run_key") for a in probes}}
@@ -157,6 +208,8 @@ def main():
         write_csv(run.artefact("_selfsplit.csv"), self_r)
         write_csv(run.artefact("_cos.csv"), cos_r)
         write_csv(run.artefact("_residual.csv"), res_r)
+        if chosen_r is not None:
+            write_csv(run.artefact("_cos_chosen.csv"), chosen_r)
 
         print(f"{len(probes)} axes, d={d_model}, band {band[0]}-{band[-1]}, "
               f"cos null band +/-{met.random_cos_band(d_model):.3f}")
@@ -176,11 +229,24 @@ def main():
             flag = "  <- inside the null band" if abs(c) < met.random_cos_band(d_model) else ""
             print(f"  {a:9s} {b:9s} {c:+.3f}  ->  {dis:+.3f}{flag}")
 
-        print("\nresidual after projecting out story_v2 (1.0 = orthogonal)")
-        for a in probes:
-            s = bandmean(res_r, band, "resid_frac", axis=a, basis="story_v2")
-            if s == s:
-                print(f"  {a:10s} {s:.3f}")
+        if anchor:
+            print(f"\nresidual after projecting out {anchor} (1.0 = orthogonal)")
+            for a in probes:
+                s = bandmean(res_r, band, "resid_frac", axis=a, basis=anchor)
+                if s == s:
+                    print(f"  {a:12s} {s:.3f}")
+
+        if chosen_r is not None:
+            print("\nchosen-layer cosine, "
+                  + " ".join(f"{a}=L{chosen[a]}" for a in chosen))
+            for conv in ("own_layer", "matched_to_col"):
+                print(f"  [{conv}]  " + "".join(a[:9].rjust(10) for a in chosen))
+                for a in chosen:
+                    cells = [next(r["cos"] for r in chosen_r
+                                  if r["axis_row"] == a and r["axis_col"] == b
+                                  and r["convention"] == conv) for b in chosen]
+                    print("  " + a[:14].ljust(14)
+                          + "".join(f"{c:+.3f}".rjust(10) for c in cells))
 
 
 if __name__ == "__main__":
