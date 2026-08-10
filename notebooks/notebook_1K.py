@@ -6,7 +6,7 @@ app = marimo.App(width="medium", auto_download=["html"])
 
 @app.cell
 def _():
-    import pathlib, subprocess, sys
+    import os, pathlib, subprocess, sys
     import marimo as mo
 
     MODEL = "Qwen/Qwen2.5-7B-Instruct"
@@ -47,7 +47,7 @@ def _():
        "import torch;print(torch.__version__, torch.cuda.is_available(), torch.cuda.get_device_name(0))")
 
     sys.path.insert(0, REPO)
-    return HF_REPO, MODEL, REPO, TAG, mo, sh
+    return HF_REPO, MODEL, REPO, TAG, mo, os, sh
 
 
 @app.cell(hide_code=True)
@@ -88,10 +88,15 @@ def _(mo):
 
 
 @app.cell
-def _(HF_REPO, HF_TOKEN, RUN_EXTRACTION, TAG, mo, sh):
+def _(HF_REPO, HF_TOKEN, RUN_EXTRACTION, TAG, mo, os, sh):
     from experiments.common import ckpt
 
     mo.stop(not HF_TOKEN.value, mo.md("*Paste the HF token to start.*"))
+    if not RUN_EXTRACTION.value:
+        # Xet buys chunk-level dedup on *upload*, which a pull-only session never uses,
+        # and its read-token endpoint is what returned 429 when the blobs were 7,731
+        # separate requests. Not set when extraction re-runs -- its pushes want the dedup.
+        os.environ["HF_HUB_DISABLE_XET"] = "1"
     # SCOPE is not cosmetic: upload_folder emits one commit per 256 files considered, so
     # an unscoped push also walks every other experiment's results (spec: ckpt.scope).
     SCOPE = {"experiment": "extraction", "tag": TAG}
@@ -100,19 +105,18 @@ def _(HF_REPO, HF_TOKEN, RUN_EXTRACTION, TAG, mo, sh):
     # calibrated on the pole *activations*, not just on the vectors -- jb_readout reloads
     # all 8,000 pole prompts, so the blobs are not optional. `vectors/` for the probes and
     # `meta/directions__*` for the manifest they are validated against. Skipped: csv/,
-    # figures/, probe_select's tables and ~30 MB of meta/*.jsonl resume partials.
+    # figures/ and probe_select's tables.
     _need = None if RUN_EXTRACTION.value else ["*/acts/**", "*/vectors/**",
                                               "*/meta/directions__*"]
-    restored = ckpt.pull(HF_REPO, token=HF_TOKEN.value, subpaths=_need, **SCOPE)
-    # NEW EXTRACTION RUN (another model / tag): add pack=True to the pull above and
-    # uncomment the matching push in the cache cell. pack=True stores acts/blobs as a
-    # single tar -- 2 commits instead of ~30 -- and unpacks it here so the scripts see the
-    # same tree. Both sides or neither. This tag's blobs are loose on the Hub already, and
-    # pack=True is a no-op when no tar is present, so it is safe to leave enabled.
+    # pack=True on BOTH sides or neither. The blob cache is stored on the Hub as a single
+    # acts/blobs.tar: 7,731 loose .npy was one read request each and hit the quota, and one
+    # commit per 256 files made every push ~30. Unpacked here, so the scripts see the same
+    # tree either way and run_key resume still cache-hits.
+    restored = ckpt.pull(HF_REPO, token=HF_TOKEN.value, subpaths=_need, pack=True, **SCOPE)
     sh("git", "status", "--short", "experiments")
     # Only arm the timer when something will write extraction results. With the box off
     # nothing here does, and the jailbreak blobs are deliberately not checkpointed.
-    TIMER = (ckpt.autopush(HF_REPO, every=3600, token=HF_TOKEN.value, **SCOPE)
+    TIMER = (ckpt.autopush(HF_REPO, every=3600, token=HF_TOKEN.value, pack=True, **SCOPE)
              if RUN_EXTRACTION.value else None)
     print("restored from Hub:", restored,
           "| extraction:", "re-running, hourly checkpoint armed" if TIMER
@@ -131,16 +135,16 @@ def _(mo):
     below it reads the blob cache. All 8 cells run in **one process** — the model load
     dominated the wall time at 8 invocations — and checkpoint once at the end.
 
-    That push is still ~30 commits: `upload_folder` emits one per 256 files, and 7,731
-    blobs is 7,731 files. Commits are the rationed resource, so the push is scoped to this
-    experiment and tag. A rate-limited checkpoint warns and moves on rather than killing
-    the cell; re-running resumes per prompt from the blobs already on disk.
+    That push is `pack=True`, so the cache goes up as a single `acts/blobs.tar`: **2
+    commits**, against ~30 when the 7,731 blobs went loose (`upload_folder` emits one per
+    256 files) — and a loose cache also cost one *read* request per blob on the way back
+    down, which is what returned 429. A rate-limited checkpoint warns and moves on rather
+    than killing the cell; re-running resumes per prompt from the blobs on disk.
 
-    **For a new model or tag**, uncomment the `pack=True` lines in this cell *and* the
-    checkpoint cell: the blob cache goes up as one tar, ~2 commits instead of ~30. Not for
-    steering — its ~500 files already cost ~3 commits, and its resume partials have to stay
-    individually addressable. Trade-off: a packed push re-sends the whole tar whenever any
-    blob changes, so pack a finished cache, not a resuming one.
+    Trade-off: a packed push re-sends the whole 1.6 GB tar whenever any blob changes, so
+    the hourly timer re-tars on every tick. Pack a finished cache, not a resuming one — and
+    not steering, whose ~500 files already cost ~3 commits and whose resume partials have to
+    stay individually addressable.
     """)
     return
 
@@ -155,9 +159,9 @@ def _(HF_REPO, HF_TOKEN, MODEL, RUN_EXTRACTION, SCOPE, TAG, ckpt, sh):
         # only the prompts not yet written, not the whole list.
         sh("python", "experiments/extraction/cache_activations.py", MODEL, "--tag", TAG,
            "--dataset", ",".join(DIRECTIONS), "--split", "train,heldout")
-        ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="acts", **SCOPE)
-        # NEW EXTRACTION RUN: use this instead, together with pack=True on the pull above.
-        # ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="acts", pack=True, **SCOPE)
+        # pack=True to match the pull: pushing the blobs loose here would leave both
+        # representations on the Hub, and they would drift apart on the next run.
+        ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="acts", pack=True, **SCOPE)
     cached = True                # the blobs are either just written or just pulled
     return DIRECTIONS, cached
 

@@ -8,6 +8,7 @@ in the tree the scripts read, so run_key resume skips the cells already done.
 import os
 import tarfile
 import threading
+import time
 from pathlib import Path
 
 from huggingface_hub import HfApi, snapshot_download
@@ -21,19 +22,19 @@ from experiments.common import config as cfg
 #   *.npy   acts/blobs, ~204 KB x 915: written once, so this is pure re-upload avoided.
 #   *.jsonl meta/, the resume partials, 30 MB and append-only: Xet dedups at chunk level,
 #           so only the appended tail moves instead of all 30 MB on every tick.
+# blobs.tar needs no line: at 1.6 GB it is far over the auto-LFS threshold.
 LFS_LINES = ["*.npy filter=lfs diff=lfs merge=lfs -text",
              "*.jsonl filter=lfs diff=lfs merge=lfs -text"]
 
 ALLOW = ["*/results/**"]                # every experiment; scope() narrows it
-# vectors/*.pt are INCLUDED, though they are the biggest thing here: lopo_d is
-# n x (L+1) x d float32, so a direction's .pt grew from ~18 MB at n=50 to ~335 MB at n=800,
-# ~1.3 GB for four. They were excluded until the real constraint turned out to be commits,
-# not bytes -- 4 files is one commit (upload_folder batches 256 files per commit), and Xet
-# uploads those bytes once and dedups after. The alternative was a 1.6 GB blob download plus
-# an extract_direction rebuild at the start of every downstream session, which is what
-# experiments 2-5 would otherwise pay to get a direction they cannot compute themselves.
+# vectors/*.pt are INCLUDED: 2.1 MB each at n=800, 8.4 MB for four, one commit. They were
+# excluded back when lopo_d was stored in them (~335 MB each) and the constraint looked like
+# bytes; it is commits. The alternative was a 1.6 GB blob download plus an extract_direction
+# rebuild at the start of every downstream session, which is what experiments 2-5 would
+# otherwise pay to get a direction they cannot compute themselves.
 #
-# The tarballs are stale exports; *.tar does not match *.tar.gz.
+# *.tar is ignored in the folder walk because pack=True uploads it by itself, and because a
+# stale export must not ride along; *.tar does not match *.tar.gz.
 IGNORE = ["*/meta/_archive/*", "*.tar", "*.tar.gz"]
 
 # Two overlapping pushes race on the commit they build.
@@ -183,13 +184,32 @@ def try_push(repo_id, root=None, token=None, msg="ckpt", experiment=None, tag=No
         return None
 
 
+def _is_rate_limit(e):
+    """429 reaches us two ways, and only one of them is an HfHubHTTPError.
+
+    The Xet path is Rust and surfaces as a bare RuntimeError -- "Network error: Request
+    error: HTTP status client error (429 Too Many Requests) ... /xet-read-token/<sha>" --
+    so the type is not a reliable discriminator and the string has to be.
+    """
+    return "429" in str(e) or "too many requests" in str(e).lower()
+
+
 def pull(repo_id, root=None, token=None, experiment=None, tag=None, pack=False,
-         subpaths=None):
+         subpaths=None, attempts=6, max_workers=4):
     """False if nothing is checkpointed yet, so a first run falls through to computing.
 
-    Scope this too: reads are cheap (Resolvers, 5,000 per 5 min on a free account) but
-    pulling every experiment drags extraction's ~1.6 GB of blobs into a run that only
-    needs its own results. `subpaths` narrows further inside one experiment.
+    Scope this too: reads are cheap per request but not unlimited, and a loose blob cache
+    is one request per blob -- extraction's 7,731 of them exceed the read quota on a free
+    account and come back 429, from the xet-read-token endpoint rather than from the file
+    downloads. Hence `max_workers=4` (below the library's 8, to spread the burst) and the
+    retry: snapshot_download resumes, skipping whatever already landed, so each attempt
+    starts where the last one stopped and the download completes across several windows.
+    `HF_HUB_DISABLE_XET=1` is the escape hatch -- it routes downloads past that endpoint
+    entirely, at the cost of chunk-level dedup.
+
+    The real fix for a blob cache this size is not to store it loose: see `pack`.
+
+    `subpaths` narrows further inside one experiment.
 
     `pack=True` unpacks any acts/blobs.tar into acts/blobs/ afterwards, so the tree the
     scripts read is the same either way and run_key resume still cache-hits. Safe on a
@@ -197,30 +217,46 @@ def pull(repo_id, root=None, token=None, experiment=None, tag=None, pack=False,
     """
     root = Path(root or cfg.REPO / "experiments")
     root.mkdir(parents=True, exist_ok=True)
-    try:
-        snapshot_download(repo_id, repo_type="dataset", local_dir=str(root),
-                          token=_token(token),
-                          allow_patterns=scope(experiment, tag, subpaths),
-                          ignore_patterns=[".gitattributes"])
-    except RepositoryNotFoundError:
-        return False
+    for i in range(attempts):
+        try:
+            snapshot_download(repo_id, repo_type="dataset", local_dir=str(root),
+                              token=_token(token), max_workers=max_workers,
+                              allow_patterns=scope(experiment, tag, subpaths),
+                              ignore_patterns=[".gitattributes"])
+            break
+        except RepositoryNotFoundError:
+            return False
+        except Exception as e:                                        # noqa: BLE001
+            if not _is_rate_limit(e) or i == attempts - 1:
+                raise
+            wait = min(300, 30 * 2 ** i)
+            print(f"! rate-limited ({i + 1}/{attempts}), resuming in {wait}s: "
+                  f"{str(e)[:160]}")
+            time.sleep(wait)
     if pack:
         for tar, n in unpack_blobs(root, experiment, tag):
             print(f"unpacked {n} new blobs from {tar.name}")
     return True
 
 
-def autopush(repo_id, every=600, root=None, token=None, experiment=None, tag=None):
+def autopush(repo_id, every=600, root=None, token=None, experiment=None, tag=None,
+             pack=False):
     """Returns an Event; set it to stop. A timer is what makes the checkpoint mid-run:
     steer_batch.py is one process for 93 cells, so a per-script push never fires inside
-    it."""
+    it.
+
+    `pack` has to match whatever the manual pushes for this experiment use. A packed repo
+    and an unpacked tick would leave both representations on the Hub, and pull() would
+    then unpack a tar over blobs that no longer came from it. The cost is re-tarring the
+    cache on every tick, which is why `every` should not be small when packing.
+    """
     stop = threading.Event()
 
     def loop():
         while not stop.wait(every):
             try:
                 push(repo_id, root=root, token=token, msg="auto",
-                     experiment=experiment, tag=tag)
+                     experiment=experiment, tag=tag, pack=pack)
             except Exception as e:
                 print("ckpt failed:", type(e).__name__, e)
 
