@@ -5,10 +5,22 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
-def load(model_id, dtype=torch.bfloat16, device_map="auto"):
+def tokenizer(model_id):
+    """The tokenizer `load` would build, without the weights.
+
+    Everything derived from the tokenizer alone -- `templated`, `prompt_hasher`,
+    `token_info_fn`, `chat_template_sha`, and so a view's `view_key` -- is identical
+    either way, which is what lets a view be built on CPU. Configured here rather than in
+    `load` so the two can never drift: padding side and pad token both reach the hashes.
+    """
     tok = AutoTokenizer.from_pretrained(model_id, padding_side="left")
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
+    return tok
+
+
+def load(model_id, dtype=torch.bfloat16, device_map="auto"):
+    tok = tokenizer(model_id)
     model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=dtype,
                                                 device_map=device_map)
     model.eval()

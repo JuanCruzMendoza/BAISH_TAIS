@@ -6,6 +6,7 @@ app = marimo.App(width="medium", auto_download=["html"])
 
 @app.cell
 def _():
+    # cell 1
     import os, pathlib, subprocess, sys
     import marimo as mo
 
@@ -59,6 +60,7 @@ def _():
 
 @app.cell(hide_code=True)
 def _(TAG, mo):
+    # cell 2
     mo.md(f"""
     # {TAG} — extraction
 
@@ -84,6 +86,7 @@ def _(TAG, mo):
 
 @app.cell
 def _(mo):
+    # cell 3
     HF_TOKEN = mo.ui.text(label="HF_TOKEN (write)", kind="password", full_width=True)
     # Off = extraction is done and on the Hub: pull what the probes need and skip its
     # four cells. Leaving them on costs ~90 commits re-uploading identical files, because
@@ -96,6 +99,7 @@ def _(mo):
 
 @app.cell
 def _(HF_REPO, HF_TOKEN, RUN_EXTRACTION, TAG, mo, os, sh):
+    # cell 4
     from experiments.common import ckpt
 
     mo.stop(not HF_TOKEN.value, mo.md("*Paste the HF token to start.*"))
@@ -133,6 +137,7 @@ def _(HF_REPO, HF_TOKEN, RUN_EXTRACTION, TAG, mo, os, sh):
 
 @app.cell(hide_code=True)
 def _(mo):
+    # cell 5
     mo.md(r"""
     ## Cache the activations — GPU
 
@@ -158,6 +163,7 @@ def _(mo):
 
 @app.cell
 def _(HF_REPO, HF_TOKEN, MODEL, RUN_EXTRACTION, SCOPE, TAG, ckpt, sh):
+    # cell 6
     DIRECTIONS = ["story_v2_1k", "persona_v2", "eval_v2", "harm_v2"]
 
     if RUN_EXTRACTION.value:
@@ -175,6 +181,7 @@ def _(HF_REPO, HF_TOKEN, MODEL, RUN_EXTRACTION, SCOPE, TAG, ckpt, sh):
 
 @app.cell(hide_code=True)
 def _(mo):
+    # cell 7
     mo.md(r"""
     ## Directions and the per-layer table — CPU
 
@@ -187,6 +194,7 @@ def _(mo):
 
 @app.cell
 def _(DIRECTIONS, HF_REPO, HF_TOKEN, MODEL, RUN_EXTRACTION, SCOPE, TAG, cached, ckpt, sh):
+    # cell 8
     assert cached
     if RUN_EXTRACTION.value:
         for _d in DIRECTIONS:
@@ -202,6 +210,7 @@ def _(DIRECTIONS, HF_REPO, HF_TOKEN, MODEL, RUN_EXTRACTION, SCOPE, TAG, cached, 
 
 @app.cell(hide_code=True)
 def _(mo):
+    # cell 9
     mo.md(r"""
     ## Figures
 
@@ -212,6 +221,7 @@ def _(mo):
 
 @app.cell
 def _(HF_REPO, HF_TOKEN, MODEL, RUN_EXTRACTION, SCOPE, TAG, ckpt, extracted, sh):
+    # cell 10
     assert extracted
     if RUN_EXTRACTION.value:
         sh("python", "experiments/extraction/plot_figures.py", MODEL, "--tag", TAG,
@@ -223,6 +233,7 @@ def _(HF_REPO, HF_TOKEN, MODEL, RUN_EXTRACTION, SCOPE, TAG, ckpt, extracted, sh)
 
 @app.cell
 def _(MODEL, RUN_EXTRACTION, TAG, TIMER, figured, sh):
+    # cell 11
     assert figured
     if not RUN_EXTRACTION.value:
         # check_stale spans the whole tag, so running it here would only report the
@@ -241,6 +252,7 @@ def _(MODEL, RUN_EXTRACTION, TAG, TIMER, figured, sh):
 
 @app.cell(hide_code=True)
 def _(TAG, mo):
+    # cell 12
     mo.md(f"""
     ## Choose the layers
 
@@ -260,6 +272,7 @@ def _(TAG, mo):
 
 @app.cell(hide_code=True)
 def _(TAG, mo):
+    # cell 13
     mo.md(f"""
     # {TAG} — probe_jailbreak_detection (H2)
 
@@ -279,15 +292,34 @@ def _(TAG, mo):
     `jb_readout.py`; once its `.pt` is on the Hub they are disposable, and the price is
     that a kill *during* the GPU cell costs that pass rather than resuming from it.
 
-    **A jailbreak-only session** is: the setup cell, the token cell with the box off, the
-    extraction checkpoint cell, then the four below — **2 commits** total, and the only GPU
-    work is the 1,009-prompt pass.
+    **Leave `re-run probe_jailbreak_detection` off** once its results are on the Hub. Off,
+    the activation cell runs `--view-only`: it writes `acts/views/jailbreaks__all.json`
+    from the tokenizer alone — seconds, on CPU, no weights — and the readout and metrics
+    cells skip. That view is the one thing **steering** needs from this section, and it is
+    the one thing not on the Hub, because it is written into *extraction's* tree while the
+    pushes here are scoped to `probe_jailbreak_detection/`. Rebuilding it is cheaper than
+    storing it: pushing it would re-tar extraction's 1.6 GB cache and drag the 1,009
+    jailbreak blobs in with it, +206 MB on every future extraction pull, for activations
+    steering never reads. Verified: the CPU path reproduces the GPU path's `view_key` and
+    every row exactly, so no downstream `run_key` moves.
     """)
     return
 
 
 @app.cell
+def _(mo):
+    # Off = this experiment is done and on the Hub: build the view on CPU and skip the
+    # readout and metrics cells. On = the full 1,009-prompt GPU pass.
+    # cell 14
+    RUN_JB = mo.ui.checkbox(
+        label="re-run probe_jailbreak_detection (off: view-only, CPU, then skip)")
+    RUN_JB
+    return (RUN_JB,)
+
+
+@app.cell
 def _(HF_REPO, HF_TOKEN, TAG, ckpt, mo):
+    # cell 15
     mo.stop(not HF_TOKEN.value, mo.md("*Paste the HF token to start.*"))
     JB_SCOPE = {"experiment": "probe_jailbreak_detection", "tag": TAG}
     JB_AXES = "story_v2_1k,persona_v2,harm_v2,eval_v2"
@@ -300,6 +332,7 @@ def _(HF_REPO, HF_TOKEN, TAG, ckpt, mo):
 
 @app.cell(hide_code=True)
 def _(mo):
+    # cell 16
     mo.md(r"""
     ## Cache the jailbreak activations — GPU
 
@@ -315,16 +348,21 @@ def _(mo):
 
 
 @app.cell
-def _(MODEL, TAG, extracted, sh):
+def _(MODEL, RUN_JB, TAG, extracted, sh):
+    # cell 17
     assert extracted                      # the probes come from the extraction cells
+    # Off: write the view and stop. It is what steering reads, it costs seconds on CPU, and
+    # skipping the weights is what lets a judge-only session run without a GPU at all.
+    _vo = [] if RUN_JB.value else ["--view-only"]
     sh("python", "experiments/extraction/cache_activations.py", MODEL, "--tag", TAG,
-       "--dataset", "jailbreaks", "--split", "all", "--poles", "pos")
+       "--dataset", "jailbreaks", "--split", "all", "--poles", "pos", *_vo)
     jb_cached = True
     return (jb_cached,)
 
 
 @app.cell(hide_code=True)
 def _(mo):
+    # cell 18
     mo.md(r"""
     ## Readout and metrics — CPU
 
@@ -342,36 +380,49 @@ def _(mo):
 
 
 @app.cell
-def _(HF_REPO, HF_TOKEN, JB_AXES, JB_SCOPE, MODEL, TAG, ckpt, jb_cached, sh):
+def _(HF_REPO, HF_TOKEN, JB_AXES, JB_SCOPE, MODEL, RUN_JB, TAG, ckpt, jb_cached, sh):
+    # cell 19
     assert jb_cached
-    sh("python", "experiments/probe_jailbreak_detection/jb_readout.py", MODEL,
-       "--tag", TAG, "--axes", JB_AXES)
-    # The one push that matters: after this the blobs above are disposable.
-    ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="jb_readout", **JB_SCOPE)
+    if RUN_JB.value:                      # needs the blobs, which --view-only does not write
+        sh("python", "experiments/probe_jailbreak_detection/jb_readout.py", MODEL,
+           "--tag", TAG, "--axes", JB_AXES)
+        # The one push that matters: after this the blobs above are disposable.
+        ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="jb_readout", **JB_SCOPE)
     jb_read = True
     return (jb_read,)
 
 
 @app.cell
-def _(HF_REPO, HF_TOKEN, JB_AXES, JB_LAYERS, JB_SCOPE, MODEL, TAG, ckpt, jb_read, sh):
+def _(HF_REPO, HF_TOKEN, JB_AXES, JB_LAYERS, JB_SCOPE, MODEL, RUN_JB, TAG, ckpt, jb_read,
+      sh):
+    # cell 20
     assert jb_read
-    for _rule in ("midpoint", "gap_mid"):
-        sh("python", "experiments/probe_jailbreak_detection/jb_metrics.py", MODEL,
-           "--tag", TAG, "--axes", JB_AXES, "--layers", JB_LAYERS, "--threshold", _rule)
-    ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="jb_metrics", **JB_SCOPE)
+    if RUN_JB.value:
+        for _rule in ("midpoint", "gap_mid"):
+            sh("python", "experiments/probe_jailbreak_detection/jb_metrics.py", MODEL,
+               "--tag", TAG, "--axes", JB_AXES, "--layers", JB_LAYERS,
+               "--threshold", _rule)
+        ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="jb_metrics", **JB_SCOPE)
     jb_done = True
     return (jb_done,)
 
 
 @app.cell
-def _(MODEL, TAG, jb_done, sh):
+def _(MODEL, RUN_JB, TAG, jb_done, sh):
+    # cell 21
     assert jb_done
-    sh("python", "-m", "experiments.common.check_stale", MODEL, TAG, allow_fail=True)
+    if RUN_JB.value:
+        sh("python", "-m", "experiments.common.check_stale", MODEL, TAG, allow_fail=True)
+    else:
+        # --view-only leaves the jailbreak blobs uncomputed on purpose, which check_stale
+        # would report as a finding against results that are already on the Hub.
+        print("probe_jailbreak_detection pulled from the Hub -- nothing to check")
     return
 
 
 @app.cell(hide_code=True)
 def _(TAG, mo):
+    # cell 22
     mo.md(f"""
     ## Read the results
 
@@ -389,6 +440,7 @@ def _(TAG, mo):
 
 @app.cell(hide_code=True)
 def _(TAG, mo):
+    # cell 23
     mo.md(f"""
     # Steering jailbreak - 1
 
@@ -428,6 +480,7 @@ def _(TAG, mo):
 
 @app.cell
 def _(mo):
+    # cell 24
     OPENAI_KEY = mo.ui.text(label="OPENAI_API_KEY (judge, spec 5.3)", kind="password",
                             full_width=True)
     RUN_STEERING = mo.ui.checkbox(label="run steering (36 cells, ~4 h GPU + ~1.5 h judging)")
@@ -437,6 +490,7 @@ def _(mo):
 
 @app.cell
 def _(HF_REPO, HF_TOKEN, MODEL, OPENAI_KEY, REPO, RUN_STEERING, TAG, ckpt, mo, os):
+    # cell 25
     import pathlib as _pl
 
     mo.stop(not HF_TOKEN.value, mo.md("*Paste the HF token to start.*"))
@@ -462,6 +516,7 @@ def _(HF_REPO, HF_TOKEN, MODEL, OPENAI_KEY, REPO, RUN_STEERING, TAG, ckpt, mo, o
 
 @app.cell(hide_code=True)
 def _(mo):
+    # cell 26
     mo.md(r"""
     ## Baseline, and the split it defines — GPU
 
@@ -486,6 +541,7 @@ def _(mo):
 @app.cell
 def _(HF_REPO, HF_TOKEN, MODEL, RUN_STEERING, ST_SCOPE, TAG, ckpt, jb_cached, sh):
     # Not cosmetic: that cell writes acts/views/jailbreaks__all.json, which sets.py reads.
+    # cell 27
     assert jb_cached
     if RUN_STEERING.value:
         sh("python", "experiments/steering_jailbreaks/gen_baseline.py", MODEL,
@@ -498,6 +554,7 @@ def _(HF_REPO, HF_TOKEN, MODEL, RUN_STEERING, ST_SCOPE, TAG, ckpt, jb_cached, sh
 
 @app.cell
 def _(HF_REPO, HF_TOKEN, RUN_STEERING, ST_META, ST_SCOPE, ckpt, sh, st_baseline):
+    # cell 28
     assert st_baseline
     if RUN_STEERING.value:
         sh("python", "experiments/steering_jailbreaks/judge_strongreject.py",
@@ -509,6 +566,7 @@ def _(HF_REPO, HF_TOKEN, RUN_STEERING, ST_META, ST_SCOPE, ckpt, sh, st_baseline)
 
 @app.cell(hide_code=True)
 def _(mo):
+    # cell 29
     mo.md(r"""
     ## The cell list
 
@@ -524,7 +582,8 @@ def _(mo):
 
 
 @app.cell
-def _(MODEL, ST_CHOSEN, mo):
+def _(MODEL, ST_CHOSEN, ST_META, mo):
+    # cell 30
     import json as _json
     import tempfile as _tf
     from pathlib import Path as _P
@@ -567,12 +626,34 @@ def _(MODEL, ST_CHOSEN, mo):
         ST_JOBS[_set] = str(_p)
         _lines.append(f"**{_set}** — {len(_js)} cells\n\n```\n"
                       + "\n".join(" ".join(j) for j in _js) + "\n```")
+
+    _EXPECT = {"steer_single": len(_jobs("success")),
+               "steer_induce": len(_jobs("refusal"))}
+
+    def ST_PENDING(script):
+        """-> (cells with a complete manifest, expected).
+
+        Lets the two steer cells skip `steer_batch` outright when their whole set is
+        already generated. Without it a resumed session pays a model load each, purely to
+        define the markers the judge cell asserts on -- and resume inside `steer_batch`
+        generates nothing anyway. Superseded manifests live in meta/_archive, so the live
+        directory holds only current ones.
+        """
+        n = 0
+        for f in ST_META.glob(f"{script}__*_manifest.json"):
+            try:
+                n += _json.loads(f.read_text(encoding="utf-8")).get("status") == "complete"
+            except ValueError:                     # torn tail mid-push
+                pass
+        return n, _EXPECT[script]
+
     mo.md(f"{_total} cells\n\n" + "\n\n".join(_lines))
-    return (ST_JOBS,)
+    return ST_JOBS, ST_PENDING
 
 
 @app.cell(hide_code=True)
 def _(mo):
+    # cell 31
     mo.md(r"""
     ## Steer — GPU
 
@@ -580,38 +661,55 @@ def _(mo):
     job is parsed and validated before the load, so a typo costs a second. Resume is per
     cell *and* per batch inside a cell, so a kill costs at most one batch.
 
-    The successes first: they are the smaller set, and `harm_v2 × add × L21` is the run's
-    smoke test — L21 sits beside 50_per_direction's one causal cell (`harm add L20`, 24/24).
+    Each cell **skips `steer_batch` entirely** once all 18 of its manifests are complete, so
+    a resumed session pays no model load to get past here. Without that, resume costs two
+    loads purely to define the markers the judge cell asserts on.
+
+    `harm_v2 × add × L21` is the run's smoke test — L21 sits beside 50_per_direction's one
+    causal cell (`harm add L20`, 24/24).
     """)
     return
 
 
 @app.cell
-def _(HF_REPO, HF_TOKEN, MODEL, RUN_STEERING, ST_JOBS, ST_SCOPE, TAG, ckpt, sh, st_split):
+def _(HF_REPO, HF_TOKEN, MODEL, RUN_STEERING, ST_JOBS, ST_PENDING, ST_SCOPE, TAG, ckpt,
+      sh, st_split):
+    # cell 32
     assert st_split                      # the success set is defined by the judged baseline
-    if RUN_STEERING.value:
+    _n, _want = ST_PENDING("steer_single")
+    if RUN_STEERING.value and _n < _want:
         sh("python", "experiments/steering_jailbreaks/steer_batch.py", MODEL, "--tag", TAG,
            "--script", "steer_single", "--jobs", ST_JOBS["success"],
            "--batch-size", "32", "--max-batch-tokens", "65536")
         ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="steer_single cells", **ST_SCOPE)
+    else:
+        print(f"steer_single: {_n}/{_want} cells complete"
+              + (" -- skipped, no model load" if RUN_STEERING.value else " (not running)"))
     st_success = True
     return (st_success,)
 
 
 @app.cell
-def _(HF_REPO, HF_TOKEN, MODEL, RUN_STEERING, ST_JOBS, ST_SCOPE, TAG, ckpt, sh, st_success):
+def _(HF_REPO, HF_TOKEN, MODEL, RUN_STEERING, ST_JOBS, ST_PENDING, ST_SCOPE, TAG, ckpt,
+      sh, st_success):
+    # cell 33
     assert st_success
-    if RUN_STEERING.value:
+    _n, _want = ST_PENDING("steer_induce")
+    if RUN_STEERING.value and _n < _want:
         sh("python", "experiments/steering_jailbreaks/steer_batch.py", MODEL, "--tag", TAG,
            "--script", "steer_induce", "--jobs", ST_JOBS["refusal"],
            "--batch-size", "32", "--max-batch-tokens", "65536")
         ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="steer_induce cells", **ST_SCOPE)
+    else:
+        print(f"steer_induce: {_n}/{_want} cells complete"
+              + (" -- skipped, no model load" if RUN_STEERING.value else " (not running)"))
     st_steered = True
     return (st_steered,)
 
 
 @app.cell(hide_code=True)
 def _(mo):
+    # cell 34
     mo.md(r"""
     ## Judge — API
 
@@ -640,6 +738,7 @@ def _(mo):
 
 @app.cell
 def _(HF_REPO, HF_TOKEN, RUN_STEERING, ST_META, ST_SCOPE, ckpt, sh, st_steered):
+    # cell 35
     assert st_steered
     if RUN_STEERING.value:
         # A generations file is one that has a sibling manifest -- which is exactly what
@@ -669,6 +768,7 @@ def _(HF_REPO, HF_TOKEN, RUN_STEERING, ST_META, ST_SCOPE, ckpt, sh, st_steered):
 
 @app.cell
 def _(HF_REPO, HF_TOKEN, MODEL, RUN_STEERING, ST_SCOPE, ST_TIMER, TAG, ckpt, sh, st_judged):
+    # cell 36
     assert st_judged
     if not RUN_STEERING.value:
         print("steering not run -- nothing to aggregate or stop")
@@ -689,6 +789,7 @@ def _(HF_REPO, HF_TOKEN, MODEL, RUN_STEERING, ST_SCOPE, ST_TIMER, TAG, ckpt, sh,
 
 @app.cell(hide_code=True)
 def _(TAG, mo):
+    # cell 37
     mo.md(f"""
     ## Read the results
 

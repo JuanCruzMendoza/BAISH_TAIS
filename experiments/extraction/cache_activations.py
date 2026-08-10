@@ -10,6 +10,13 @@ view is written before any forward pass and doubles as the work list.
 so the model is loaded once instead of once per invocation -- the load dominates the
 wall time when each dataset is only seconds of forward passes. Each cell still gets its
 own manifest, stem and run_key, so resume and check_stale are unchanged.
+
+`--view-only` writes the views and stops, without loading the weights at all: a view is a
+tokenizer artefact (chat-template hash plus token counts), so it costs seconds on CPU. It
+exists because a view is an input to downstream experiments in its own right -- `sets.py`
+rebuilds the steering prompt sets from it and never reads an activation -- and a resumed
+session should not need a GPU to recover one. The run_key is unchanged, since neither the
+config nor the inputs of a cell mention the weights.
 """
 import argparse
 import sys
@@ -77,6 +84,13 @@ def cache_one(lay, mdl_env, dataset, split, args, subsample, poles):
               f"({run.resumed_from} cached) in {len(batches)} batches, "
               f"longest {max(ntok.values(), default=0)} tokens")
 
+        if model is None:                            # --view-only
+            print(f"  view written, {len(todo)} prompts left uncomputed "
+                  f"(no weights loaded)")
+            print(f"view_key {view['view_key'][:16]}  ->  "
+                  f"{views.view_path(lay, dataset, split).name}")
+            return 0
+
         done = 0
         for chunk in batches:
             h = mdl.last_token_hidden(tok, model, [texts[s] for s in chunk],
@@ -105,6 +119,8 @@ def main():
                     help="spec 3: subsample the dataset to n pairs (jailbreaks only)")
     ap.add_argument("--max-batch-tokens", type=int, default=16384,
                     help="padded-token budget per batch; jailbreaks span 57-47k chars")
+    ap.add_argument("--view-only", action="store_true",
+                    help="write the views on CPU and stop; no weights, no forward pass")
     ap.add_argument("--poles", default=None,
                     help="comma-separated arms to cache; default every arm the loader has. "
                          "'pos' makes a single-arm view with no contrast (spec 3)")
@@ -124,16 +140,23 @@ def main():
 
     lay = cfg.Layout("extraction", args.model, args.tag)
     print(f"run {lay}")
-    tok, model = mdl.load(args.model)                # once, whatever the list length
-    L = model.config.num_hidden_layers
+    if args.view_only:
+        tok, model, L = mdl.tokenizer(args.model), None, None
+        print("view-only: no weights loaded")
+    else:
+        tok, model = mdl.load(args.model)            # once, whatever the list length
+        L = model.config.num_hidden_layers
     mdl_env = (tok, model, L, mdl.prompt_hasher(tok), mdl.token_info_fn(tok))
 
-    # Constant across every cell, and asserted against the existing cache.
-    acts.write_acts_manifest(lay, {
-        "model_id": args.model, "n_layers": L,
-        "d_model": model.config.hidden_size, "dtype": "float16",
-        "position": "last_token", "chat_template_sha": mdl.chat_template_sha(tok),
-        "batch_size": args.batch_size})
+    # Constant across every cell, and asserted against the existing cache. Skipped under
+    # --view-only: n_layers and d_model come off the model config, and writing a partial
+    # one would weaken the assertion the real cache is checked against.
+    if model is not None:
+        acts.write_acts_manifest(lay, {
+            "model_id": args.model, "n_layers": L,
+            "d_model": model.config.hidden_size, "dtype": "float16",
+            "position": "last_token", "chat_template_sha": mdl.chat_template_sha(tok),
+            "batch_size": args.batch_size})
 
     cells = [(d, s) for d in datasets for s in splits]
     computed = 0
