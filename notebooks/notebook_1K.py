@@ -387,5 +387,296 @@ def _(TAG, mo):
     return
 
 
+@app.cell(hide_code=True)
+def _(TAG, mo):
+    mo.md(f"""
+    # Steering jailbreak - 1
+
+    Spec: `experiments/steering_jailbreaks/dev.md`, *{TAG} / 1_run*. **36 cells** — 28
+    target + 8 no-op — one chosen layer per direction, no joint config, no `cap`, no §5.6
+    pairs. α is **signed**: `harm_v2`/`eval_v2` are added on the successes and subtracted on
+    the refusals, `story_v2_1k`/`persona_v2` the other way round, and each of the four is
+    also suppressed by `ablate` on the set where suppressing it is the hypothesis.
+
+    ≈17,900 generations, **≈4 h GPU** plus ≈1.5 h of judging. Two thirds of it is the
+    refusal set, which is the larger of the two.
+
+    Depends on the jailbreak cell above for `acts/views/jailbreaks__all.json` — `sets.py`
+    rebuilds the prompts from that view and checks them against its `prompt_sha16`. The view
+    lives in *extraction's* tree and was never pushed there (the run above is scoped to
+    `probe_jailbreak_detection/`), so it is re-made locally rather than pulled.
+
+    ## Checkpoint
+
+    Its own scope again, and `pack=False` — unlike extraction. Steering writes a few hundred
+    small files whose resume partials have to stay individually addressable, and a packed
+    push re-sends the whole tar on every tick of a 4-hour run.
+
+    **Leave `run steering` off** unless you mean to spend the 4 hours: marimo runs every
+    cell on load, so an unguarded cell here would start the sweep in a session opened for
+    something else.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    OPENAI_KEY = mo.ui.text(label="OPENAI_API_KEY (judge, spec 5.3)", kind="password",
+                            full_width=True)
+    RUN_STEERING = mo.ui.checkbox(label="run steering (36 cells, ~4 h GPU + ~1.5 h judging)")
+    mo.vstack([OPENAI_KEY, RUN_STEERING])
+    return OPENAI_KEY, RUN_STEERING
+
+
+@app.cell
+def _(HF_REPO, HF_TOKEN, MODEL, OPENAI_KEY, REPO, RUN_STEERING, TAG, ckpt, mo, os):
+    import pathlib as _pl
+
+    mo.stop(not HF_TOKEN.value, mo.md("*Paste the HF token to start.*"))
+    ST_SCOPE = {"experiment": "steering_jailbreaks", "tag": TAG}
+    # extraction/insights.md, section 1K. eval_v2's L9 is outside the reporting band
+    # (11-25), so its cells carry --allow-out-of-band and record it in their manifest.
+    ST_CHOSEN = {"story_v2_1k": 23, "persona_v2": 15, "harm_v2": 21, "eval_v2": 9}
+    ST_META = _pl.Path(REPO, "experiments/steering_jailbreaks/results", TAG,
+                       MODEL.replace("/", "_"), "meta")
+    # judge_strongreject reads it from the environment of the subprocess, which inherits
+    # this one. Nothing else in the notebook needs an API key.
+    if OPENAI_KEY.value:
+        os.environ["OPENAI_API_KEY"] = OPENAI_KEY.value
+    elif RUN_STEERING.value:
+        print("! no OPENAI_API_KEY: generation will run, judging will not")
+    print("restored from Hub:", ckpt.pull(HF_REPO, token=HF_TOKEN.value, **ST_SCOPE))
+    # The timer is what makes the checkpoint mid-run: steer_batch is one process for 18
+    # cells, so a per-script push never fires inside it.
+    ST_TIMER = (ckpt.autopush(HF_REPO, every=3600, token=HF_TOKEN.value, **ST_SCOPE)
+                if RUN_STEERING.value else None)
+    return ST_CHOSEN, ST_META, ST_SCOPE, ST_TIMER
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Baseline, and the split it defines — GPU
+
+    Unsteered greedy over all 1,009 prompts. Judging it is what defines the two sets:
+    §5.4 runs on the rows it complied with, §5.5 on the rows it refused, and a degenerate
+    row falls in neither.
+
+    The sizes are not known until this is judged; at 50_per_direction's rates it is ≈300
+    and ≈640. Both are the *baseline's* split, so a few success rows will not comply at
+    steer time — batch composition differs (33 batches here, 11 there) and greedy is
+    bit-reproducible only at fixed composition. The no-op is the denominator, never this.
+    """)
+    return
+
+
+@app.cell
+def _(HF_REPO, HF_TOKEN, MODEL, RUN_STEERING, ST_SCOPE, TAG, ckpt, jb_cached, sh):
+    # Not cosmetic: that cell writes acts/views/jailbreaks__all.json, which sets.py reads.
+    assert jb_cached
+    if RUN_STEERING.value:
+        sh("python", "experiments/steering_jailbreaks/gen_baseline.py", MODEL,
+           "--tag", TAG, "--split", "all", "--decoding", "greedy",
+           "--batch-size", "32", "--max-batch-tokens", "65536")
+        ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="gen_baseline", **ST_SCOPE)
+    st_baseline = True
+    return (st_baseline,)
+
+
+@app.cell
+def _(HF_REPO, HF_TOKEN, RUN_STEERING, ST_META, ST_SCOPE, ckpt, sh, st_baseline):
+    assert st_baseline
+    if RUN_STEERING.value:
+        sh("python", "experiments/steering_jailbreaks/judge_strongreject.py",
+           str(ST_META / "gen_baseline.jsonl"), "--concurrency", "8")
+        ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="gen_baseline judged", **ST_SCOPE)
+    st_split = True
+    return (st_split,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## The cell list
+
+    Per (set, direction): three α cells, plus `ablate` where that direction is the one being
+    suppressed on that set — 14 per set. Plus one `noop` per (set, layer); the four chosen
+    layers are all distinct, so that is 4 per set.
+
+    α's sign is not free. Only one half has headroom on a given set — spec 0.5's restoring
+    sign on the successes, its mirror on the refusals — and `steer_single.resolve` refuses
+    the other, so a sign slip fails before the model loads rather than producing a floor.
+    """)
+    return
+
+
+@app.cell
+def _(MODEL, ST_CHOSEN, mo):
+    import json as _json
+    import tempfile as _tf
+    from pathlib import Path as _P
+
+    from transformers import AutoConfig as _AC
+
+    from experiments.common import config as _cfg
+    from experiments.steering_jailbreaks import cell as _cell
+
+    _ALPHAS = (0.25, 0.50, 0.75)
+    # Read from the config, not hardcoded: the band -- and so which layer needs the
+    # out-of-band opt-in -- is a function of depth. A small JSON, not the weights.
+    _BAND = _cfg.band(_AC.from_pretrained(MODEL).num_hidden_layers)
+
+    def _jobs(prompt_set):
+        """14 target + 4 noop argv tails for one prompt set."""
+        out = []
+        for axis, layer in ST_CHOSEN.items():
+            oob = ["--allow-out-of-band"] if layer not in _BAND else []
+            sign = _cell.RESTORE_SIGN[axis] * (1 if prompt_set == "success" else -1)
+            if _cell.PRIMARY[prompt_set][axis] == "ablate":
+                out.append(["--direction", axis, "--layers", str(layer), *oob])
+            for a in _ALPHAS:
+                # --mode add is explicit: on the set where this axis is suppressed its
+                # PRIMARY is `ablate`, and the -alpha arm is the alternative to that.
+                out.append(["--direction", axis, "--mode", "add", "--layers", str(layer),
+                            "--alpha", f"{sign * a:g}", *oob])
+        for layer in sorted(set(ST_CHOSEN.values())):
+            oob = ["--allow-out-of-band"] if layer not in _BAND else []
+            out.append(["--arm", "noop", "--layers", str(layer), *oob])
+        return out
+
+    ST_JOBS = {}
+    _lines, _total = [], 0
+    for _set in ("success", "refusal"):
+        _js = _jobs(_set)
+        _total += len(_js)
+        _p = _P(_tf.gettempdir()) / f"st_jobs_{_set}.json"
+        _p.write_text(_json.dumps(_js, indent=1), encoding="utf-8")
+        ST_JOBS[_set] = str(_p)
+        _lines.append(f"**{_set}** — {len(_js)} cells\n\n```\n"
+                      + "\n".join(" ".join(j) for j in _js) + "\n```")
+    mo.md(f"{_total} cells\n\n" + "\n\n".join(_lines))
+    return (ST_JOBS,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Steer — GPU
+
+    One `steer_batch` process per set, so the model loads twice rather than 36 times. Every
+    job is parsed and validated before the load, so a typo costs a second. Resume is per
+    cell *and* per batch inside a cell, so a kill costs at most one batch.
+
+    The successes first: they are the smaller set, and `harm_v2 × add × L21` is the run's
+    smoke test — L21 sits beside 50_per_direction's one causal cell (`harm add L20`, 24/24).
+    """)
+    return
+
+
+@app.cell
+def _(HF_REPO, HF_TOKEN, MODEL, RUN_STEERING, ST_JOBS, ST_SCOPE, TAG, ckpt, sh, st_split):
+    assert st_split                      # the success set is defined by the judged baseline
+    if RUN_STEERING.value:
+        sh("python", "experiments/steering_jailbreaks/steer_batch.py", MODEL, "--tag", TAG,
+           "--script", "steer_single", "--jobs", ST_JOBS["success"],
+           "--batch-size", "32", "--max-batch-tokens", "65536")
+        ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="steer_single cells", **ST_SCOPE)
+    st_success = True
+    return (st_success,)
+
+
+@app.cell
+def _(HF_REPO, HF_TOKEN, MODEL, RUN_STEERING, ST_JOBS, ST_SCOPE, TAG, ckpt, sh, st_success):
+    assert st_success
+    if RUN_STEERING.value:
+        sh("python", "experiments/steering_jailbreaks/steer_batch.py", MODEL, "--tag", TAG,
+           "--script", "steer_induce", "--jobs", ST_JOBS["refusal"],
+           "--batch-size", "32", "--max-batch-tokens", "65536")
+        ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="steer_induce cells", **ST_SCOPE)
+    st_steered = True
+    return (st_steered,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Judge — API
+
+    One call per row at `--concurrency 8`, ≈1.5 h and ≈$6 over the 36 cells. Resumable per
+    row, so re-running this cell is free for anything already graded.
+
+    The judge sees the **bare request**, never the jailbreak wrapper, and the deterministic
+    detectors run alongside it at no cost — `outcome` is degenerate when *either* says so.
+    That matters most for the α=0.75 cells: at 50_per_direction the judge undercounted
+    degeneracy by 18pp and every α=1 result was contaminated.
+    """)
+    return
+
+
+@app.cell
+def _(HF_REPO, HF_TOKEN, RUN_STEERING, ST_META, ST_SCOPE, ckpt, sh, st_steered):
+    assert st_steered
+    if RUN_STEERING.value:
+        # gen_baseline is already judged above; re-listing it here would be a no-op but
+        # reads as though the split were still open at this point.
+        _todo = sorted(p for p in ST_META.glob("*.jsonl")
+                       if not p.name.endswith("_judged.jsonl")
+                       and not p.name.startswith("gen_baseline"))
+        print(f"judging {len(_todo)} cells")
+        for _i, _p in enumerate(_todo, 1):
+            print(f"[{_i}/{len(_todo)}] {_p.stem}")
+            sh("python", "experiments/steering_jailbreaks/judge_strongreject.py", str(_p),
+               "--concurrency", "8")
+        # One push for all of them: the hourly timer has been carrying the partials.
+        ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="judged", **ST_SCOPE)
+    st_judged = True
+    return (st_judged,)
+
+
+@app.cell
+def _(HF_REPO, HF_TOKEN, MODEL, RUN_STEERING, ST_SCOPE, ST_TIMER, TAG, ckpt, sh, st_judged):
+    assert st_judged
+    if not RUN_STEERING.value:
+        print("steering not run -- nothing to aggregate or stop")
+    else:
+        sh("python", "experiments/steering_jailbreaks/aggregate.py", MODEL, "--tag", TAG)
+        _ok = ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="aggregate", **ST_SCOPE)
+        _stale = sh("python", "-m", "experiments.common.check_stale", MODEL, TAG,
+                    allow_fail=True).returncode
+        # Only stop the timer once the results are actually up: try_push returns None when
+        # it was rate-limited, and stopping on a skipped push strands them on local disk.
+        if _ok is not None:
+            ST_TIMER.set()
+        print(("! check_stale reported findings" if _stale else "all artefacts current")
+              + (" | hourly checkpoint stopped" if _ok is not None
+                 else " | push SKIPPED, timer left running"))
+    return
+
+
+@app.cell(hide_code=True)
+def _(TAG, mo):
+    mo.md(f"""
+    ## Read the results
+
+    `steering_jailbreaks/results/{TAG}/<model_slug>/csv/`: `aggregate_cells.csv` is every
+    cell, `aggregate_controls.csv` each target with `d_*_vs_noop`, `aggregate_paired.csv`
+    necessity beside sufficiency.
+
+    Read in this order, or the numbers mislead:
+
+    1. **`pct_degenerate` before any effect.** `eval_v2` at L9 is the risk — 0.32 depth,
+       and every `eval` α=1 cell at 50_per_direction was 80–97% broken.
+    2. **`d_*_vs_noop`, never vs the baseline.** Different batch composition; a provably
+       inert hook flipped 6 of 30 rows at 50_per_direction.
+    3. **`read_<axis>` for all four axes.** No cell moved only its own axis last time —
+       `persona add` moved `read_harm` by −80, and ablating harm is itself the induce lever.
+
+    There is **no `random` arm at this tag**. Pass 2 adds it on whatever moved, so nothing
+    here is a specificity claim yet, and `|Δh|` is the comparable magnitude — not α, which
+    is scaled by a σ that differs per layer and per direction.
+    """)
+    return
+
+
 if __name__ == "__main__":
     app.run()

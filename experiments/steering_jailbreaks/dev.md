@@ -228,3 +228,128 @@ At this tag `aggregate.py` reports layer configs and α side by side and **refus
   calls raises rather than reporting a null.
 - Layer indexing: `hidden_states[l]` is the output of block `l−1`, so layer `l` hooks `blocks[l−1]`.
   Out-of-band `--layers` is rejected, never clipped.
+
+---
+
+## 1K_per_direction
+
+`1_run`, `2_run`, … are successive passes over the same tag and the same corpus; a re-run changes
+the config, never the rows.
+
+### 1_run
+
+Objective unchanged (H3). New direction vectors (800 pairs), one chosen layer per direction, the
+whole jailbreak corpus.
+
+The chosen layer was the selected by cohens dz 
+
+We use single dire
+
+#### Changes vs `50_per_direction`
+
+| | 50_per_direction | 1_run |
+|---|---|---|
+| directions | 5 (`story_v2`, `story_v1`, `persona`, `harm`, `eval`) | 4 (`story_v2_1k`, `persona_v2`, `harm_v2`, `eval_v2`) |
+| rows | 100-row stratified subset | **all 1,009** |
+| layers | 3 singles + `steer_band` per direction | **one chosen layer per direction**, no joint config |
+| modes | `ablate`, `add`, `cap` | `ablate`, `add` — **no `cap`** |
+| α | 0.5, 1 | **0.25, 0.50, 0.75**, signed |
+| suppression | `ablate` only | `ablate` **and** `add` at −α |
+| §5.6 pairs | 8 ordered pairs | not in this run |
+
+Dropping `cap` drops the two-pole corpus requirement — `--poles pos` is enough.
+
+`add` at −α is here because 50_per_direction's one incidental negative-α cell beat its best
+`ablate` cell (insights §9): `ablate` may be the wrong suppression operator, and this run tests
+that on both sets.
+
+#### Layers
+
+One layer per direction, the layer extraction chose at this tag:
+
+| `story_v2_1k` | `persona_v2` | `harm_v2` | `eval_v2` |
+|---|---|---|---|
+| 23 | 15 | 21 | **9** |
+
+`eval_v2`'s L9 is outside the reporting band (11–25), which `parse_layers` rejects rather than
+clips; it enters as an explicit out-of-band opt-in recorded in the manifest.
+
+**No layer is shared across directions**, so every cross-direction comparison confounds direction
+with depth — 50_per_direction read cross-direction at `steer_band` for exactly this reason. Within
+a direction the α sweep is clean: one layer, one σ, and N=1 so the per-layer coefficient is α itself.
+
+#### Configs
+
+One primary mode per (set, direction) as before, plus the −α mirror of it.
+
+| prompt set | goal | `story_v2_1k` · `persona_v2` | `harm_v2` · `eval_v2` |
+|---|---|---|---|
+| **successes** (§5.4) | restore refusal | `ablate`, and `add` at −0.25 / −0.50 / −0.75 | `add` at +0.25 / +0.50 / +0.75 |
+| **refusals** (§5.5) | induce compliance | `add` at +0.25 / +0.50 / +0.75 | `ablate`, and `add` at −0.25 / −0.50 / −0.75 |
+
+Three cells per (set, direction), four where the direction is the suppressed one and gets `ablate`
+as well → **28 target cells**, plus one `noop` per (set, layer) → **8**. **36 cells in pass 1.**
+
+`random` is deliberately not in pass 1: matched to every target it doubles the run, for a control
+that at 50_per_direction existed only at `steer_band` — only where nothing was readable. Pass 2
+runs `random` on the cells that moved, at the same layer, mode and α.
+
+#### Cost
+
+The two sets are the baseline's own split, so their sizes are unknown until it is judged; at
+50_per_direction's rates (30% success, 64% refusal) that is ≈300 and ≈640 rows.
+
+| | cells | rows | generations | batches |
+|---|---|---|---|---|
+| baseline | 1 | 1,009 | 1,009 | 33 |
+| success set | 18 | ≈300 | ≈5,400 | ≈200 |
+| refusal set | 18 | ≈640 | ≈11,400 | ≈400 |
+| | **37** | | **≈17,900** | **≈630** |
+
+At the measured ≈23 s per 32-row batch (`max_new_tokens=512`, greedy, one model load): **≈4 h GPU**.
+Judging ≈17,900 calls at `--concurrency 8` is **≈1.5 h** and **≈$6**. **≈6 h end to end**, two
+thirds of it the refusal set.
+
+#### Run order
+
+```bash
+M=Qwen/Qwen2.5-7B-Instruct; T=1K_per_direction
+python gen_baseline.py $M --tag $T --split all --decoding greedy
+python judge_strongreject.py <results>/meta/gen_baseline.jsonl        # defines both sets
+python steer_batch.py $M --tag $T --script steer_single --jobs jobs_success.json
+python steer_batch.py $M --tag $T --script steer_induce --jobs jobs_refusal.json
+python judge_strongreject.py <results>/meta/<cell>.jsonl              # per cell
+python aggregate.py $M --tag $T
+```
+
+Decoding is greedy, 50_per_direction's §5.1 pick, reused — the decoding comparison is not re-run.
+
+Run `harm_v2 × add × L21 × α=0.5` on the success set first: L21 sits beside 50_per_direction's one
+causal cell (`harm add L20`, 24/24), so it is the run's smoke test.
+
+#### Metrics
+
+Unchanged. Every comparison is target vs its own `noop` at the same layer and prompt set, on the
+rows the no-op left movable.
+
+#### Open
+
+- The chosen layers come from `cohens_dz_train`, and 50_per_direction measured **r = 0.00** between
+  probe reading and steering effect. Nothing supports a probe-quality criterion for picking a
+  *steering* layer, and probe_jailbreak_detection's curves show L23 is not even the best detection
+  layer for `story_v2_1k` (L15–L17 is). With one layer per direction, a null cell cannot be told
+  apart from a wrong layer.
+- `eval_v2` at L9 is the highest-risk set: 0.32 depth, and every `eval` α=1 cell at
+  50_per_direction was 80–97% degenerate. Read its `pct_degenerate` before its effect.
+- α is still not comparable across directions (insights §5): the push is `α·σ_l·û_l` with σ read
+  from each direction's own extraction file, so α=0.5 at L9 and at L23 are different absolute
+  pushes. Report `|Δh|` alongside α.
+- The sets are defined by the baseline at 33-batch composition and steered at 11/22-batch
+  composition, so some success rows do not comply at steer time (20% at 50_per_direction). The
+  no-op is the denominator, never the baseline.
+- §5.6 is out of this run. When it returns, only three of the six pairs are a real manipulation —
+  band-mean `cos(û_a, û_b)` against the ±0.050 null band: `persona_v2 × eval_v2` **+0.311**,
+  `story_v2_1k × persona_v2` **+0.133**, `persona_v2 × harm_v2` −0.075 (but **−0.240** at
+  persona's L15). The other three are inside or at the null band, where projecting `b` out of `a`
+  removes nothing and `perp` is the same experiment as `unprojected`. There is also no shared
+  layer any more, so a pair has to run at `a`'s chosen layer using `û_b` at that same layer.

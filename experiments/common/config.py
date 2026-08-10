@@ -65,10 +65,15 @@ LAYER_SPEC = ("22 | 18-25 | 18,22,25 | frac:0.70-0.90 | steer_band | band"
               "   (no 'all'; the reporting band is the ceiling)")
 
 
-def parse_layers(spec, L):
+def parse_layers(spec, L, allow_out_of_band=False):
     """Layer-spec grammar (spec 5.4.0) -> sorted layers. Out-of-band specs are rejected.
 
     Clipping would record the set the caller asked for while steering another one.
+
+    `allow_out_of_band` is an explicit opt-in for a layer a *chosen-layer* file names
+    outside the reporting band -- at 1K_per_direction `eval_v2` is L9. It never widens the
+    band, and callers record it in the manifest, so the escape stays visible in the run
+    record instead of turning the band guard off everywhere.
     """
     s = str(spec).strip()
     b = band(L)
@@ -91,9 +96,12 @@ def parse_layers(spec, L):
         out = [int(s)]
     out = sorted(dict.fromkeys(out))
     outside = [l for l in out if not b[0] <= l <= b[-1]]
-    if not out or outside:
+    if not out or (outside and not allow_out_of_band):
         raise ValueError(f"layer spec {spec!r} -> {out or '[]'}; {outside} outside the band "
                          f"{b[0]}-{b[-1]} (spec 5.4.0 rejects rather than clips)")
+    if outside:
+        print(f"  ! layer spec {spec!r}: {outside} outside the band {b[0]}-{b[-1]}, "
+              f"allowed explicitly")
     return out
 
 

@@ -78,7 +78,7 @@ def main():
             # cell_specs passes --layers through as a string; this is the same call
             # cell.run makes, so an out-of-band layer is caught here, not after a load.
             try:
-                cfg.parse_layers(spec, n_layers)
+                cfg.parse_layers(spec, n_layers, a.allow_out_of_band)
             except ValueError as e:
                 raise SystemExit(f"job[{i}] {' '.join(str(x) for x in job)}: {e}")
         parsed.append((job, a, len(cells)))

@@ -17,24 +17,27 @@ from experiments.common import (acts, config as cfg, generate as gen, hooks as h
                                 manifest as mf, views)
 from experiments.steering_jailbreaks import sets
 
-# Spec 5.4a: one mode per (set, direction).
-PRIMARY = {
-    "success": {"story_v2": "ablate", "story_v1": "ablate", "persona": "ablate",
-                "harm": "add", "eval": "add"},
-    "refusal": {"story_v2": "add", "story_v1": "add", "persona": "add",
-                "harm": "ablate", "eval": "ablate"},
-}
-# cap occupies exactly one slot: story/persona on successes, ceiling only.
-CAP_SLOT = ("story_v2", "story_v1", "persona")
-CLAMP = {"story_v2": "ceil", "story_v1": "ceil", "persona": "ceil",
-         "harm": "floor", "eval": "floor"}
-AXES = ["story_v2", "story_v1", "persona", "harm", "eval"]
+# Every axis is either a *framing* axis -- story/persona, where suppressing it is the
+# restore hypothesis -- or a *refusal* axis, where adding it is. The mode mapping (5.4a),
+# the clamp side, the cap slot and spec 0.5's restoring sign all follow from that, so a new
+# axis is one entry here rather than five.
+ROLE = {"story_v2": "framing", "story_v1": "framing", "persona": "framing",
+        "harm": "refusal", "eval": "refusal",
+        "story_v2_1k": "framing", "persona_v2": "framing",      # 1K_per_direction
+        "harm_v2": "refusal", "eval_v2": "refusal"}
+AXES = list(ROLE)
 
-# Spec 0.5: the sign of `add` that restores refusal. 5.4 never needs it -- its mode
-# mapping puts every `add` cell on the set where the positive push is the hypothesis --
-# but 5.6 steers story/persona additively, so the sign has to come back.
-RESTORE_SIGN = {"story_v2": -1.0, "story_v1": -1.0, "persona": -1.0,
-                "harm": +1.0, "eval": +1.0}
+# Spec 5.4a: one primary mode per (set, direction).
+PRIMARY = {"success": {a: "ablate" if r == "framing" else "add" for a, r in ROLE.items()},
+           "refusal": {a: "add" if r == "framing" else "ablate" for a, r in ROLE.items()}}
+# cap occupies exactly one slot: the framing axes on successes, ceiling only.
+CAP_SLOT = tuple(a for a, r in ROLE.items() if r == "framing")
+CLAMP = {a: "ceil" if r == "framing" else "floor" for a, r in ROLE.items()}
+
+# Spec 0.5: the sign of `add` that restores refusal. Needed wherever `add` is not pinned to
+# the set its primary mapping puts it on -- 5.6's projections, and 1K_per_direction's -alpha
+# suppression arms.
+RESTORE_SIGN = {a: -1.0 if r == "framing" else +1.0 for a, r in ROLE.items()}
 
 
 def load_probe(src, axis):
@@ -96,11 +99,11 @@ def stem_for(script, direction, mode, layer_spec, alpha, tau_q, arm):
 
 def run(script, model_id, tag, rows, prompt_set, direction, mode, layer_spec, arm,
         alpha, tau_q, n_layers, tok, model, batch_size, max_batch_tokens, max_new_tokens,
-        decoding="greedy", decode=None):
+        decoding="greedy", decode=None, allow_out_of_band=False):
     """Run one cell and return its manifest run_key."""
     src = cfg.acts_layout(model_id, tag)
     lay = cfg.Layout(sets.EXPERIMENT, model_id, tag, acts_cache=False)
-    layers = cfg.parse_layers(layer_spec, n_layers)
+    layers = cfg.parse_layers(layer_spec, n_layers, allow_out_of_band)
 
     probe = None if arm == "noop" else load_probe(src, direction)
     sigma = probe["sigma_act"].numpy() if probe is not None else None
@@ -133,6 +136,12 @@ def run(script, model_id, tag, rows, prompt_set, direction, mode, layer_spec, ar
               "decoding": decoding, "decode": decode, "max_new_tokens": max_new_tokens,
               "batch_size": batch_size, "max_batch_tokens": max_batch_tokens,
               "position": "all_tokens", "n_rows": len(rows), "seed": cfg.SEED}
+    # Added only when it fires, so a cell inside the band keeps the config dict -- and so
+    # the run_key -- it already had, and no completed cell is invalidated by the escape
+    # existing. Where it does fire it is in the run record permanently.
+    outside = sorted(set(layers) - set(cfg.band(n_layers)))
+    if outside:
+        config["out_of_band"] = outside
     inputs = {"unit_ids": [r["unit_id"] for r in rows],
               "direction_run_key": None if probe is None else probe.get("run_key")}
 
