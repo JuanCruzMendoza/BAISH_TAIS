@@ -152,3 +152,92 @@ separating the two sets by prompt length.
 - **The threshold is calibrated off-distribution:** the poles are ~70-word extraction prompts, the
   jailbreaks a median ~1,180 chars. Read the `length` probe's `pct_reads` first — jailbreaks are long,
   so a high value there means the axis is reading length rather than framing.
+
+---
+
+# 1K_per_direction
+
+**Objective.** Same H2 question — do the probes read jailbreaks as their direction — with the 800-pair
+vectors, at **one chosen layer per direction**, on the **whole** jailbreak corpus instead of a
+100-row subset.
+
+## Changes vs `50_per_direction`
+
+|             | 50_per_direction                        | 1K_per_direction                                   |
+| ----------- | --------------------------------------- | -------------------------------------------------- |
+| probes      | 6 (incl. `story_v1` control, `length` foil) | the 4 rivals                                   |
+| jailbreaks  | 100, wrapper-diverse subsample          | **all 1,009**, no sampler                          |
+| probe layer | every band layer L11–25                 | **manual, one per direction**                      |
+| reference   | 65 points per pole                      | 1,000 (800 train + 200 held-out)                   |
+| threshold   | one rule per run, default `midpoint`    | **`midpoint` and `gap_mid`, one run and one file each** |
+
+### Chosen layers
+
+The same four as `cross_probe_detection` at this tag, from `extraction/insights.md` §1K (max
+`cohens_dz_train`, min train↔held-out gap), passed as an explicit `--layers`:
+
+| `story_v2_1k` | `persona_v2` | `harm_v2` | `eval_v2` |
+|---|---|---|---|
+| **L23** | **L15** | **L21** | **L9** |
+
+## The corpus
+
+All 1,017 rows minus the 8 whose `prompt` equals their `request` (`technique=bare_request`, no
+framing) → **1,009 rows, 424 wrappers, 368 requests**, 17 techniques, 6 sources, 10 JBB categories
+over 652 rows. Families: `fiction_narrative` 472, `roleplay_persona` 306, `hybrid` 153,
+`nonfiction_other` 78.
+
+Dropping the sampler removes `50_per_direction`'s allocation rules but not the imbalance they were
+compensating for: 400 of the 424 wrappers are `in_the_wild` singletons while `jailbreak_mimicry`'s
+300 rows share 2, so §0.7's effective *n* by `template_id` is far below 1,009 and `source` cells are
+not equally informative.
+
+## Design
+
+**Two thresholds, both reported.** `midpoint` = ½(mean(pos) + mean(neg)) is kept for continuity with
+`probe_select`; `gap_mid` = ½(p95(neg) + p5(pos)) is the max-margin cut and is tail-insensitive,
+which `midpoint` is not — the 50-pair tag's `gap_position` showed the pole means being dragged.
+Neither is privileged: a `pct_reads` that survives both is a finding, one that flips between them is
+a threshold artefact.
+
+**Layers.** Each probe is read at **its own** chosen layer, exactly as deployed. The band L11–25 is
+still scored as a diagnostic; `eval_v2`'s L9 sits outside it, so the scored set is band ∪ chosen.
+
+## Metrics
+
+Columns are unchanged from `50_per_direction`. The headline file replaces the band file:
+
+| file | content |
+|---|---|
+| `jb_metrics__<rule>_rate.csv` | per probe × layer × slice, over band ∪ the chosen layers |
+| `jb_metrics__<rule>_chosen.csv` | **the headline**: one row per probe × slice, at that probe's chosen layer |
+
+`_chosen.csv` is `_rate.csv` filtered to each probe's own layer — same columns (`probe`, `layer`,
+`depth`, `group_kind`, `group`, `n`, `n_reads`, `pct_reads`, `threshold`, `ref_fpr`, `ref_tpr`,
+`n_ref`, `gap_position`), no aggregation. `<rule>` ∈ {`midpoint`, `gap_mid`}, so the two rules never
+share a file.
+
+## Run order
+
+```bash
+M=Qwen/Qwen2.5-7B-Instruct; A=story_v2_1k,persona_v2,harm_v2,eval_v2
+L=story_v2_1k=23,persona_v2=15,harm_v2=21,eval_v2=9
+# GPU, 1,009 prompts, framed arm only
+python experiments/extraction/cache_activations.py $M --dataset jailbreaks --split all \
+    --poles pos --tag 1K_per_direction
+# CPU
+python jb_readout.py $M --tag 1K_per_direction --axes $A
+python jb_metrics.py $M --tag 1K_per_direction --axes $A --layers $L --threshold midpoint
+python jb_metrics.py $M --tag 1K_per_direction --axes $A --layers $L --threshold gap_mid
+```
+
+## Open
+
+- **The threshold is still calibrated off-distribution** and there is **no `length` foil at this tag**,
+  so the 50-pair check — is a high `pct_reads` just prompt length? — cannot be run. Jailbreaks are a
+  median 1,013 chars against ~70-word pole prompts.
+- **The bare `request` arm is not cached** (`--poles pos`), so every number here is an absolute
+  threshold crossing rather than a within-row framed-vs-bare contrast.
+- `eval_v2`'s L9 is outside the reporting band, so its row is the only one whose headline layer has no
+  band context around it.
+- `jb_success_split.py` needs `steering_jailbreaks`' baseline + judge at this tag; not runnable yet.

@@ -2,10 +2,15 @@
 
     python jb_metrics.py <model>
     python jb_metrics.py <model> --threshold neg_p90
+    python jb_metrics.py <model> --layers story_v2_1k=23,persona_v2=15
 
 One number per cell: `pct_reads`, the percentage of jailbreak prompts whose readout
 clears the probe's threshold. Reported per probe x band layer, sliced by jailbreak
 group, and averaged over the band.
+
+`--layers` deploys one chosen layer per direction instead: the scored set becomes the
+band plus those layers (a chosen layer may sit outside it) and `_chosen.csv` replaces
+`_band.csv`, since a band mean is not the number being reported.
 
 **Threshold.** Default `midpoint`: tau = (mean(pos) + mean(neg)) / 2 on the probe's
 own reference poles, pooled train + held-out (65 points each). Same rule as
@@ -86,12 +91,12 @@ def _gap_position(pos, neg, tau):
     return float((tau - lo) / (hi - lo)) if hi > lo else float("nan")
 
 
-def rate_rows(probes, framed, ref, rows, band, Lp1, rule):
+def rate_rows(probes, framed, ref, rows, layers_of, Lp1, rule):
     tau_fn = THRESHOLDS[rule]
     out = []
     for i, a in enumerate(probes):
         pos, neg = ref[a]["pos"].numpy(), ref[a]["neg"].numpy()
-        for l in band:
+        for l in layers_of[a]:
             tau = tau_fn(pos[:, l], neg[:, l])
             x = framed[i, :, l]
             diag = {"threshold": tau,
@@ -133,6 +138,13 @@ def band_rows(rate, band):
                                       r["group"], r["probe"]))
 
 
+def chosen_rows(rate, chosen):
+    """The same cells as `_rate.csv`, kept only at each probe's own layer."""
+    out = [r for r in rate if r["layer"] == chosen[r["probe"]]]
+    return sorted(out, key=lambda r: (r["group_kind"] != "all", r["group_kind"],
+                                      r["group"], r["probe"]))
+
+
 def write_csv(path, rows):
     keys = list(dict.fromkeys(k for r in rows for k in r))
     with Path(path).open("w", newline="", encoding="utf-8") as f:
@@ -146,6 +158,9 @@ def main():
     ap.add_argument("model")
     ap.add_argument("--tag", default=None)
     ap.add_argument("--threshold", default="midpoint", choices=list(THRESHOLDS))
+    ap.add_argument("--axes", default=None, help="comma list; default every probe in the readout")
+    ap.add_argument("--layers", default=None, metavar="AXIS=LAYER,...",
+                    help="one chosen layer per direction; writes _chosen.csv")
     args = ap.parse_args()
 
     lay = cfg.Layout("probe_jailbreak_detection", args.model, args.tag, acts_cache=False)
@@ -155,43 +170,66 @@ def main():
     mf.load_upstream(lay.meta / "jb_readout_manifest.json")
     R = torch.load(up, weights_only=False)
 
-    probes = R["probes"]
-    framed = R["framed"].numpy()
+    have = list(R["probes"])
+    probes = [a for a in (args.axes.split(",") if args.axes else have) if a]
+    missing = [a for a in probes if a not in have]
+    if missing:
+        raise SystemExit(f"not in the readout: {missing}; it holds {have}")
+    framed = R["framed"].numpy()[[have.index(a) for a in probes]]
     Lp1 = R["n_layers"] + 1
     band = cfg.band(R["n_layers"])
+
+    chosen = cfg.parse_axis_layers(args.layers) if args.layers else None
+    if chosen is not None:
+        chosen = {a: chosen[a] for a in probes if a in chosen}
+        if len(chosen) != len(probes):
+            raise SystemExit(f"--layers must cover every probe: {probes}")
+        if any(not 0 <= l < Lp1 for l in chosen.values()):
+            raise SystemExit(f"--layers outside 0..{Lp1 - 1}")
+    # A chosen layer may sit outside the band (eval_v2 L9), so score the union.
+    layers_of = {a: sorted(set(band) | ({chosen[a]} if chosen else set())) for a in probes}
+
     with (lay.csv / "jb_readout_rows.csv").open(encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f))
     assert [r["row_id"] for r in rows] == list(R["row_ids"]), "row order drifted"
 
-    rate = rate_rows(probes, framed, R["ref"], rows, band, Lp1, args.threshold)
-    bands = band_rows(rate, band)
+    rate = rate_rows(probes, framed, R["ref"], rows, layers_of, Lp1, args.threshold)
+    head = chosen_rows(rate, chosen) if chosen else band_rows(rate, band)
+    pct, tpr, fpr, gap = (("pct_reads", "ref_tpr", "ref_fpr", "gap_position") if chosen
+                          else ("pct_reads_mean", "ref_tpr_mean", "ref_fpr_mean",
+                                "gap_position_mean"))
 
     stem = mf.stem("jb_metrics", args.threshold)
     config = {"probes": probes, "threshold_rule": args.threshold,
               "reference": "pooled train+heldout poles", "band": [band[0], band[-1]],
-              "layers": band, "min_group": MIN_GROUP, "arms": ["framed"],
+              "layers": sorted({l for ls in layers_of.values() for l in ls}),
+              "layer_rule": "explicit" if chosen else "band",
+              "probe_layers": chosen, "min_group": MIN_GROUP, "arms": ["framed"],
               "seed": cfg.SEED}
     inputs = {"jb_view_key": R["jb_view_key"], "jb_readout_run_key": R.get("run_key")}
 
     with mf.Run(lay, stem, config, inputs) as run:
         write_csv(run.artefact("_rate.csv"), rate)
-        write_csv(run.artefact("_band.csv"), bands)
+        write_csv(run.artefact("_chosen.csv" if chosen else "_band.csv"), head)
 
-        print(f"{len(rows)} jailbreak prompts, band L{band[0]}-{band[-1]} "
-              f"({len(band)} layers), threshold = {args.threshold} "
+        where = ("one chosen layer per probe" if chosen
+                 else f"band L{band[0]}-{band[-1]} ({len(band)} layers)")
+        print(f"{len(rows)} jailbreak prompts, {where}, threshold = {args.threshold} "
               f"on {rate[0]['n_ref']} reference points per pole\n")
-        print("pct of jailbreaks the probe reads as its direction, band mean")
-        print("  " + "probe".ljust(10) + "pct".rjust(7) + "min-max".rjust(14)
+        print("pct of jailbreaks the probe reads as its direction"
+              + ("" if chosen else ", band mean"))
+        print("  " + "probe".ljust(12) + ("layer".rjust(7) if chosen else "".rjust(0))
+              + "pct".rjust(7) + ("" if chosen else "min-max".rjust(14))
               + "ref_tpr".rjust(9) + "ref_fpr".rjust(9) + "gap_pos".rjust(9))
         for a in probes:
-            r = next(x for x in bands if x["probe"] == a and x["group_kind"] == "all")
-            print("  " + a.ljust(10) + f"{r['pct_reads_mean']:6.1f}%"
-                  + f"{r['pct_reads_min']:.0f}-{r['pct_reads_max']:.0f}%".rjust(14)
-                  + f"{r['ref_tpr_mean']:.2f}".rjust(9)
-                  + f"{r['ref_fpr_mean']:.2f}".rjust(9)
-                  + (f"{r['gap_position_mean']:+.2f}"
-                     if r["gap_position_mean"] == r["gap_position_mean"]
-                     else "no gap").rjust(9))
+            r = next(x for x in head if x["probe"] == a and x["group_kind"] == "all")
+            print("  " + a.ljust(12)
+                  + (f"L{chosen[a]}".rjust(7) if chosen else "")
+                  + f"{r[pct]:6.1f}%"
+                  + ("" if chosen else
+                     f"{r['pct_reads_min']:.0f}-{r['pct_reads_max']:.0f}%".rjust(14))
+                  + f"{r[tpr]:.2f}".rjust(9) + f"{r[fpr]:.2f}".rjust(9)
+                  + (f"{r[gap]:+.2f}" if r[gap] == r[gap] else "no gap").rjust(9))
         print("  ref_tpr: near 1.0 the bar is passable, so a low pct is a real finding; "
               "low ref_tpr\n  means tau is too strict to conclude anything. gap_pos: "
               "where tau sits between the\n  poles, 0 = permissive edge, 1 = strict edge; "
@@ -199,19 +237,19 @@ def main():
               "the poles overlap at the 5/95 quantiles.")
 
         for kind in ("family", "source", "category"):
-            sub = [x for x in bands if x["group_kind"] == kind]
+            sub = [x for x in head if x["group_kind"] == kind]
             if not sub:
                 continue
             gs = list(dict.fromkeys(x["group"] for x in sub))
-            print(f"\nby {kind} (band mean pct)")
-            print("  " + "probe".ljust(10) + "".join(g[:13].rjust(15) for g in gs))
+            print(f"\nby {kind} ({'pct' if chosen else 'band mean pct'})")
+            print("  " + "probe".ljust(12) + "".join(g[:13].rjust(15) for g in gs))
             for a in probes:
                 cells = []
                 for g in gs:
                     m = next((x for x in sub if x["probe"] == a and x["group"] == g), None)
                     cells.append(("-" if m is None
-                                  else f"{m['pct_reads_mean']:.0f}% (n={m['n']})").rjust(15))
-                print("  " + a.ljust(10) + "".join(cells))
+                                  else f"{m[pct]:.0f}% (n={m['n']})").rjust(15))
+                print("  " + a.ljust(12) + "".join(cells))
 
 
 if __name__ == "__main__":

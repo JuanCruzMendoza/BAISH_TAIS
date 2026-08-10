@@ -38,8 +38,8 @@ def readout(h, u, mu):
 def reference_poles(src, axis, probe):
     """The two pole distributions the threshold is placed between.
 
-    Pooled train + held-out = 65 points per pole. Fifteen held-out points alone cannot
-    locate a quantile at all.
+    Pooled train + held-out: 65 points per pole at 50_per_direction, 1,000 at
+    1K_per_direction. The held-out arm alone cannot locate a quantile at 50.
     """
     u, mu = probe["u"].numpy(), probe["mu"].numpy()
     mats = {s: acts.load_view_matrix(src, views.read_view(src, axis, s))

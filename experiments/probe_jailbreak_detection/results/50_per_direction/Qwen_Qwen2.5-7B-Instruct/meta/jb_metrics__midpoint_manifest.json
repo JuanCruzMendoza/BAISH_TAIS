@@ -7,6 +7,7 @@
       11,
       25
     ],
+    "layer_rule": "band",
     "layers": [
       11,
       12,
@@ -25,6 +26,7 @@
       25
     ],
     "min_group": 5,
+    "probe_layers": null,
     "probes": [
       "story_v2",
       "story_v1",
@@ -39,27 +41,29 @@
   },
   "env": {
     "argv": [
-      "/marimo/BAISH_TAIS/experiments/probe_jailbreak_detection/jb_metrics.py",
+      "jb_metrics.py",
       "Qwen/Qwen2.5-7B-Instruct",
       "--tag",
       "50_per_direction"
     ],
-    "git_diff_sha": "d440de4172fcf66fc52f2f17c8363584015e03d4772a3387b65d54bdc1c9664c",
+    "git_diff_sha": "495bfe08ff8a44ba46d426b3f9125cf39689127eb4e75ac140d19fe51f096127",
     "git_dirty": true,
-    "git_sha": "26320b0bc8a98c90d01ed8eb9eba5032206cbd39",
-    "host": "500ef7d1-35a5-4f58-a447-7eb181d4292f-t4g44",
-    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
-    "python": "3.13.11",
+    "git_sha": "e855c6d3e91ed5da03035792a14fd9fa6df3107d",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
     "resumed_from": 0,
-    "timestamp": "2026-08-04T14:40:54",
-    "wall_s": 0.04
+    "timestamp": "2026-08-10T11:21:22",
+    "wall_s": 0.59
   },
   "inputs": {
     "jb_readout_run_key": "4cf7773f8b6398f565eebf2a6dd0acb92ed2202e82e8190119745f600618d28b",
     "jb_view_key": "653256d0b302bc2fa1ff7b90d5c6eefa7568d3f56614780b233d238dbc0d3621"
   },
-  "notes": [],
-  "run_key": "5b83afc4653d7605a63e1c9d55c6a03c045ab3c759db1a589e00555d22bb7589",
+  "notes": [
+    "archived prior run 5b83afc4"
+  ],
+  "run_key": "75391805f1b9e1b937566a431603fc8a3044470b71ec8b4fcfb6311d7df20f21",
   "status": "complete",
   "stem": "jb_metrics__midpoint"
 }

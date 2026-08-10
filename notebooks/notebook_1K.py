@@ -215,5 +215,130 @@ def _(TAG, mo):
     return
 
 
+@app.cell(hide_code=True)
+def _(TAG, mo):
+    mo.md(f"""
+    # {TAG} — probe_jailbreak_detection (H2)
+
+    Spec: `experiments/probe_jailbreak_detection/dev.md`, *{TAG}*. The four chosen-layer
+    probes against **all 1,009** jailbreak prompts, at two thresholds.
+
+    Depends on the extraction cells above: it reads `vectors/directions__<axis>.pt` and
+    writes the jailbreak activations into extraction's blob cache.
+
+    ## Checkpoint
+
+    Its own scope, and a **separate** one from extraction's — a push scoped to
+    `extraction/` would walk all ~7,700 blobs and cost ~30 commits before writing anything.
+    This experiment's results are ~6 small files, so each push here is one commit.
+
+    The 1,009 new blobs are therefore **not** checkpointed. They are only an input to
+    `jb_readout.py`; once its `.pt` is on the Hub they are disposable, and the price is
+    that a molab kill *during* the GPU cell costs that pass rather than resuming from it.
+    """)
+    return
+
+
+@app.cell
+def _(HF_REPO, HF_TOKEN, TAG, ckpt, mo):
+    mo.stop(not HF_TOKEN.value, mo.md("*Paste the HF token to start.*"))
+    JB_SCOPE = {"experiment": "probe_jailbreak_detection", "tag": TAG}
+    JB_AXES = "story_v2_1k,persona_v2,harm_v2,eval_v2"
+    # extraction/insights.md, section 1K: max cohens_dz_train, min train<->heldout gap.
+    JB_LAYERS = "story_v2_1k=23,persona_v2=15,harm_v2=21,eval_v2=9"
+    print("restored from Hub:",
+          ckpt.pull(HF_REPO, token=HF_TOKEN.value, **JB_SCOPE))
+    return JB_AXES, JB_LAYERS, JB_SCOPE
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Cache the jailbreak activations — GPU
+
+    1,009 prompts (1,017 minus the 8 whose `prompt` is its `request`), framed arm only
+    (`--poles pos`), no subsample. Written into extraction's blob cache, so `--tag` has to
+    match the extraction run.
+
+    `--max-batch-tokens` matters here more than at 100 rows: the corpus holds a
+    47,308-char prompt and spans 57 chars to that, so length-sorted batching is what keeps
+    the padded peak near the budget instead of near `batch_size x longest`.
+    """)
+    return
+
+
+@app.cell
+def _(MODEL, TAG, extracted, sh):
+    assert extracted                      # the probes come from the extraction cells
+    sh("python", "experiments/extraction/cache_activations.py", MODEL, "--tag", TAG,
+       "--dataset", "jailbreaks", "--split", "all", "--poles", "pos")
+    jb_cached = True
+    return (jb_cached,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Readout and metrics — CPU
+
+    `jb_readout.py` projects each probe onto all 1,009 prompts at every layer and stores
+    the two reference pole distributions beside them (1,000 points per pole here, pooled
+    train + held-out). Everything downstream reads that one `.pt`, ~470 KB.
+
+    `jb_metrics.py` runs twice, once per threshold rule. `midpoint` bisects the pole
+    *means* and `gap_mid` the empty gap between p95(neg) and p5(pos); the stems differ, so
+    the two never share a file. `--layers` makes the headline `_chosen.csv` — one row per
+    probe x slice at that probe's own layer — and adds `eval_v2`'s L9 to the scored set,
+    since it sits outside the band.
+    """)
+    return
+
+
+@app.cell
+def _(HF_REPO, HF_TOKEN, JB_AXES, JB_SCOPE, MODEL, TAG, ckpt, jb_cached, sh):
+    assert jb_cached
+    sh("python", "experiments/probe_jailbreak_detection/jb_readout.py", MODEL,
+       "--tag", TAG, "--axes", JB_AXES)
+    # The one push that matters: after this the blobs above are disposable.
+    ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="jb_readout", **JB_SCOPE)
+    jb_read = True
+    return (jb_read,)
+
+
+@app.cell
+def _(HF_REPO, HF_TOKEN, JB_AXES, JB_LAYERS, JB_SCOPE, MODEL, TAG, ckpt, jb_read, sh):
+    assert jb_read
+    for _rule in ("midpoint", "gap_mid"):
+        sh("python", "experiments/probe_jailbreak_detection/jb_metrics.py", MODEL,
+           "--tag", TAG, "--axes", JB_AXES, "--layers", JB_LAYERS, "--threshold", _rule)
+    ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="jb_metrics", **JB_SCOPE)
+    jb_done = True
+    return (jb_done,)
+
+
+@app.cell
+def _(MODEL, TAG, jb_done, sh):
+    assert jb_done
+    sh("python", "-m", "experiments.common.check_stale", MODEL, TAG, allow_fail=True)
+    return
+
+
+@app.cell(hide_code=True)
+def _(TAG, mo):
+    mo.md(f"""
+    ## Read the results
+
+    `probe_jailbreak_detection/results/{TAG}/<model_slug>/csv/`:
+    `jb_metrics__midpoint_chosen.csv` and `jb_metrics__gap_mid_chosen.csv` are the
+    headline, `_rate.csv` the per-layer context around it.
+
+    Read `ref_tpr` before `pct_reads`: near 1.0 the bar is passable and a low `pct_reads`
+    is a real finding, low `ref_tpr` means tau is too strict to conclude anything. There is
+    **no `length` foil at this tag**, so the 50-pair check — is a high `pct_reads` just
+    prompt length? — cannot be run here.
+    """)
+    return
+
+
 if __name__ == "__main__":
     app.run()
