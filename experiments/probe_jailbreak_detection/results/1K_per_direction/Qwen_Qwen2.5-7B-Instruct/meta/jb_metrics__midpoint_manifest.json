@@ -1,0 +1,77 @@
+{
+  "config": {
+    "arms": [
+      "framed"
+    ],
+    "band": [
+      11,
+      25
+    ],
+    "layer_rule": "explicit",
+    "layers": [
+      9,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25
+    ],
+    "min_group": 5,
+    "probe_layers": {
+      "eval_v2": 9,
+      "harm_v2": 21,
+      "persona_v2": 15,
+      "story_v2_1k": 23
+    },
+    "probes": [
+      "story_v2_1k",
+      "persona_v2",
+      "harm_v2",
+      "eval_v2"
+    ],
+    "reference": "pooled train+heldout poles",
+    "seed": 20260731,
+    "threshold_rule": "midpoint"
+  },
+  "env": {
+    "argv": [
+      "experiments/probe_jailbreak_detection/jb_metrics.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "1K_per_direction",
+      "--axes",
+      "story_v2_1k,persona_v2,harm_v2,eval_v2",
+      "--layers",
+      "story_v2_1k=23,persona_v2=15,harm_v2=21,eval_v2=9",
+      "--threshold",
+      "midpoint"
+    ],
+    "git_diff_sha": "7f665e6ca81bf8ba65f4979d57ca7f5ec02c53bbab54e4208970f5a23b0e02f4",
+    "git_dirty": true,
+    "git_sha": "6a4e6ac99bf7a62d024bdc68be112614746b53dd",
+    "host": "bc1edfd6-b9b3-4cd1-9e9e-77c946fdacf8-wxb8g",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.11",
+    "resumed_from": 0,
+    "timestamp": "2026-08-10T15:20:55",
+    "wall_s": 0.08
+  },
+  "inputs": {
+    "jb_readout_run_key": "d3ab25d600b0c6f7901e01b38f54b23ad32215487c81936129a85caa77256e83",
+    "jb_view_key": "eceda24e49aac6ccb64783efd401b48025a942ef70e6fb1cf74355f808dde8e8"
+  },
+  "notes": [],
+  "run_key": "2387ec05bf08b848c843ef57fa95dde37c57128a4c497a69d8dfb294b4ce884d",
+  "status": "complete",
+  "stem": "jb_metrics__midpoint"
+}

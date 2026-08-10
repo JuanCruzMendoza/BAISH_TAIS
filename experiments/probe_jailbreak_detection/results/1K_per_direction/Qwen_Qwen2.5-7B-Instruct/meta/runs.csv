@@ -1,0 +1,6 @@
+timestamp,script,stem,run_key,git_sha,git_dirty,outcome,resumed_from,wall_s,argv
+2026-08-10T15:20:51,jb_readout.py,jb_readout,d3ab25d600b0c6f7,6a4e6ac99bf7,True,written,0,0.1,"Qwen/Qwen2.5-7B-Instruct --tag 1K_per_direction --axes story_v2_1k,persona_v2,harm_v2,eval_v2"
+2026-08-10T15:20:55,jb_metrics.py,jb_metrics__midpoint,2387ec05bf08b848,6a4e6ac99bf7,True,written,0,0.1,"Qwen/Qwen2.5-7B-Instruct --tag 1K_per_direction --axes story_v2_1k,persona_v2,harm_v2,eval_v2 --layers story_v2_1k=23,persona_v2=15,harm_v2=21,eval_v2=9 --threshold midpoint"
+2026-08-10T15:20:58,jb_metrics.py,jb_metrics__gap_mid,4f4fef07974f554e,6a4e6ac99bf7,True,written,0,0.1,"Qwen/Qwen2.5-7B-Instruct --tag 1K_per_direction --axes story_v2_1k,persona_v2,harm_v2,eval_v2 --layers story_v2_1k=23,persona_v2=15,harm_v2=21,eval_v2=9 --threshold gap_mid"
+2026-08-10T13:25:15,plot_layer_curves.py,plot_layer_curves,f3744c17dee6f1b3,6a4e6ac99bf7,True,written,0,2.5,"Qwen/Qwen2.5-7B-Instruct --tag 1K_per_direction"
+2026-08-10T13:25:46,plot_layer_curves.py,plot_layer_curves,f3744c17dee6f1b3,6a4e6ac99bf7,True,written,0,2.1,"Qwen/Qwen2.5-7B-Instruct --tag 1K_per_direction"

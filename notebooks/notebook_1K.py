@@ -33,13 +33,20 @@ def _():
            cwd=str(NB))
     else:
         sh("git", "fetch", "origin")
-        # Never `reset --hard`: after a restart the tree holds results pulled back from
-        # the Hub, and a rebase onto a dirty tree is refused rather than destructive.
-        if subprocess.run(["git", "status", "--porcelain"], cwd=REPO,
-                          capture_output=True, text=True).stdout.strip():
-            print("! worktree dirty (restored results?) -- fetched, not rebased")
+        # A restart pulls results back from the Hub, and meta/runs.csv plus the manifests
+        # churn on every re-run -- so tracked files under experiments/ differ, the rebase
+        # refuses, and the clone silently strands on an old commit while the notebook's own
+        # cells (molab keeps its own copy of them) look current. Discarding those is free:
+        # the Hub is authoritative for them and cell 3 re-pulls. Still not `reset --hard`,
+        # and `checkout --` leaves untracked and ignored files -- acts/, vectors/, the hf
+        # download cache -- untouched.
+        sh("git", "checkout", "--", "experiments")
+        _dirty = subprocess.run(["git", "status", "--porcelain", "-uno"], cwd=REPO,
+                                capture_output=True, text=True).stdout.strip()
+        if _dirty:
+            print(f"! tracked files still modified, not rebased:\n{_dirty[:500]}")
         else:
-            sh("git", "rebase", "origin/main")
+            sh("git", "rebase", "origin/main", allow_fail=True)
     sh("git", "log", "--oneline", "-1")
     sh("pip", "install", "-q", "transformers", "accelerate", "numpy", "matplotlib",
        "huggingface_hub", "hf_xet")

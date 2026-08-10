@@ -217,6 +217,20 @@ Columns are unchanged from `50_per_direction`. The headline file replaces the ba
 `n_ref`, `gap_position`), no aggregation. `<rule>` ∈ {`midpoint`, `gap_mid`}, so the two rules never
 share a file.
 
+## Figures
+
+`plot_layer_curves.py`, one per probe from `_rate.csv` alone: `pct_reads` vs layer at `midpoint`,
+with `ref_tpr` on the same axis as the bar the curve is clearing. `--per-family` probes get one curve
+per jailbreak family, the rest the `all` slice — the question for `story_v2_1k` and `persona_v2` is
+*which* jailbreaks they read, and for `harm_v2` and `eval_v2` it is whether they read any.
+
+| figure | curves |
+|---|---|
+| `plot_layer_curves_story_v2_1k.png` | 4, one per family |
+| `plot_layer_curves_persona_v2.png` | 4, one per family |
+| `plot_layer_curves_harm_v2.png` | 1, all families |
+| `plot_layer_curves_eval_v2.png` | 1, all families |
+
 ## Run order
 
 ```bash
@@ -229,6 +243,7 @@ python experiments/extraction/cache_activations.py $M --dataset jailbreaks --spl
 python jb_readout.py $M --tag 1K_per_direction --axes $A
 python jb_metrics.py $M --tag 1K_per_direction --axes $A --layers $L --threshold midpoint
 python jb_metrics.py $M --tag 1K_per_direction --axes $A --layers $L --threshold gap_mid
+python plot_layer_curves.py $M --tag 1K_per_direction
 ```
 
 ## Open
