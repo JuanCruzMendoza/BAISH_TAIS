@@ -160,12 +160,17 @@ def layer_metrics(args, lay, run):
         gap = s_pos - s_neg
         sd = np.concatenate([s_pos, s_neg]).std(ddof=1)
 
+        # d_z selects layers, so it is read off the ONE vector that gets deployed, not off
+        # 800 near-identical ones. At n=800 the two differ by ~0.005, ~100x below its SE.
+        f_pos = tp[:, l, :] @ u_l
+        f_neg = tn[:, l, :] @ u_l
+
         delta = tp[:, l, :] - tn[:, l, :]
         mpc = float(np.mean([met.cos(delta[i], u_l) for i in range(delta.shape[0])]))
 
         row = {"layer": l, "depth": round(l / (Lp1 - 1), 4),
                "lopo_auroc": lopo_ci["auroc"], "lopo_ci_lo": lopo_ci["ci_lo"],
-               "mean_paired_cos": mpc, "cohens_dz_train": met.cohens_dz(s_pos, s_neg),
+               "mean_paired_cos": mpc, "cohens_dz_train": met.cohens_dz(f_pos, f_neg),
                # Is the saturation real? The shuffled null must sit near 0.5; the
                # sign-corrected random null near 1.0 means AUROC credits a common-mode
                # offset rather than the fitted direction.
@@ -339,7 +344,8 @@ def main():
     stem = mf.stem("probe_select", args.direction)
     view = views.read_view(lay, args.direction, "train")
     config = {"direction": args.direction, "selection": "manual (insights.md)",
-              "interval": "clopper_pearson", "seed": cfg.SEED}
+              "interval": "clopper_pearson", "dz_vector": "full_sample",
+              "auroc_vector": "lopo", "seed": cfg.SEED}
     inputs = {"view_key": view["view_key"]}
     with mf.Run(lay, stem, config, inputs) as run:
         rows, summary = layer_metrics(args, lay, run)
