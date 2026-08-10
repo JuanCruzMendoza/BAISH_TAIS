@@ -148,3 +148,140 @@ says nothing about request-invariance here.
 2. Rebuild the `length` contrast at 50/15 pairs, or drop the foil from the selection rule and report
    it only. At 9 pairs it cannot support a ±0.10 tolerance.
 3. Decide `eval`: more pairs, or demote it from the four-rival set.
+
+---
+
+# 1K_per_direction
+
+Qwen2.5-7B-Instruct (L=28, d=3584), **800 train / 200 held-out** pairs per direction, last token.
+Band = L11–25. No length foil and no `story_v1`; the framing axes carry their task inside the
+dataset. Layers are chosen by hand from `cohens_dz_train`.
+
+## Do the axes exist, and how many pairs do they need?
+
+Band-mean L11–25. `c` is `mean_paired_cos`; `n*` inverts §0.7's
+`cos(d̂,d) ≈ 1/√(1+(1−c²)/(c²n))` at the stated threshold. `n@.99` is where the subsample curve
+actually reaches `cos(d_n, d_800) = 0.99`. `cos(tr,ho)` fits the 800 and the 200 separately, so
+neither vector contains the other.
+
+| direction | lopo AUROC | held-out | ‖d‖/σ_act | c | n*@.95 | n*@.99 | **n@.99 obs** | obs/pred | **cos(tr,ho)** |
+|---|---|---|---|---|---|---|---|---|---|
+| `story_v2_1k` | 0.996 | 0.998 | 0.22 | 0.63 | 14 | 76 | **100** | 1.3 | **+0.995** |
+| `persona_v2` | 0.997 | 0.999 | 0.19 | 0.51 | 26 | 139 | **150** | 1.1 | +0.943 |
+| `harm_v2` | 0.973 | 0.974 | 0.22 | 0.48 | 32 | 169 | **200** | 1.2 | +0.917 |
+| `eval_v2` | 0.971 | 0.959 | **0.05** | 0.28 | 105 | 561 | **350** | **0.6** | **+0.734** |
+
+**§0.7's model holds at n=800.** Within ~30% for the three consistent axes, and *conservative* for
+`eval_v2`, which converges faster than `c` alone predicts. The estimator is trustworthy at 16× the n
+it was written for — but only when read at a matched threshold: the same `c` gives n* = 14 at
+cos ≥ 0.95 and 76 at cos ≥ 0.99 for story, so quoting one against the other looks like a 5× failure
+that is really just the threshold.
+
+**So n=50 was adequate for a 0.95-accurate vector and not for a 0.99-accurate one** — n* is 14–32 for
+story/persona/harm at 0.95, which is what the 50-pair tag delivered. `eval_v2` was the one genuine
+shortfall (n* = 105, and the 50-tag reported ~98).
+
+**`eval_v2` is still the outlier at n=800.** Its two independent halves agree at only +0.734 (null
+±0.050), so the vector is real but not converged, and its norm is 4× smaller than the others' —
+which matters directly for experiment 4's steering units.
+
+![story_v2_1k saturation](results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot__story_v2_1k_cos_curve.png)
+![eval_v2 saturation](results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot__eval_v2_cos_curve.png)
+
+Story is flat above n≈150 at every layer; `eval` is still climbing at 750 and its shallow layers
+converge visibly later than its band.
+
+## Where to read each axis
+
+`cohens_dz_train` (full-sample vector, n=800) selects; `cohens_dz_heldout` (same vector, 200 unseen
+pairs) confirms; `mean_paired_cos` is reported. LOPO is kept only for `lopo_auroc` and its nulls —
+at n=800 it moves d_z by ~0.005, ~100× below its SE, so the deployed vector is what selects. **An argmax alone is not a layer** — `plateau` is every band
+layer within 1 SE of the best, SE ≈ √((1+d_z²/2)/n), so it is what the column can actually resolve.
+
+| direction | d_z train argmax | **plateau** | d_z held-out argmax | plateau | peak mpc |
+|---|---|---|---|---|---|
+| `story_v2_1k` | L23 (3.74) | **L22–24** | L23 (3.74) | L21–25 | L16 (0.683) |
+| `persona_v2` | L15 (2.46) | **L14–15** | L14 (2.81) | L14 | L13 (0.575) |
+| `harm_v2` | L23 (1.48) | **L19–25** | L21 (1.47) | L19–25 | L21 (0.585) |
+| `eval_v2` | L13 (1.76) | **L13** | L25 (1.43) | **L11–25 (all)** | L14 (0.324) |
+
+![story_v2_1k effect size](results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot__story_v2_1k_cohens_dz_train.png)
+
+**The held-out column confirms but cannot select.** At n=200 its SE is 2× the train column's, so it
+resolves 5 layers where train resolves 3, and for `eval_v2` it resolves *nothing* — all 15 band layers
+sit within 1 SE. `eval_v2`'s apparent L13-vs-L25 conflict is not a disagreement; it is a flat held-out
+profile with a noisy argmax. Train at n=800 pins `eval_v2` to L13 alone, more sharply than any other
+axis.
+
+**`harm_v2` is the genuinely unresolved one**: L19–L25 is one plateau on both columns, so its argmax
+L23 is not meaningfully better than L21 — which is where `mean_paired_cos` peaks.
+
+**d_z and `mean_paired_cos` disagree by ~7 layers on story** (L23 vs L16), the same split the 50-pair
+tag showed, so it is a property of the axis and not of small n: d_z climbs into the deep band while
+the per-pair cosine peaks mid-band.
+
+**Ignore L28 in the figures.** d_z is the global max there for `story_v2_1k` (3.91 vs 3.74 at L23) and
+`harm_v2`, but the last hidden state is **post-final-RMSNorm**: median ‖h‖ climbs monotonically to 377
+at L27 and then *falls* to 294 at L28, which adding a block cannot do. Normalising shrinks
+between-example scale and so inflates d_z — and `mean_paired_cos` does not spike there (0.599 vs its
+0.683 peak at L16), which a genuinely stronger construct would. Outside the band anyway, so no
+selection is affected. L0 is NaN for the opposite reason and is a good sign: the read position is the
+same template token in both poles, so `d = 0` exactly.
+
+### Chosen layers
+
+Maximizing cohens train and minimizing gap between train and heldout
+
+| direction     | proposed | why                                                       |
+| ------------- | -------- | --------------------------------------------------------- |
+| `story_v2_1k` | **L23**  | both columns agree, plateau L22–24                        |
+| `persona_v2`  | **L15**  | train plateau L14–15, held-out argmax L14                 |
+| `harm_v2`     | **L21**  | inside the L19–25 plateau, and the `mean_paired_cos` peak |
+| `eval_v2`     | **L9**   | a plateau and reduced gap                                 |
+
+Backup layers:
+- Persona: L5 (another peak of both train and heldout, close gap)
+- 
+
+## Is the saturated AUROC real?
+
+Band-mean. The `classes touch` failure only fires where AUROC reached ≥0.999, so it flags a
+*contradiction*, not the worst margin — `eval`/`harm` have thinner minima and pass.
+
+| direction | shuffled (want 0.5) | rand± | margin min / med | verdict |
+|---|---|---|---|---|
+| `story_v2_1k` | 0.499 | 0.706 | −0.55 / +1.84 | real, a few outlier pairs touch |
+| `persona_v2` | 0.501 | 0.661 | −0.24 / +1.42 | real, a few outlier pairs touch |
+| `harm_v2` | 0.504 | 0.675 | −0.76 / +1.13 | real, not saturated |
+| `eval_v2` | 0.501 | 0.602 | −0.80 / +0.80 | real, not saturated |
+
+No label leakage anywhere. `rand±` 0.60–0.71 is lower than at n=50 (0.61–0.83) but still says AUROC
+credits contrast consistency, not the fitted direction — geometry still has to carry H1.
+
+## Dataset caveats that reach downstream
+
+- **`persona_v2`'s negative pole is 690 distinct prompts for 800 pairs** (99 strings repeat, max 3×).
+  Paired metrics are fine; `mean(neg)` in the diff-in-means has an effective *n* below 800.
+- **`harm_v2` and `persona_v2` share 159 prompts verbatim** (8% each) — `harm_v2`'s persona framing family renders the same `assistant_framing + request` strings as `persona_v2`'s negative arm. Any
+  `cos(d_harm_v2, d_persona_v2)` in experiment 2 is measured on overlapping data.
+
+## Findings
+
+- **All four axes are linearly readable at n=800**, and the ranking from n=50 survives.
+- **§0.7's sample-size model is validated**: observed/predicted 1.1–1.3 for story/persona/harm, 0.6
+  for `eval_v2`. Read it at the threshold you care about — 0.95 and 0.99 differ ~5× in n.
+- **`eval_v2` remains the weak axis**: halves agree at +0.734 and its norm is 4× smaller — but its
+  *layer* is the best-resolved of the four (L13 alone on train).
+- **The 200-pair held-out column confirms and cannot select** — 2× the SE, and for `eval_v2` it
+  resolves no layer at all. Selection has to rest on the LOPO column.
+- **`harm_v2`'s layer is the unresolved one**: L19–25 is a single plateau on both columns.
+- Length is unmeasured at this tag, so the confound the 50-pair run found (story reads length
+  *inverted*, `persona`/`eval` read it at ~1.0) is neither confirmed nor cleared here.
+
+## Actions
+
+1. Confirm the four proposed layers, in particular `harm_v2` L21 vs L23 inside its plateau.
+2. Report `cos(d_harm_v2, d_persona_v2)` in experiment 2 with the 8% prompt overlap stated, or
+   recompute it on the disjoint remainder.
+3. If length matters for the H1 claim, cache a `length` view at this tag and re-run `probe_select` —
+   the columns are still emitted when the view exists.

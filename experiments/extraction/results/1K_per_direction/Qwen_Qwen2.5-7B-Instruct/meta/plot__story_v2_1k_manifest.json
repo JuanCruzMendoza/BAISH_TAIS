@@ -1,0 +1,46 @@
+{
+  "config": {
+    "direction": "story_v2_1k",
+    "layers": [
+      0,
+      3,
+      6,
+      9,
+      12,
+      16,
+      19,
+      22,
+      25,
+      28
+    ],
+    "with_heldout": true
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/plot_figures.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "1K_per_direction",
+      "--with-heldout"
+    ],
+    "git_diff_sha": "07d62a1b56d6e1b038228521e74e9cb3d3216b6348b88e67aa3fa7ba241ce879",
+    "git_dirty": true,
+    "git_sha": "2707957f355c459991e5ca2d4ed4a6b3f264fe83",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-10T09:23:55",
+    "wall_s": 1.69
+  },
+  "inputs": {
+    "directions_run_key": "84ae50fcfa6902c4ab727d3250a799ffdea5b0e43b10e3141ab6be07662750e9",
+    "probe_select_run_key": "351bddbbd30fd313e1fc789075f140cc67749b645dba77c7d7308a541059fa4c"
+  },
+  "notes": [
+    "archived prior run 174e6512"
+  ],
+  "run_key": "b770bd8f4e8349770a827c4d97b8195431214e7606b60add0a82816f17bcf8d4",
+  "status": "complete",
+  "stem": "plot__story_v2_1k"
+}

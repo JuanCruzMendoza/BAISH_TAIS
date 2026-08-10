@@ -1,0 +1,46 @@
+{
+  "config": {
+    "direction": "harm_v2",
+    "layers": [
+      0,
+      3,
+      6,
+      9,
+      12,
+      16,
+      19,
+      22,
+      25,
+      28
+    ],
+    "with_heldout": true
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/plot_figures.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "1K_per_direction",
+      "--with-heldout"
+    ],
+    "git_diff_sha": "07d62a1b56d6e1b038228521e74e9cb3d3216b6348b88e67aa3fa7ba241ce879",
+    "git_dirty": true,
+    "git_sha": "2707957f355c459991e5ca2d4ed4a6b3f264fe83",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-10T09:23:53",
+    "wall_s": 1.27
+  },
+  "inputs": {
+    "directions_run_key": "99b9e0570fc93b8783337bde71d70cf430e660ca4b45781f771b79db0dd2cfff",
+    "probe_select_run_key": "40520e54ca7b7893de75a3c9934efe9f4c79a18c6f8b4fdb4cbb6d123fab080d"
+  },
+  "notes": [
+    "archived prior run 50c2d365"
+  ],
+  "run_key": "97172a29b67da986df6a4769a31fefafaefa09c95138f80dc3d40a80edae40aa",
+  "status": "complete",
+  "stem": "plot__harm_v2"
+}

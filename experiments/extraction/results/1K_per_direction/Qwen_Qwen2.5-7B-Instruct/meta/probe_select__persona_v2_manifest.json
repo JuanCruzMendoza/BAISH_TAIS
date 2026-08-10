@@ -1,0 +1,38 @@
+{
+  "config": {
+    "auroc_vector": "lopo",
+    "direction": "persona_v2",
+    "dz_vector": "full_sample",
+    "interval": "clopper_pearson",
+    "seed": 20260731,
+    "selection": "manual (insights.md)"
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/probe_select.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "1K_per_direction",
+      "--direction",
+      "persona_v2"
+    ],
+    "git_diff_sha": "07d62a1b56d6e1b038228521e74e9cb3d3216b6348b88e67aa3fa7ba241ce879",
+    "git_dirty": true,
+    "git_sha": "2707957f355c459991e5ca2d4ed4a6b3f264fe83",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-10T09:10:45",
+    "wall_s": 45.36
+  },
+  "inputs": {
+    "view_key": "3b8dc57b65dd7593533104eae577b078304c826d8f9dd9584e0cc09a0951b49d"
+  },
+  "notes": [
+    "archived prior run 4f4f3d7d"
+  ],
+  "run_key": "07f7aa3a24da689b1f58637e42db9e24def7dcd5bac3a21b5a30e722d7c7c494",
+  "status": "complete",
+  "stem": "probe_select__persona_v2"
+}

@@ -1,0 +1,34 @@
+{
+  "config": {
+    "anchor": 15,
+    "direction": "persona_v2"
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/plot_figures.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "1K_per_direction",
+      "--direction",
+      "persona_v2",
+      "--anchor",
+      "15"
+    ],
+    "git_diff_sha": "f27ad5f0505d690d53d3e5c5b650f4cb88c5ee597b81a90869c79de0d0a5c527",
+    "git_dirty": true,
+    "git_sha": "2707957f355c459991e5ca2d4ed4a6b3f264fe83",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-10T09:57:46",
+    "wall_s": 0.97
+  },
+  "inputs": {
+    "directions_run_key": "5d633ee109a08c14dec6169434c9185d85fc95a04fd99f2ca885f522e146b917"
+  },
+  "notes": [],
+  "run_key": "fb54e0ab683dd6e4ed11c61818b70903a372f05e0f2555e478244fe17ceff6ea",
+  "status": "complete",
+  "stem": "plot_anchor__persona_v2"
+}

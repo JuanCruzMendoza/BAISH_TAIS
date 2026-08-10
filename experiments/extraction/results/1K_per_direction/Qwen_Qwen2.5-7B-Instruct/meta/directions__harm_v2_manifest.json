@@ -1,0 +1,45 @@
+{
+  "config": {
+    "curve": true,
+    "curve_seeds": 5,
+    "curve_step": 50,
+    "direction": "harm_v2",
+    "estimator": "diff_in_means",
+    "n_pairs": 800,
+    "position": "last_token",
+    "seed": 20260731
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/extract_direction.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "1K_per_direction",
+      "--direction",
+      "harm_v2",
+      "--curve"
+    ],
+    "git_diff_sha": "07d62a1b56d6e1b038228521e74e9cb3d3216b6348b88e67aa3fa7ba241ce879",
+    "git_dirty": true,
+    "git_sha": "2707957f355c459991e5ca2d4ed4a6b3f264fe83",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-10T09:22:59",
+    "wall_s": 0.8
+  },
+  "inputs": {
+    "source_files": [
+      {
+        "path": "data/harm_v2/pairs.jsonl",
+        "sha256": "c1a5ca9a48e9d2d65567bb11ce70127061e7cca98aacc141e3481afe8ecf94fe"
+      }
+    ],
+    "view_key": "e073bcc0767e46405ce53857fce5074a3798fa9ff72484952cb4a3ecf9400476"
+  },
+  "notes": [],
+  "run_key": "99b9e0570fc93b8783337bde71d70cf430e660ca4b45781f771b79db0dd2cfff",
+  "status": "complete",
+  "stem": "directions__harm_v2"
+}

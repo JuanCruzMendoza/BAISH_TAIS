@@ -1,0 +1,38 @@
+{
+  "config": {
+    "auroc_vector": "lopo",
+    "direction": "harm_v2",
+    "dz_vector": "full_sample",
+    "interval": "clopper_pearson",
+    "seed": 20260731,
+    "selection": "manual (insights.md)"
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/probe_select.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "1K_per_direction",
+      "--direction",
+      "harm_v2"
+    ],
+    "git_diff_sha": "07d62a1b56d6e1b038228521e74e9cb3d3216b6348b88e67aa3fa7ba241ce879",
+    "git_dirty": true,
+    "git_sha": "2707957f355c459991e5ca2d4ed4a6b3f264fe83",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-10T09:23:50",
+    "wall_s": 44.9
+  },
+  "inputs": {
+    "view_key": "e073bcc0767e46405ce53857fce5074a3798fa9ff72484952cb4a3ecf9400476"
+  },
+  "notes": [
+    "archived prior run 336ddae7"
+  ],
+  "run_key": "40520e54ca7b7893de75a3c9934efe9f4c79a18c6f8b4fdb4cbb6d123fab080d",
+  "status": "complete",
+  "stem": "probe_select__harm_v2"
+}

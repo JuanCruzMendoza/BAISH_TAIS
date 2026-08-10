@@ -1,0 +1,38 @@
+{
+  "config": {
+    "auroc_vector": "lopo",
+    "direction": "story_v2_1k",
+    "dz_vector": "full_sample",
+    "interval": "clopper_pearson",
+    "seed": 20260731,
+    "selection": "manual (insights.md)"
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/probe_select.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "1K_per_direction",
+      "--direction",
+      "story_v2_1k"
+    ],
+    "git_diff_sha": "07d62a1b56d6e1b038228521e74e9cb3d3216b6348b88e67aa3fa7ba241ce879",
+    "git_dirty": true,
+    "git_sha": "2707957f355c459991e5ca2d4ed4a6b3f264fe83",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-10T09:01:45",
+    "wall_s": 50.2
+  },
+  "inputs": {
+    "view_key": "1bb6d9ed64469c8ed917ad42e859aa9b1cf2c99da3b98307bf3ad210b861368f"
+  },
+  "notes": [
+    "archived prior run df840446"
+  ],
+  "run_key": "351bddbbd30fd313e1fc789075f140cc67749b645dba77c7d7308a541059fa4c",
+  "status": "complete",
+  "stem": "probe_select__story_v2_1k"
+}
