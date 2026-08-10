@@ -63,8 +63,14 @@ def _(TAG, mo):
     ## Checkpoint
 
     Paste an HF **write** token. The results go to a private dataset repo on an hourly
-    timer, so a molab shutdown costs at most the last hour. Restarting this notebook
-    pulls them back and every finished unit cache-hits.
+    timer, so a shutdown costs at most the last hour. Restarting pulls them back and every
+    finished unit cache-hits.
+
+    **Leave `re-run extraction` off** unless you mean to recompute it. Extraction is done
+    and on the Hub; off, the four cells below skip their work and the pull narrows to the
+    three directories the probes need (`acts/`, `vectors/`, `meta/directions__*`).
+    On, they re-run *and re-push* — and a push costs commits per file *considered*, 256 per
+    commit, so re-uploading ~7,700 identical blobs three times is ~90 commits for nothing.
     """)
     return
 
@@ -72,12 +78,17 @@ def _(TAG, mo):
 @app.cell
 def _(mo):
     HF_TOKEN = mo.ui.text(label="HF_TOKEN (write)", kind="password", full_width=True)
-    HF_TOKEN
-    return (HF_TOKEN,)
+    # Off = extraction is done and on the Hub: pull what the probes need and skip its
+    # four cells. Leaving them on costs ~90 commits re-uploading identical files, because
+    # a push costs commits per file *considered* (256 per commit), not per file changed.
+    RUN_EXTRACTION = mo.ui.checkbox(
+        label="re-run extraction (off: pull its results from the Hub)")
+    mo.vstack([HF_TOKEN, RUN_EXTRACTION])
+    return HF_TOKEN, RUN_EXTRACTION
 
 
 @app.cell
-def _(HF_REPO, HF_TOKEN, TAG, mo, sh):
+def _(HF_REPO, HF_TOKEN, RUN_EXTRACTION, TAG, mo, sh):
     from experiments.common import ckpt
 
     mo.stop(not HF_TOKEN.value, mo.md("*Paste the HF token to start.*"))
@@ -85,16 +96,27 @@ def _(HF_REPO, HF_TOKEN, TAG, mo, sh):
     # an unscoped push also walks every other experiment's results (spec: ckpt.scope).
     SCOPE = {"experiment": "extraction", "tag": TAG}
     ckpt.setup(HF_REPO, token=HF_TOKEN.value)
-    restored = ckpt.pull(HF_REPO, token=HF_TOKEN.value, **SCOPE)
-    # NEW EXTRACTION RUN (another model / tag): swap the line above for the one below and
+    # Downstream, extraction is three directories. `acts/` because the thresholds are
+    # calibrated on the pole *activations*, not just on the vectors -- jb_readout reloads
+    # all 8,000 pole prompts, so the blobs are not optional. `vectors/` for the probes and
+    # `meta/directions__*` for the manifest they are validated against. Skipped: csv/,
+    # figures/, probe_select's tables and ~30 MB of meta/*.jsonl resume partials.
+    _need = None if RUN_EXTRACTION.value else ["*/acts/**", "*/vectors/**",
+                                              "*/meta/directions__*"]
+    restored = ckpt.pull(HF_REPO, token=HF_TOKEN.value, subpaths=_need, **SCOPE)
+    # NEW EXTRACTION RUN (another model / tag): add pack=True to the pull above and
     # uncomment the matching push in the cache cell. pack=True stores acts/blobs as a
     # single tar -- 2 commits instead of ~30 -- and unpacks it here so the scripts see the
     # same tree. Both sides or neither. This tag's blobs are loose on the Hub already, and
     # pack=True is a no-op when no tar is present, so it is safe to leave enabled.
-    # restored = ckpt.pull(HF_REPO, token=HF_TOKEN.value, pack=True, **SCOPE)
     sh("git", "status", "--short", "experiments")
-    TIMER = ckpt.autopush(HF_REPO, every=3600, token=HF_TOKEN.value, **SCOPE)
-    print("restored from Hub:", restored, "| hourly checkpoint armed")
+    # Only arm the timer when something will write extraction results. With the box off
+    # nothing here does, and the jailbreak blobs are deliberately not checkpointed.
+    TIMER = (ckpt.autopush(HF_REPO, every=3600, token=HF_TOKEN.value, **SCOPE)
+             if RUN_EXTRACTION.value else None)
+    print("restored from Hub:", restored,
+          "| extraction:", "re-running, hourly checkpoint armed" if TIMER
+          else "pulled, cells skipped")
     return SCOPE, TIMER, ckpt
 
 
@@ -103,9 +125,11 @@ def _(mo):
     mo.md(r"""
     ## Cache the activations — GPU
 
-    ~6,400 train + 1,600 held-out prompts. The only cell that touches the GPU;
-    everything below reads the blob cache. All 8 cells run in **one process** — the model
-    load dominated the wall time at 8 invocations — and checkpoint once at the end.
+    Skipped unless `re-run extraction` is on, as are the next three cells.
+
+    ~6,400 train + 1,600 held-out prompts. The first cell that touches the GPU; everything
+    below it reads the blob cache. All 8 cells run in **one process** — the model load
+    dominated the wall time at 8 invocations — and checkpoint once at the end.
 
     That push is still ~30 commits: `upload_folder` emits one per 256 files, and 7,731
     blobs is 7,731 files. Commits are the rationed resource, so the push is scoped to this
@@ -122,18 +146,19 @@ def _(mo):
 
 
 @app.cell
-def _(HF_REPO, HF_TOKEN, MODEL, SCOPE, TAG, TIMER, ckpt, sh):
+def _(HF_REPO, HF_TOKEN, MODEL, RUN_EXTRACTION, SCOPE, TAG, ckpt, sh):
     DIRECTIONS = ["story_v2_1k", "persona_v2", "eval_v2", "harm_v2"]
 
-    # One process for all 8 cells: the model load dominates, and 8 invocations paid it
-    # 8 times. Resume is per prompt (content-addressed blobs), so a crash still costs
-    # only the prompts not yet written, not the whole list.
-    sh("python", "experiments/extraction/cache_activations.py", MODEL, "--tag", TAG,
-       "--dataset", ",".join(DIRECTIONS), "--split", "train,heldout")
-    ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="acts", **SCOPE)
-    # NEW EXTRACTION RUN: use this instead, together with the pack=True pull above.
-    # ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="acts", pack=True, **SCOPE)
-    cached = TIMER is not None
+    if RUN_EXTRACTION.value:
+        # One process for all 8 cells: the model load dominates, and 8 invocations paid it
+        # 8 times. Resume is per prompt (content-addressed blobs), so a crash still costs
+        # only the prompts not yet written, not the whole list.
+        sh("python", "experiments/extraction/cache_activations.py", MODEL, "--tag", TAG,
+           "--dataset", ",".join(DIRECTIONS), "--split", "train,heldout")
+        ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="acts", **SCOPE)
+        # NEW EXTRACTION RUN: use this instead, together with pack=True on the pull above.
+        # ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="acts", pack=True, **SCOPE)
+    cached = True                # the blobs are either just written or just pulled
     return DIRECTIONS, cached
 
 
@@ -150,15 +175,16 @@ def _(mo):
 
 
 @app.cell
-def _(DIRECTIONS, HF_REPO, HF_TOKEN, MODEL, SCOPE, TAG, cached, ckpt, sh):
+def _(DIRECTIONS, HF_REPO, HF_TOKEN, MODEL, RUN_EXTRACTION, SCOPE, TAG, cached, ckpt, sh):
     assert cached
-    for _d in DIRECTIONS:
-        sh("python", "experiments/extraction/extract_direction.py", MODEL,
-           "--tag", TAG, "--direction", _d, "--curve")
-        sh("python", "experiments/extraction/probe_select.py", MODEL,
-           "--tag", TAG, "--direction", _d)
-    ckpt.try_push(HF_REPO, token=HF_TOKEN.value,
-                  msg="directions + probe_select", **SCOPE)
+    if RUN_EXTRACTION.value:
+        for _d in DIRECTIONS:
+            sh("python", "experiments/extraction/extract_direction.py", MODEL,
+               "--tag", TAG, "--direction", _d, "--curve")
+            sh("python", "experiments/extraction/probe_select.py", MODEL,
+               "--tag", TAG, "--direction", _d)
+        ckpt.try_push(HF_REPO, token=HF_TOKEN.value,
+                      msg="directions + probe_select", **SCOPE)
     extracted = True
     return (extracted,)
 
@@ -174,25 +200,31 @@ def _(mo):
 
 
 @app.cell
-def _(HF_REPO, HF_TOKEN, MODEL, SCOPE, TAG, ckpt, extracted, sh):
+def _(HF_REPO, HF_TOKEN, MODEL, RUN_EXTRACTION, SCOPE, TAG, ckpt, extracted, sh):
     assert extracted
-    sh("python", "experiments/extraction/plot_figures.py", MODEL, "--tag", TAG,
-       "--with-heldout")
-    ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="figures", **SCOPE)
+    if RUN_EXTRACTION.value:
+        sh("python", "experiments/extraction/plot_figures.py", MODEL, "--tag", TAG,
+           "--with-heldout")
+        ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="figures", **SCOPE)
     figured = True
     return (figured,)
 
 
 @app.cell
-def _(MODEL, TAG, TIMER, figured, sh):
+def _(MODEL, RUN_EXTRACTION, TAG, TIMER, figured, sh):
     assert figured
-    # After the push, and never fatal: check_stale exits 1 on any finding, which would
-    # otherwise abort the cell over results that are already on the Hub.
-    _stale = sh("python", "-m", "experiments.common.check_stale", MODEL, TAG,
-                allow_fail=True).returncode
-    TIMER.set()          # nothing writes results/ from here, so stop the hourly push
-    print(("! check_stale reported findings above" if _stale else "all artefacts current")
-          + " | hourly checkpoint stopped")
+    if not RUN_EXTRACTION.value:
+        # check_stale spans the whole tag, so running it here would only report the
+        # jailbreak artefacts the cells below have not written yet.
+        print("extraction pulled from the Hub -- nothing to check or stop")
+    else:
+        # After the push, and never fatal: check_stale exits 1 on any finding, which would
+        # otherwise abort the cell over results that are already on the Hub.
+        _stale = sh("python", "-m", "experiments.common.check_stale", MODEL, TAG,
+                    allow_fail=True).returncode
+        TIMER.set()      # nothing writes results/ from here, so stop the hourly push
+        print(("! check_stale reported findings" if _stale else "all artefacts current")
+              + " | hourly checkpoint stopped")
     return
 
 
@@ -223,8 +255,8 @@ def _(TAG, mo):
     Spec: `experiments/probe_jailbreak_detection/dev.md`, *{TAG}*. The four chosen-layer
     probes against **all 1,009** jailbreak prompts, at two thresholds.
 
-    Depends on the extraction cells above: it reads `vectors/directions__<axis>.pt` and
-    writes the jailbreak activations into extraction's blob cache.
+    Reads extraction's `vectors/directions__<axis>.pt` and writes the jailbreak
+    activations into its blob cache, so it needs extraction pulled — not re-run.
 
     ## Checkpoint
 
@@ -234,7 +266,11 @@ def _(TAG, mo):
 
     The 1,009 new blobs are therefore **not** checkpointed. They are only an input to
     `jb_readout.py`; once its `.pt` is on the Hub they are disposable, and the price is
-    that a molab kill *during* the GPU cell costs that pass rather than resuming from it.
+    that a kill *during* the GPU cell costs that pass rather than resuming from it.
+
+    **A jailbreak-only session** is: the setup cell, the token cell with the box off, the
+    extraction checkpoint cell, then the four below — **2 commits** total, and the only GPU
+    work is the 1,009-prompt pass.
     """)
     return
 

@@ -40,7 +40,7 @@ IGNORE = ["*/meta/_archive/*", "*.tar", "*.tar.gz"]
 _lock = threading.Lock()
 
 
-def scope(experiment=None, tag=None):
+def scope(experiment=None, tag=None, subpaths=None):
     """Which paths a push or pull touches. Always pass the experiment being run.
 
     upload_folder does NOT make one commit per call: it batches at
@@ -53,10 +53,16 @@ def scope(experiment=None, tag=None):
     ALLOW spans every experiment, so an unscoped push from steering_jailbreaks also
     considers extraction's ~7,700 blobs and costs ~30 commits before writing anything of
     its own. Scoped, its ~500 files cost ~3.
+
+    `subpaths` narrows below the tag, each one glob-relative to <model_slug>'s parent, e.g.
+    "*/vectors/**". Only useful for pull(): a downstream experiment needs a few of an
+    upstream one's directories and none of its csv/ or figures/. Never narrow a push --
+    what a scoped push omits, it also cannot restore.
     """
     if experiment is None:
         return ALLOW
-    return [f"{experiment}/results/{tag}/**"] if tag else [f"{experiment}/results/**"]
+    base = f"{experiment}/results/{tag}/" if tag else f"{experiment}/results/"
+    return [base + s for s in subpaths] if subpaths else [base + "**"]
 
 
 def _token(token=None):
@@ -177,12 +183,13 @@ def try_push(repo_id, root=None, token=None, msg="ckpt", experiment=None, tag=No
         return None
 
 
-def pull(repo_id, root=None, token=None, experiment=None, tag=None, pack=False):
+def pull(repo_id, root=None, token=None, experiment=None, tag=None, pack=False,
+         subpaths=None):
     """False if nothing is checkpointed yet, so a first run falls through to computing.
 
     Scope this too: reads are cheap (Resolvers, 5,000 per 5 min on a free account) but
     pulling every experiment drags extraction's ~1.6 GB of blobs into a run that only
-    needs its own results.
+    needs its own results. `subpaths` narrows further inside one experiment.
 
     `pack=True` unpacks any acts/blobs.tar into acts/blobs/ afterwards, so the tree the
     scripts read is the same either way and run_key resume still cache-hits. Safe on a
@@ -192,7 +199,8 @@ def pull(repo_id, root=None, token=None, experiment=None, tag=None, pack=False):
     root.mkdir(parents=True, exist_ok=True)
     try:
         snapshot_download(repo_id, repo_type="dataset", local_dir=str(root),
-                          token=_token(token), allow_patterns=scope(experiment, tag),
+                          token=_token(token),
+                          allow_patterns=scope(experiment, tag, subpaths),
                           ignore_patterns=[".gitattributes"])
     except RepositoryNotFoundError:
         return False
