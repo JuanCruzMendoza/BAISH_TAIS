@@ -501,7 +501,7 @@ def _(HF_REPO, HF_TOKEN, RUN_STEERING, ST_META, ST_SCOPE, ckpt, sh, st_baseline)
     assert st_baseline
     if RUN_STEERING.value:
         sh("python", "experiments/steering_jailbreaks/judge_strongreject.py",
-           str(ST_META / "gen_baseline.jsonl"), "--concurrency", "8")
+           str(ST_META / "gen_baseline.jsonl"), "--concurrency", "6")
         ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="gen_baseline judged", **ST_SCOPE)
     st_split = True
     return (st_split,)
@@ -615,8 +615,15 @@ def _(mo):
     mo.md(r"""
     ## Judge — API
 
-    One call per row at `--concurrency 8` — **16,938 calls** over the 36 cells, ≈1.5 h and
-    ≈$5. Resumable per row, so re-running this cell is free for anything already graded.
+    One call per row — **16,938 calls** over the 36 cells, ≈$5. Resumable per row, and the
+    raw responses are cached in `meta/judge_cache.jsonl` by (request, response, model,
+    template_sha), so re-running this cell is free for anything already graded.
+
+    **`--concurrency 6`, not 8.** The binding limit is tokens per minute, not requests:
+    measured 200k TPM on `gpt-4o-mini` at ~1.2k tokens a call, i.e. ~165 calls/min, and 8
+    workers sat exactly on that ceiling and 429'd. 6 leaves ~25% headroom. The floor is
+    ~1.7 h whatever the concurrency — the TPM bucket sets it, not parallelism — so expect
+    ~2.3 h at 6.
 
     It judges every `meta/*.jsonl` that **has a sibling manifest**, which is what
     `judge_strongreject` itself requires. `judge_cache.jsonl` — the judge's own response
@@ -650,7 +657,7 @@ def _(HF_REPO, HF_TOKEN, RUN_STEERING, ST_META, ST_SCOPE, ckpt, sh, st_steered):
         for _i, _p in enumerate(_todo, 1):
             print(f"[{_i}/{len(_todo)}] {_p.stem}")
             if sh("python", "experiments/steering_jailbreaks/judge_strongreject.py",
-                  str(_p), "--concurrency", "8", allow_fail=True).returncode:
+                  str(_p), "--concurrency", "6", allow_fail=True).returncode:
                 _failed.append(_p.stem)
         # One push for all of them: the hourly timer has been carrying the partials.
         ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="judged", **ST_SCOPE)

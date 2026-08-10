@@ -32,7 +32,13 @@ from experiments.common import config as cfg, manifest as mf, metrics as met
 RUBRIC = Path(__file__).with_name("judge_templates.json")
 MAX_TOKENS = 1024
 DEFAULT_JUDGE = "gpt-4o-mini"
-RETRIES = 4
+# 7 attempts, waiting 1+2+4+8+16+30 = 61s plus jitter: one full token-per-minute window.
+# That is the point -- the binding limit is tokens *per minute* (measured: 200k TPM on
+# gpt-4o-mini at ~1.2k tokens a call, so ~165 calls/min), and while that bucket is empty
+# every concurrent worker keeps it empty. 4 attempts over ~4.5s could not outlive one
+# window, so the cell died mid-pass instead of waiting.
+RETRIES = 7
+BACKOFF_CAP = 30.0
 
 
 def _retryable(e):
@@ -252,7 +258,10 @@ class Judge:
             except Exception as e:
                 if attempt == RETRIES - 1 or not _retryable(e):
                     raise
-                time.sleep(2 ** attempt + random.uniform(0, 1))
+                # Capped, so a token-per-minute stall waits out the window instead of
+                # hammering it: ~1, 2, 4, 8, 16, 30s. Jittered, or eight workers throttled
+                # by the same bucket would all wake together and re-empty it.
+                time.sleep(min(BACKOFF_CAP, 2.0 ** attempt) + random.uniform(0, 1))
 
     def complete(self, system, user):
         """One call at temperature 0. The rubric's system prompt stays the *system*
