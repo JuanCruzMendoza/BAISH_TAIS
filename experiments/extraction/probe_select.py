@@ -117,7 +117,6 @@ def layer_metrics(args, lay, run):
 
     d_full = dirn["d"].numpy()
     u_full = dirn["u"].numpy()
-    lopo = dirn["lopo_d"].numpy()
     sigma = dirn["sigma_act"].numpy()
     Lp1 = d_full.shape[0]
 
@@ -149,8 +148,11 @@ def layer_metrics(args, lay, run):
     rows = []
     for l in range(Lp1):
         u_l = u_full[l]
-        # LOPO: pair i scored by the vector fitted without it.
-        u_lopo = met.unit(lopo[:, l, :])                      # [n, d]
+        # LOPO, recomputed per layer ([n, d], ~11 MB) rather than stored. It is what makes
+        # `null_shuffled_auroc` a control: refit on flipped labels and score in-sample and
+        # the null sits near 1.0 by construction, not 0.5. So the AUROC, its interval and
+        # the margins stay LOPO.
+        u_lopo = met.unit(met.lopo_directions(tp[:, l, :], tn[:, l, :]))
         s_pos = np.einsum("nd,nd->n", tp[:, l, :], u_lopo)
         s_neg = np.einsum("nd,nd->n", tn[:, l, :], u_lopo)
         lopo_ci = met.auroc_ci(s_pos, s_neg)

@@ -53,8 +53,9 @@ Directions: **`story_v2`** (`story_mode_v2/pairs*.jsonl`), **`story_v1`** (v1 ma
 **Direction.** `d[l] = mean(pos[l]) − mean(neg[l])` at the last token of
 `apply_chat_template(..., add_generation_prompt=True)`, every layer `0..L`. Left padding only, and
 the read position is asserted against `attention_mask` rather than trusted. `directions__<axis>.pt`
-also stores the 50 leave-one-pair-out vectors, the pole means, and `sigma_act` (median residual
-norm per layer) for experiment 4's steering units.
+also stores the pole means and `sigma_act` (median residual norm per layer) for experiment 4's
+steering units. The leave-one-pair-out vectors are **not** stored — they are a closed-form update of
+the pole sums, so `probe_select` and `cross_auroc` recompute them per layer.
 
 **Layer selection (§1.2).** LOPO on the 50 train pairs gives 50 held-out decisions; the 15 held-out
 pairs are report-only and nothing selects on them. 

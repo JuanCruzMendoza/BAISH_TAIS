@@ -3,9 +3,10 @@
     python extract_direction.py <model> --direction story_v2
     python extract_direction.py <model> --direction story_v2_1k --curve
 
-Writes directions__<axis>.pt with the full vector, the LOPO vectors, pole means
-and sigma_act, all of which sections 1.2, 2 and 5 reuse. `--curve` adds the
-saturation curve as csv/directions__<axis>_curve.json.
+Writes directions__<axis>.pt with the full vector, pole means and sigma_act, all of
+which sections 1.2, 2 and 5 reuse. The LOPO vectors are not stored — they are a
+closed-form update of the pole sums, so consumers recompute them per layer.
+`--curve` adds the saturation curve as csv/directions__<axis>_curve.json.
 """
 import argparse
 import json
@@ -73,7 +74,6 @@ def main():
     band = cfg.band(Lp1 - 1)
 
     dvec = met.diff_in_means(pos, neg)                  # [L+1, d]
-    lopo = met.lopo_directions(pos, neg)                # [n, L+1, d]
     pooled = np.concatenate([pos, neg])
     mu = pooled.mean(axis=0)                            # [L+1, d] pooled centre
     sigma = met.sigma_act(pooled)                       # [L+1]
@@ -108,7 +108,9 @@ def main():
                     "mu_neg": torch.from_numpy(neg.mean(axis=0)),
                     "sd_neg": torch.from_numpy(neg.std(axis=0, ddof=1)),
                     "sigma_act": torch.from_numpy(sigma),
-                    "lopo_d": torch.from_numpy(lopo),
+                    # lopo_d is NOT stored: n x (L+1) x d float32 is 333 MB at n=800, and
+                    # met.lopo_directions is a closed-form rank-1 update of the pole sums,
+                    # so any consumer recomputes it per layer for ~11 MB.
                     "pair_ids": m["pair_ids"], "n_pairs": n, "n_layers": Lp1 - 1,
                     "view_key": view["view_key"], "run_key": run.run_key},
                    run.artefact(".pt"))
