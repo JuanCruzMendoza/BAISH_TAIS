@@ -243,7 +243,7 @@ whole jailbreak corpus.
 
 The chosen layer was the selected by cohens dz 
 
-We use single dire
+We use single layer steering, not bands
 
 #### Changes vs `50_per_direction`
 
@@ -274,21 +274,35 @@ One layer per direction, the layer extraction chose at this tag:
 `eval_v2`'s L9 is outside the reporting band (11–25), which `parse_layers` rejects rather than
 clips; it enters as an explicit out-of-band opt-in recorded in the manifest.
 
-**No layer is shared across directions**, so every cross-direction comparison confounds direction
-with depth — 50_per_direction read cross-direction at `steer_band` for exactly this reason. Within
-a direction the α sweep is clean: one layer, one σ, and N=1 so the per-layer coefficient is α itself.
-
 #### Configs
 
 One primary mode per (set, direction) as before, plus the −α mirror of it.
 
-| prompt set | goal | `story_v2_1k` · `persona_v2` | `harm_v2` · `eval_v2` |
-|---|---|---|---|
-| **successes** (§5.4) | restore refusal | `ablate`, and `add` at −0.25 / −0.50 / −0.75 | `add` at +0.25 / +0.50 / +0.75 |
-| **refusals** (§5.5) | induce compliance | `add` at +0.25 / +0.50 / +0.75 | `ablate`, and `add` at −0.25 / −0.50 / −0.75 |
-
 Three cells per (set, direction), four where the direction is the suppressed one and gets `ablate`
 as well → **28 target cells**, plus one `noop` per (set, layer) → **8**. **36 cells in pass 1.**
+Every cell in a set runs on the *same* rows, which is what makes target-vs-no-op paired.
+
+**`steer_single` — 508 successes, restore refusal**
+
+| # | direction | mode | L | α |
+|---|---|---|---|---|
+| 1–4 | `story_v2_1k` | `ablate`, then `add` | 23 | —, −0.25, −0.50, −0.75 |
+| 5–8 | `persona_v2` | `ablate`, then `add` | 15 | —, −0.25, −0.50, −0.75 |
+| 9–11 | `harm_v2` | `add` | 21 | +0.25, +0.50, +0.75 |
+| 12–14 | `eval_v2` | `add` | 9 ⚠ | +0.25, +0.50, +0.75 |
+| 15–18 | — | `noop` | 9 ⚠, 15, 21, 23 | — |
+
+**`steer_induce` — 433 refusals, induce compliance**
+
+| # | direction | mode | L | α |
+|---|---|---|---|---|
+| 19–21 | `story_v2_1k` | `add` | 23 | +0.25, +0.50, +0.75 |
+| 22–24 | `persona_v2` | `add` | 15 | +0.25, +0.50, +0.75 |
+| 25–28 | `harm_v2` | `ablate`, then `add` | 21 | —, −0.25, −0.50, −0.75 |
+| 29–32 | `eval_v2` | `ablate`, then `add` | 9 ⚠ | —, −0.25, −0.50, −0.75 |
+| 33–36 | — | `noop` | 9 ⚠, 15, 21, 23 | — |
+
+⚠ `out_of_band`, recorded in that cell's manifest.
 
 `random` is deliberately not in pass 1: matched to every target it doubles the run, for a control
 that at 50_per_direction existed only at `steer_band` — only where nothing was readable. Pass 2
@@ -296,19 +310,25 @@ runs `random` on the cells that moved, at the same layer, mode and α.
 
 #### Cost
 
-The two sets are the baseline's own split, so their sizes are unknown until it is judged; at
-50_per_direction's rates (30% success, 64% refusal) that is ≈300 and ≈640 rows.
+The two sets are the baseline's own split, so their sizes are not known until it is judged. Measured
+— and the projection from 50_per_direction's 30/64 rates was wrong, because ASR on the full corpus
+is **53.1%**, not 30%, which makes the successes the *larger* half:
 
-| | cells | rows | generations | batches |
-|---|---|---|---|---|
-| baseline | 1 | 1,009 | 1,009 | 33 |
-| success set | 18 | ≈300 | ≈5,400 | ≈200 |
-| refusal set | 18 | ≈640 | ≈11,400 | ≈400 |
-| | **37** | | **≈17,900** | **≈630** |
+| | cells | rows | generations | batches | GPU |
+|---|---|---|---|---|---|
+| baseline | 1 | 1,009 | 1,009 | 33 | 9 min |
+| success set | 18 | **508** | 9,144 | 17 | 1.3 h |
+| refusal set | 18 | **433** | 7,794 | 15 | 1.3 h |
+| | **37** | | **17,947** | | **2.81 h** |
 
-At the measured ≈23 s per 32-row batch (`max_new_tokens=512`, greedy, one model load): **≈4 h GPU**.
-Judging ≈17,900 calls at `--concurrency 8` is **≈1.5 h** and **≈$6**. **≈6 h end to end**, two
-thirds of it the refusal set.
+The split is 51.2% complied / 44.0% refused / 4.8% degenerate; `success` also requires
+`strongreject > 0` and `refusal` requires `== 0`, which is why 941 of 1,009 rows land in a set.
+Judging the 36 steering cells is **16,938 calls** at `--concurrency 8` — ≈1.5 h and ≈$5.
+**≈4.5 h end to end**, split evenly between the two sets.
+
+`hit_cap_rate` on the baseline is **0.476** at `max_new_tokens=512` (mean 329 output tokens). Nearly
+half the responses are truncated, which is the failure mode the degeneracy detector is most likely to
+misfile as broken output — read it before reading any breakage number.
 
 #### Run order
 

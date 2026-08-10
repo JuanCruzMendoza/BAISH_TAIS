@@ -398,8 +398,10 @@ def _(TAG, mo):
     the refusals, `story_v2_1k`/`persona_v2` the other way round, and each of the four is
     also suppressed by `ablate` on the set where suppressing it is the hypothesis.
 
-    ≈17,900 generations, **≈4 h GPU** plus ≈1.5 h of judging. Two thirds of it is the
-    refusal set, which is the larger of the two.
+    Measured at 1_run: **17,947 generations in 2.81 h GPU**, plus ≈1.5 h of judging over
+    16,938 calls. The two sets came out at **508 successes / 433 refusals** — ASR is 53.1%
+    on the full corpus against 30% on the 50-row subset, so the *successes* are the larger
+    half and the two `steer_batch` calls cost about the same, ~4.5 min per cell.
 
     Depends on the jailbreak cell above for `acts/views/jailbreaks__all.json` — `sets.py`
     rebuilds the prompts from that view and checks them against its `prompt_sha16`. The view
@@ -410,10 +412,15 @@ def _(TAG, mo):
 
     Its own scope again, and `pack=False` — unlike extraction. Steering writes a few hundred
     small files whose resume partials have to stay individually addressable, and a packed
-    push re-sends the whole tar on every tick of a 4-hour run.
+    push re-sends the whole tar on every tick of a multi-hour run. ~152 files per push, so
+    1 commit each: 13 for the whole 1_run generation pass.
 
-    **Leave `run steering` off** unless you mean to spend the 4 hours: marimo runs every
-    cell on load, so an unguarded cell here would start the sweep in a session opened for
+    The hourly timer is **one per scope**: re-running the cell that arms it replaces its
+    timer rather than adding one. Before that it leaked — every pasted token or toggled
+    checkbox left another thread running, and 1_run ended up with three.
+
+    **Leave `run steering` off** unless you mean to spend the hours: marimo runs every cell
+    on load, so an unguarded cell here would start the sweep in a session opened for
     something else.
     """)
     return
@@ -462,10 +469,16 @@ def _(mo):
     §5.4 runs on the rows it complied with, §5.5 on the rows it refused, and a degenerate
     row falls in neither.
 
-    The sizes are not known until this is judged; at 50_per_direction's rates it is ≈300
-    and ≈640. Both are the *baseline's* split, so a few success rows will not comply at
-    steer time — batch composition differs (33 batches here, 11 there) and greedy is
+    The sizes are not known until this is judged. Measured at 1_run: **508 / 433**, from
+    51.2% complied / 44.0% refused / 4.8% degenerate, with one row the judge declined to
+    grade. Both are the *baseline's* split, so some success rows will not comply at steer
+    time — batch composition differs (33 batches here, 17 and 15 there) and greedy is
     bit-reproducible only at fixed composition. The no-op is the denominator, never this.
+
+    `hit_cap_rate` was **0.476** at 1_run: nearly half the baseline responses ran into
+    `max_new_tokens=512`, mean 329 output tokens. A truncated-but-coherent response is the
+    case the degeneracy detector is most likely to misfile, so read that column before
+    reading breakage anywhere downstream.
     """)
     return
 
@@ -602,8 +615,13 @@ def _(mo):
     mo.md(r"""
     ## Judge — API
 
-    One call per row at `--concurrency 8`, ≈1.5 h and ≈$6 over the 36 cells. Resumable per
-    row, so re-running this cell is free for anything already graded.
+    One call per row at `--concurrency 8` — **16,938 calls** over the 36 cells, ≈1.5 h and
+    ≈$5. Resumable per row, so re-running this cell is free for anything already graded.
+
+    It judges every `meta/*.jsonl` that **has a sibling manifest**, which is what
+    `judge_strongreject` itself requires. `judge_cache.jsonl` — the judge's own response
+    cache — also lives in `meta/`, and a blocklist that named only `_judged` and
+    `gen_baseline` picked it up and died on it before grading anything.
 
     The judge sees the **bare request**, never the jailbreak wrapper, and the deterministic
     detectors run alongside it at no cost — `outcome` is degenerate when *either* says so.
@@ -617,18 +635,27 @@ def _(mo):
 def _(HF_REPO, HF_TOKEN, RUN_STEERING, ST_META, ST_SCOPE, ckpt, sh, st_steered):
     assert st_steered
     if RUN_STEERING.value:
-        # gen_baseline is already judged above; re-listing it here would be a no-op but
-        # reads as though the split were still open at this point.
+        # A generations file is one that has a sibling manifest -- which is exactly what
+        # judge_strongreject loads first. meta/ also holds judge_cache.jsonl (the judge's
+        # own response cache) and the _judged.jsonl outputs; neither has a manifest, and a
+        # blocklist missed the cache. gen_baseline is excluded because it is judged above.
         _todo = sorted(p for p in ST_META.glob("*.jsonl")
                        if not p.name.endswith("_judged.jsonl")
-                       and not p.name.startswith("gen_baseline"))
+                       and not p.name.startswith("gen_baseline")
+                       and (ST_META / f"{p.stem}_manifest.json").exists())
         print(f"judging {len(_todo)} cells")
+        # allow_fail: judging is resumable per row, so one bad cell should cost a retry of
+        # that cell rather than the remaining hour of the pass.
+        _failed = []
         for _i, _p in enumerate(_todo, 1):
             print(f"[{_i}/{len(_todo)}] {_p.stem}")
-            sh("python", "experiments/steering_jailbreaks/judge_strongreject.py", str(_p),
-               "--concurrency", "8")
+            if sh("python", "experiments/steering_jailbreaks/judge_strongreject.py",
+                  str(_p), "--concurrency", "8", allow_fail=True).returncode:
+                _failed.append(_p.stem)
         # One push for all of them: the hourly timer has been carrying the partials.
         ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="judged", **ST_SCOPE)
+        if _failed:
+            print(f"! {len(_failed)} cells did not judge, re-run this cell: {_failed}")
     st_judged = True
     return (st_judged,)
 

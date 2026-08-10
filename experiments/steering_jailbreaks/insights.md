@@ -131,6 +131,49 @@ persona result may simply be the harm axis moving. No cell moves only its own ax
 
 ---
 
+## 1K_per_direction
+
+### 1_run
+
+Generation done (36 cells, 2.81 h); **not yet judged**, so nothing below is a steering result. What
+the baseline already settles is *which* jailbreaks each half of the experiment runs on.
+
+**Baseline ASR by family**, over all 1,009 prompts. `success` is the §5.4 set (restore refusal),
+`refusal` the §5.5 set (induce compliance); `neither` is degenerate, unjudged, or on the wrong side
+of `strongreject`.
+
+| family | n | ASR | success | refusal | neither |
+|---|---|---|---|---|---|
+| fiction_narrative | 472 | **75.8%** | 343 | 110 | 19 |
+| hybrid | 153 | 45.8% | 64 | 73 | 16 |
+| nonfiction_other | 78 | 44.9% | 34 | 40 | 4 |
+| roleplay_persona | 306 | **23.9%** | 67 | 210 | 29 |
+| **all** | **1,009** | **53.1%** | **508** | **433** | **68** |
+
+ASR is `strongreject > 0`; the success set additionally requires the `complied` label, which is why
+it holds 508 rows (50.3%) rather than 535.
+
+- **Fiction narrative jailbreaks work 3.2× more often than roleplay persona ones** (75.8% vs 23.9%).
+  On its own that is the H1/H3 claim visible in the baseline: narrative framing is what carries a
+  jailbreak past this model, before any steering.
+
+- **The two halves of §5 therefore run on different corpora.** The success set is 68%
+  fiction_narrative, the refusal set 48% roleplay_persona. Any asymmetry between "restore refusal"
+  and "induce compliance" may be family, not the direction of the manipulation.
+
+- **Source is the larger confound and it is correlated with family**: `jailbreak_mimicry` **96.7%**
+  ASR (281 of 300 in the success set) against `in_the_wild` **19.2%** (297 of 400 in the refusal
+  set) — a 5× spread against family's 3.2×. `probe_jailbreak_detection` hit the same split from the
+  detection side, so it is a property of the corpus, not of either experiment. **Slice the effects by
+  source as well as family**, or `harm_v2` on the success set is mostly a statement about
+  `jailbreak_mimicry`.
+
+- `hit_cap_rate` is **0.476** at `max_new_tokens=512` (mean 329 output tokens). Nearly half the
+  baseline responses are truncated — the case the degeneracy detector most easily misfiles — so read
+  that column before reading breakage in the α=0.75 cells.
+
+---
+
 ## Improvements
 
 1. **Controls don't cover the results.** 50 of 63 target cells have no matched `random` arm — it

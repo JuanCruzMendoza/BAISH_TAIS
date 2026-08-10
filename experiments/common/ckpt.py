@@ -40,6 +40,13 @@ IGNORE = ["*/meta/_archive/*", "*.tar", "*.tar.gz"]
 # Two overlapping pushes race on the commit they build.
 _lock = threading.Lock()
 
+# One live timer per scope. A reactive notebook re-runs the cell that arms the timer
+# whenever any UI input it reads changes -- a pasted token, a toggled checkbox -- and each
+# run used to start another thread while the previous one kept its own reference and was
+# never stopped. Measured on the 1_run steering pass: three threads, 8 hourly commits where
+# there should have been 3. Keyed by scope so extraction and steering can each hold one.
+_timers = {}
+
 
 def scope(experiment=None, tag=None, subpaths=None):
     """Which paths a push or pull touches. Always pass the experiment being run.
@@ -249,8 +256,17 @@ def autopush(repo_id, every=600, root=None, token=None, experiment=None, tag=Non
     and an unpacked tick would leave both representations on the Hub, and pull() would
     then unpack a tar over blobs that no longer came from it. The cost is re-tarring the
     cache on every tick, which is why `every` should not be small when packing.
+
+    Idempotent per scope: arming a second timer for the same (experiment, tag) stops the
+    first, so re-running the arming cell replaces its timer instead of adding one.
     """
+    key = (experiment, tag)
+    prior = _timers.pop(key, None)
+    if prior is not None and not prior.is_set():
+        prior.set()
+        print(f"  timer for {experiment}/{tag or '-'} re-armed; stopped the previous one")
     stop = threading.Event()
+    _timers[key] = stop
 
     def loop():
         while not stop.wait(every):
