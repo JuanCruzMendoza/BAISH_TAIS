@@ -165,6 +165,10 @@ Layer with highest `pct_reads` per slice:
 
 ## 1K_per_direction
 
+- The threshold (midpoint or gap mid) does not matter much
+- The chosen layers are not the ones who best detect the jailbreaks they should, although story v2 does keep the expected ranking
+- A possible new config could take the vectors from the layers who best detect the corresponding jailbreaks instead of using cohens
+
 Qwen2.5-7B-Instruct, **all 1,009** jailbreak prompts, one chosen layer per direction, both
 thresholds. `ref_tpr` is per probe × layer, so it is constant down each table by construction —
 near 1.0 the bar is passable and a low `pct_reads` is a real finding; low `ref_tpr` means τ is too
