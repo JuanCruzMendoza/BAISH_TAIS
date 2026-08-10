@@ -1,4 +1,6 @@
-# probe_jailbreak_detection — do the probes read jailbreaks as fiction? (H2)
+
+# 50_per_direction
+## probe_jailbreak_detection — do the probes read jailbreaks as fiction? (H2)
 
 Spec §3. **Objective:** for each direction, what percentage of 100 real jailbreak prompts does the
 probe read as that direction — overall, per layer, and per jailbreak category?
