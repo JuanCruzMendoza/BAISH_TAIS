@@ -40,8 +40,29 @@ RETRIES = 7
 BACKOFF_CAP = 30.0
 
 
+class DailyQuotaExhausted(RuntimeError):
+    """The per-day request cap. Not a transient condition, so not retryable."""
+
+
+# A 429 that names the *daily* cap, e.g. "Rate limit reached ... on requests per day
+# (RPD): Limit 10000, Used 10000". The provider's own "try again in 8.64s" is misleading:
+# the counter refills over a day, not seconds.
+_RPD = re.compile(r"requests per day|\bRPD\b", re.I)
+
+
+def _daily_quota(e):
+    return getattr(e, "status_code", None) == 429 and bool(_RPD.search(str(e)))
+
+
 def _retryable(e):
-    """429 and 5xx are worth waiting out; a network error has no status at all."""
+    """429 and 5xx are worth waiting out; a network error has no status at all.
+
+    The daily cap is the exception: no ladder outlives a day, and every attempt spends
+    another request against the counter that is already empty. Retrying it turned an
+    error that should surface in seconds into hours of grinding, so it raises instead.
+    """
+    if _daily_quota(e):
+        return False
     code = getattr(e, "status_code", None)
     if code is None:
         code = getattr(getattr(e, "response", None), "status_code", None)
@@ -255,6 +276,11 @@ class Judge:
             try:
                 return self.complete(system, user)
             except Exception as e:
+                if _daily_quota(e):
+                    # Re-typed so main() can say what happened once, instead of every
+                    # worker printing a provider traceback that buries the one line
+                    # that matters.
+                    raise DailyQuotaExhausted(str(e)) from None
                 if attempt == RETRIES - 1 or not _retryable(e):
                     raise
                 # FULL jitter -- uniform over [0, backoff), not backoff plus a second.
@@ -552,4 +578,12 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except DailyQuotaExhausted as e:
+        # Exit 3, not 1: the caller loops over cells, and every remaining cell would hit
+        # the same wall. Rows already graded are on disk and resume covers them.
+        raise SystemExit(f"\nDAILY REQUEST QUOTA EXHAUSTED -- stopping, not retrying.\n"
+                         f"  {e}\n"
+                         f"  Graded rows are durable; re-run this cell when the quota "
+                         f"resets and it resumes where it stopped.") from None
