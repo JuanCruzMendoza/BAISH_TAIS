@@ -32,11 +32,10 @@ from experiments.common import config as cfg, manifest as mf, metrics as met
 RUBRIC = Path(__file__).with_name("judge_templates.json")
 MAX_TOKENS = 1024
 DEFAULT_JUDGE = "gpt-4o-mini"
-# 7 attempts, waiting 1+2+4+8+16+30 = 61s plus jitter: one full token-per-minute window.
-# That is the point -- the binding limit is tokens *per minute* (measured: 200k TPM on
-# gpt-4o-mini at ~1.2k tokens a call, so ~165 calls/min), and while that bucket is empty
-# every concurrent worker keeps it empty. 4 attempts over ~4.5s could not outlive one
-# window, so the cell died mid-pass instead of waiting.
+# The binding limit is tokens *per minute*, not requests: measured 200k TPM on gpt-4o-mini
+# at ~2.0k tokens a call (rubric + request + response + the MAX_TOKENS reserve), so a
+# ceiling near 97 calls/min. 7 attempts reach out to ~61s, one full window; 4 attempts over
+# ~4.5s could not outlive one, and the cell died mid-pass instead of waiting.
 RETRIES = 7
 BACKOFF_CAP = 30.0
 
@@ -258,10 +257,15 @@ class Judge:
             except Exception as e:
                 if attempt == RETRIES - 1 or not _retryable(e):
                     raise
-                # Capped, so a token-per-minute stall waits out the window instead of
-                # hammering it: ~1, 2, 4, 8, 16, 30s. Jittered, or eight workers throttled
-                # by the same bucket would all wake together and re-empty it.
-                time.sleep(min(BACKOFF_CAP, 2.0 ** attempt) + random.uniform(0, 1))
+                # FULL jitter -- uniform over [0, backoff), not backoff plus a second.
+                # Additive jitter is too small to decorrelate anything: 0-1s of spread
+                # against a 30s rung leaves workers throttled by one shared bucket climbing
+                # the ladder in phase. Full jitter is the standard remedy and halves the
+                # expected wait as a side effect. Note it was NOT shown to be the cause of
+                # this experiment's 88 -> 19 calls/min drop at 8 workers: a bucket
+                # simulation reproduced neither rate, so that slowdown has another
+                # explanation (serialised fsync per row is the open suspect).
+                time.sleep(random.uniform(0, min(BACKOFF_CAP, 2.0 ** attempt)))
 
     def complete(self, system, user):
         """One call at temperature 0. The rubric's system prompt stays the *system*

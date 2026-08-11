@@ -308,9 +308,9 @@ def _(TAG, mo):
 
 @app.cell
 def _(mo):
+    # cell 14
     # Off = this experiment is done and on the Hub: build the view on CPU and skip the
     # readout and metrics cells. On = the full 1,009-prompt GPU pass.
-    # cell 14
     RUN_JB = mo.ui.checkbox(
         label="re-run probe_jailbreak_detection (off: view-only, CPU, then skip)")
     RUN_JB
@@ -511,7 +511,26 @@ def _(HF_REPO, HF_TOKEN, MODEL, OPENAI_KEY, REPO, RUN_STEERING, TAG, ckpt, mo, o
     # cells, so a per-script push never fires inside it.
     ST_TIMER = (ckpt.autopush(HF_REPO, every=3600, token=HF_TOKEN.value, **ST_SCOPE)
                 if RUN_STEERING.value else None)
-    return ST_CHOSEN, ST_META, ST_SCOPE, ST_TIMER
+
+    def ST_DONE(script):
+        """How many of `script`'s cells already have a complete manifest.
+
+        Every generating script here -- gen_baseline and steer_batch alike -- calls
+        mdl.load() before it consults its own resume, so a finished cell still costs 15 GB
+        of weights to re-enter. Skipping on this count is what lets a judge-only session
+        run with no GPU at all. Superseded manifests live in meta/_archive, so the live
+        directory holds only current ones.
+        """
+        import json as _j
+
+        n = 0
+        for f in ST_META.glob(f"{script}*_manifest.json"):
+            try:
+                n += _j.loads(f.read_text(encoding="utf-8")).get("status") == "complete"
+            except ValueError:                     # torn tail mid-push
+                pass
+        return n
+    return ST_CHOSEN, ST_DONE, ST_META, ST_SCOPE, ST_TIMER
 
 
 @app.cell(hide_code=True)
@@ -539,15 +558,20 @@ def _(mo):
 
 
 @app.cell
-def _(HF_REPO, HF_TOKEN, MODEL, RUN_STEERING, ST_SCOPE, TAG, ckpt, jb_cached, sh):
-    # Not cosmetic: that cell writes acts/views/jailbreaks__all.json, which sets.py reads.
+def _(HF_REPO, HF_TOKEN, MODEL, RUN_STEERING, ST_DONE, ST_SCOPE, TAG, ckpt, jb_cached, sh):
     # cell 27
+    # Not cosmetic: that cell writes acts/views/jailbreaks__all.json, which sets.py reads.
     assert jb_cached
-    if RUN_STEERING.value:
+    if RUN_STEERING.value and not ST_DONE("gen_baseline"):
         sh("python", "experiments/steering_jailbreaks/gen_baseline.py", MODEL,
            "--tag", TAG, "--split", "all", "--decoding", "greedy",
            "--batch-size", "32", "--max-batch-tokens", "65536")
         ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="gen_baseline", **ST_SCOPE)
+    else:
+        # gen_baseline calls mdl.load() before it reads its own resume, so a finished
+        # baseline still costs 15 GB of weights -- minutes on a GPU, far worse on CPU.
+        print("gen_baseline complete -- skipped, no model load" if RUN_STEERING.value
+              else "gen_baseline not running")
     st_baseline = True
     return (st_baseline,)
 
@@ -627,28 +651,12 @@ def _(MODEL, ST_CHOSEN, ST_META, mo):
         _lines.append(f"**{_set}** — {len(_js)} cells\n\n```\n"
                       + "\n".join(" ".join(j) for j in _js) + "\n```")
 
-    _EXPECT = {"steer_single": len(_jobs("success")),
-               "steer_induce": len(_jobs("refusal"))}
-
-    def ST_PENDING(script):
-        """-> (cells with a complete manifest, expected).
-
-        Lets the two steer cells skip `steer_batch` outright when their whole set is
-        already generated. Without it a resumed session pays a model load each, purely to
-        define the markers the judge cell asserts on -- and resume inside `steer_batch`
-        generates nothing anyway. Superseded manifests live in meta/_archive, so the live
-        directory holds only current ones.
-        """
-        n = 0
-        for f in ST_META.glob(f"{script}__*_manifest.json"):
-            try:
-                n += _json.loads(f.read_text(encoding="utf-8")).get("status") == "complete"
-            except ValueError:                     # torn tail mid-push
-                pass
-        return n, _EXPECT[script]
+    # How many cells each steer script should end up with, from the job list itself.
+    ST_EXPECT = {"steer_single": len(_jobs("success")),
+                 "steer_induce": len(_jobs("refusal"))}
 
     mo.md(f"{_total} cells\n\n" + "\n\n".join(_lines))
-    return ST_JOBS, ST_PENDING
+    return ST_EXPECT, ST_JOBS
 
 
 @app.cell(hide_code=True)
@@ -672,11 +680,11 @@ def _(mo):
 
 
 @app.cell
-def _(HF_REPO, HF_TOKEN, MODEL, RUN_STEERING, ST_JOBS, ST_PENDING, ST_SCOPE, TAG, ckpt,
+def _(HF_REPO, HF_TOKEN, MODEL, RUN_STEERING, ST_DONE, ST_EXPECT, ST_JOBS, ST_SCOPE, TAG, ckpt,
       sh, st_split):
     # cell 32
     assert st_split                      # the success set is defined by the judged baseline
-    _n, _want = ST_PENDING("steer_single")
+    _n, _want = ST_DONE("steer_single"), ST_EXPECT["steer_single"]
     if RUN_STEERING.value and _n < _want:
         sh("python", "experiments/steering_jailbreaks/steer_batch.py", MODEL, "--tag", TAG,
            "--script", "steer_single", "--jobs", ST_JOBS["success"],
@@ -690,11 +698,11 @@ def _(HF_REPO, HF_TOKEN, MODEL, RUN_STEERING, ST_JOBS, ST_PENDING, ST_SCOPE, TAG
 
 
 @app.cell
-def _(HF_REPO, HF_TOKEN, MODEL, RUN_STEERING, ST_JOBS, ST_PENDING, ST_SCOPE, TAG, ckpt,
+def _(HF_REPO, HF_TOKEN, MODEL, RUN_STEERING, ST_DONE, ST_EXPECT, ST_JOBS, ST_SCOPE, TAG, ckpt,
       sh, st_success):
     # cell 33
     assert st_success
-    _n, _want = ST_PENDING("steer_induce")
+    _n, _want = ST_DONE("steer_induce"), ST_EXPECT["steer_induce"]
     if RUN_STEERING.value and _n < _want:
         sh("python", "experiments/steering_jailbreaks/steer_batch.py", MODEL, "--tag", TAG,
            "--script", "steer_induce", "--jobs", ST_JOBS["refusal"],
