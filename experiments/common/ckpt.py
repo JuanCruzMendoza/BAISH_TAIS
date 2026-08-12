@@ -11,7 +11,7 @@ import threading
 import time
 from pathlib import Path
 
-from huggingface_hub import HfApi, snapshot_download
+from huggingface_hub import HfApi, constants as hf_constants, snapshot_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError
 
 from experiments.common import config as cfg
@@ -201,6 +201,34 @@ def _is_rate_limit(e):
     return "429" in str(e) or "too many requests" in str(e).lower()
 
 
+def _is_size_mismatch(e):
+    """A download that came out the wrong length. Xet's wording and the plain path's.
+
+    Measured on a resumed 2_run session: "Task error: File size mismatch: expected 238254
+    bytes but downloaded 335267 bytes", and 335267 - 238254 = 97013 -- exactly the bytes
+    already sitting in the .incomplete file. The Xet writer is Rust and reconstructs the
+    whole file, but `_download_to_tmp_and_move` hands it an incomplete_path it does not
+    truncate, so a leftover partial is prepended to the real content.
+    """
+    s = str(e).lower()
+    return "size mismatch" in s or "consistency check failed" in s
+
+
+def _clear_incomplete(root):
+    """Delete the local-dir download partials. Returns how many went.
+
+    They have to be *deleted*, not retried: the partial is keyed by etag, so an unchanged
+    remote file resolves to the same .incomplete every time and the mismatch reproduces
+    exactly. Only download bookkeeping lives here -- never a result -- and the sibling
+    metadata is left alone so completed files are not re-fetched.
+    """
+    n = 0
+    for p in Path(root).glob(".cache/huggingface/download/**/*.incomplete"):
+        p.unlink(missing_ok=True)
+        n += 1
+    return n
+
+
 def pull(repo_id, root=None, token=None, experiment=None, tag=None, pack=False,
          subpaths=None, attempts=6, max_workers=4):
     """False if nothing is checkpointed yet, so a first run falls through to computing.
@@ -211,8 +239,13 @@ def pull(repo_id, root=None, token=None, experiment=None, tag=None, pack=False,
     downloads. Hence `max_workers=4` (below the library's 8, to spread the burst) and the
     retry: snapshot_download resumes, skipping whatever already landed, so each attempt
     starts where the last one stopped and the download completes across several windows.
-    `HF_HUB_DISABLE_XET=1` is the escape hatch -- it routes downloads past that endpoint
-    entirely, at the cost of chunk-level dedup.
+    Turning Xet off is the escape hatch -- it routes downloads past that endpoint entirely,
+    at the cost of chunk-level dedup -- but it has to be done by assigning
+    `hf_constants.HF_HUB_DISABLE_XET`, since the environment variable is read once at import.
+
+    A killed session also leaves a .incomplete partial that Xet then prepends to the real
+    bytes, which reproduces forever because the partial is keyed by etag. That is caught and
+    repaired here rather than raised: see `_is_size_mismatch`.
 
     The real fix for a blob cache this size is not to store it loose: see `pack`.
 
@@ -224,22 +257,39 @@ def pull(repo_id, root=None, token=None, experiment=None, tag=None, pack=False,
     """
     root = Path(root or cfg.REPO / "experiments")
     root.mkdir(parents=True, exist_ok=True)
-    for i in range(attempts):
-        try:
-            snapshot_download(repo_id, repo_type="dataset", local_dir=str(root),
-                              token=_token(token), max_workers=max_workers,
-                              allow_patterns=scope(experiment, tag, subpaths),
-                              ignore_patterns=[".gitattributes"])
-            break
-        except RepositoryNotFoundError:
-            return False
-        except Exception as e:                                        # noqa: BLE001
-            if not _is_rate_limit(e) or i == attempts - 1:
-                raise
-            wait = min(300, 30 * 2 ** i)
-            print(f"! rate-limited ({i + 1}/{attempts}), resuming in {wait}s: "
-                  f"{str(e)[:160]}")
-            time.sleep(wait)
+    was_xet_off = hf_constants.HF_HUB_DISABLE_XET
+    try:
+        for i in range(attempts):
+            try:
+                snapshot_download(repo_id, repo_type="dataset", local_dir=str(root),
+                                  token=_token(token), max_workers=max_workers,
+                                  allow_patterns=scope(experiment, tag, subpaths),
+                                  ignore_patterns=[".gitattributes"])
+                break
+            except RepositoryNotFoundError:
+                return False
+            except Exception as e:                                    # noqa: BLE001
+                if _is_size_mismatch(e) and i < attempts - 1:
+                    n = _clear_incomplete(root)
+                    # Xet's non-truncating resume is what produced the mismatch, so the
+                    # retry goes without it. The *module attribute*, not the environment
+                    # variable: constants.py reads HF_HUB_DISABLE_XET at import time, so by
+                    # the time any notebook cell sets os.environ the value is already fixed
+                    # -- which is why 1_run's escape hatch never fired in-process.
+                    hf_constants.HF_HUB_DISABLE_XET = True
+                    print(f"! size mismatch ({i + 1}/{attempts}): deleted {n} .incomplete "
+                          f"partial(s), retrying without Xet. {str(e)[:160]}")
+                    continue
+                if not _is_rate_limit(e) or i == attempts - 1:
+                    raise
+                wait = min(300, 30 * 2 ** i)
+                print(f"! rate-limited ({i + 1}/{attempts}), resuming in {wait}s: "
+                      f"{str(e)[:160]}")
+                time.sleep(wait)
+    finally:
+        # Restored so a recovered pull does not quietly cost every later push its
+        # chunk-level dedup: uploads have no incomplete file and never hit this.
+        hf_constants.HF_HUB_DISABLE_XET = was_xet_off
     if pack:
         for tar, n in unpack_blobs(root, experiment, tag):
             print(f"unpacked {n} new blobs from {tar.name}")

@@ -116,8 +116,22 @@ def _(mo):
     **extraction**: `vectors/` and `meta/directions__*` only — the four direction files and
     the manifests they are validated against, ~8 MB. **Not `acts/`**: 1_run's notebook
     needed the 1.6 GB pole cache because `jb_readout.py` re-projects onto it, and nothing
-    here does. That also removes the 429 that made `HF_HUB_DISABLE_XET=1` necessary there,
-    so Xet stays on and the `.jsonl` pushes below dedup at chunk level.
+    here does. That also removes the read-quota 429 that `HF_HUB_DISABLE_XET=1` was meant
+    to dodge there.
+
+    **A pull interrupted by a disconnection used not to resume cleanly**, and it was the one
+    place the notebook could not just be re-run. `snapshot_download` leaves an `.incomplete`
+    partial under `experiments/.cache/huggingface/download/`, and the **Xet** path
+    reconstructs the whole file into it *without truncating first* — so the partial is
+    prepended to the real bytes and it raises `File size mismatch: expected N bytes but
+    downloaded M`, with M − N exactly the partial's length. Measured here: 335,267 − 238,254
+    = 97,013. The partial is keyed by etag, so an unchanged remote file resolves to the same
+    one and the failure reproduces forever; retrying cannot clear it.
+
+    `ckpt.pull` now repairs this: it deletes the `.incomplete` files, keeps their metadata so
+    the files that already landed are not re-fetched, and retries with Xet **off** — the
+    plain path issues a Range request from the partial's length and appends correctly, which
+    is the asymmetry that caused this.
 
     **steering_jailbreaks**: everything. The judged baseline defines both prompt sets and
     must be 1_run's exact split; 1_run's 36 manifests are what tell the cells below what is
@@ -145,11 +159,16 @@ def _(mo):
     is by file, not by stem. `ST_COMPLETE` therefore requires both, or a torn push would make
     a cell look finished and silently drop it from the judge pass and from `aggregate`.
 
-    Two things keep the count down. `meta/_archive/*` is in `IGNORE`, so re-running a cell
-    does not grow the walk. And Xet stays **on** here — 1_run set `HF_HUB_DISABLE_XET=1` to
-    survive pulling 7,731 loose blobs and never unset it, so its steering pushes re-sent whole
-    30 MB `.jsonl` files every tick; this notebook never pulls blobs, so the `.jsonl` files are
-    LFS-tracked and only their appended tails move.
+    `meta/_archive/*` is in `IGNORE`, so re-running a cell does not grow the walk.
+
+    **Xet is on, and it was on in 1_run too** — despite that notebook setting
+    `HF_HUB_DISABLE_XET=1`. `constants.HF_HUB_DISABLE_XET` is read from the environment
+    **once, at import time**, and 1_run's cell 4 imported `ckpt` — and through it
+    `huggingface_hub` — on its first line, before setting the variable. So the flag only
+    ever reached the `sh()` subprocesses, never the notebook's own pull and push. Setting
+    it here would need to happen in cell 1, ahead of every HF import. Left on deliberately:
+    the `.jsonl` files are LFS-tracked, so chunk dedup means only their appended tails move
+    on each hourly tick, and 1_run pushed this way without trouble.
     """)
     return
 
@@ -181,6 +200,10 @@ def _(HF_REPO, HF_TOKEN, MODEL, OPENAI_KEY, REPO, TAG, mo, os):
     ST_META, ST_CSV = ST_ROOT / "meta", ST_ROOT / "csv"
 
     ckpt.setup(HF_REPO, token=HF_TOKEN.value)
+    # ckpt.pull repairs the stale-partial case itself, inside its own attempts loop, so
+    # there is no wrapper here: it deletes only the `.incomplete` files -- keeping the
+    # metadata, so the files that did land are not re-fetched -- and retries with Xet off,
+    # which is the path whose resume is correct.
     print("extraction:", ckpt.pull(HF_REPO, token=HF_TOKEN.value,
                                    subpaths=["*/vectors/**", "*/meta/directions__*"],
                                    **EX_SCOPE))
