@@ -11,7 +11,7 @@ import threading
 import time
 from pathlib import Path
 
-from huggingface_hub import HfApi, constants as hf_constants, snapshot_download
+from huggingface_hub import HfApi, snapshot_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError
 
 from experiments.common import config as cfg
@@ -214,6 +214,37 @@ def _is_size_mismatch(e):
     return "size mismatch" in s or "consistency check failed" in s
 
 
+def _pull_one_by_one(repo_id, root, token, patterns, ignore):
+    """Fetch each file alone and skip any whose stored object is unusable -> [skipped].
+
+    `snapshot_download` is all-or-nothing, so a single broken record on the Hub stops the
+    whole pull -- and the premise of the checkpoint scheme is that a killed session can just
+    be re-run.
+
+    A record breaks this way when a push reads a file a *subprocess* is appending to: the
+    size is stat'd mid-row and committed against a pointer covering the longer content, so
+    the object downloads at its real length and fails the check. Measured on 2_run:
+    steer_induce__persona_v2__add__L15__a1.jsonl recorded 238,254 with 335,267 stored, and
+    byte 238,254 lands mid-line. By construction such a file is the resume partial of a cell
+    that was still generating, so dropping it costs a regeneration, not a result -- and its
+    manifest is `in_progress`, which no consumer treats as complete anyway.
+    """
+    from huggingface_hub.utils import filter_repo_objects
+
+    api = HfApi(token=token)
+    want = filter_repo_objects(api.list_repo_files(repo_id, repo_type="dataset"),
+                               allow_patterns=patterns, ignore_patterns=ignore)
+    skipped = []
+    for f in want:
+        try:
+            api.hf_hub_download(repo_id, f, repo_type="dataset", local_dir=str(root))
+        except Exception as e:                                        # noqa: BLE001
+            if not _is_size_mismatch(e):
+                raise
+            skipped.append(f)
+    return skipped
+
+
 def _clear_incomplete(root):
     """Delete the local-dir download partials. Returns how many went.
 
@@ -239,13 +270,10 @@ def pull(repo_id, root=None, token=None, experiment=None, tag=None, pack=False,
     downloads. Hence `max_workers=4` (below the library's 8, to spread the burst) and the
     retry: snapshot_download resumes, skipping whatever already landed, so each attempt
     starts where the last one stopped and the download completes across several windows.
-    Turning Xet off is the escape hatch -- it routes downloads past that endpoint entirely,
-    at the cost of chunk-level dedup -- but it has to be done by assigning
-    `hf_constants.HF_HUB_DISABLE_XET`, since the environment variable is read once at import.
 
-    A killed session also leaves a .incomplete partial that Xet then prepends to the real
-    bytes, which reproduces forever because the partial is keyed by etag. That is caught and
-    repaired here rather than raised: see `_is_size_mismatch`.
+    A size mismatch is handled in two steps -- clear the local partials, then, if the record
+    on the Hub is what is broken, fetch file by file and skip the unfetchable. See
+    `_is_size_mismatch` and `_pull_one_by_one`.
 
     The real fix for a blob cache this size is not to store it loose: see `pack`.
 
@@ -257,39 +285,52 @@ def pull(repo_id, root=None, token=None, experiment=None, tag=None, pack=False,
     """
     root = Path(root or cfg.REPO / "experiments")
     root.mkdir(parents=True, exist_ok=True)
-    was_xet_off = hf_constants.HF_HUB_DISABLE_XET
-    try:
-        for i in range(attempts):
-            try:
-                snapshot_download(repo_id, repo_type="dataset", local_dir=str(root),
-                                  token=_token(token), max_workers=max_workers,
-                                  allow_patterns=scope(experiment, tag, subpaths),
-                                  ignore_patterns=[".gitattributes"])
-                break
-            except RepositoryNotFoundError:
-                return False
-            except Exception as e:                                    # noqa: BLE001
-                if _is_size_mismatch(e) and i < attempts - 1:
+    patterns, ignore = scope(experiment, tag, subpaths), [".gitattributes"]
+    repaired = False
+    for i in range(attempts):
+        try:
+            snapshot_download(repo_id, repo_type="dataset", local_dir=str(root),
+                              token=_token(token), max_workers=max_workers,
+                              allow_patterns=patterns, ignore_patterns=ignore)
+            break
+        except RepositoryNotFoundError:
+            return False
+        except Exception as e:                                        # noqa: BLE001
+            if _is_size_mismatch(e):
+                # The cheap cause first: a killed session leaves an .incomplete partial
+                # that a resumed download can prepend to the real bytes. Deleting it costs
+                # nothing when that was not the cause.
+                #
+                # Do NOT reach for HF_HUB_DISABLE_XET here. Measured against the broken
+                # 2_run file on hub 1.7.1: Xet fetched all 335,267 bytes and the *plain*
+                # path raised "Consistency check failed", because it compares against the
+                # size the HEAD reports. Xet is lenient on some versions and strict on
+                # others, so turning it off can only lose a download that would have
+                # worked. (The variable is also read into constants at import, so setting
+                # os.environ from a notebook cell never took effect anyway.)
+                if not repaired and i < attempts - 1:
+                    repaired = True
                     n = _clear_incomplete(root)
-                    # Xet's non-truncating resume is what produced the mismatch, so the
-                    # retry goes without it. The *module attribute*, not the environment
-                    # variable: constants.py reads HF_HUB_DISABLE_XET at import time, so by
-                    # the time any notebook cell sets os.environ the value is already fixed
-                    # -- which is why 1_run's escape hatch never fired in-process.
-                    hf_constants.HF_HUB_DISABLE_XET = True
-                    print(f"! size mismatch ({i + 1}/{attempts}): deleted {n} .incomplete "
-                          f"partial(s), retrying without Xet. {str(e)[:160]}")
+                    print(f"! size mismatch ({i + 1}/{attempts}): deleted {n} "
+                          f".incomplete partial(s), retrying. {str(e)[:160]}")
                     continue
-                if not _is_rate_limit(e) or i == attempts - 1:
-                    raise
-                wait = min(300, 30 * 2 ** i)
-                print(f"! rate-limited ({i + 1}/{attempts}), resuming in {wait}s: "
-                      f"{str(e)[:160]}")
-                time.sleep(wait)
-    finally:
-        # Restored so a recovered pull does not quietly cost every later push its
-        # chunk-level dedup: uploads have no incomplete file and never hit this.
-        hf_constants.HF_HUB_DISABLE_XET = was_xet_off
+                # Nothing stale left locally, so it is the record on the Hub that is
+                # broken. Take everything else rather than lose the session.
+                skipped = _pull_one_by_one(repo_id, root, _token(token), patterns, ignore)
+                print(f"! {len(skipped)} file(s) have a broken size record on the Hub and "
+                      f"were SKIPPED; everything else is local now:")
+                for f in skipped:
+                    print(f"    {f}")
+                print("  A record breaks this way only on a file a push read while a "
+                      "subprocess was appending to it, so each is the resume partial of a "
+                      "cell that never finished. Those cells regenerate.")
+                break
+            if not _is_rate_limit(e) or i == attempts - 1:
+                raise
+            wait = min(300, 30 * 2 ** i)
+            print(f"! rate-limited ({i + 1}/{attempts}), resuming in {wait}s: "
+                  f"{str(e)[:160]}")
+            time.sleep(wait)
     if pack:
         for tar, n in unpack_blobs(root, experiment, tag):
             print(f"unpacked {n} new blobs from {tar.name}")

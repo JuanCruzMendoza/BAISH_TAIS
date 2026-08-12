@@ -119,19 +119,27 @@ def _(mo):
     here does. That also removes the read-quota 429 that `HF_HUB_DISABLE_XET=1` was meant
     to dodge there.
 
-    **A pull interrupted by a disconnection used not to resume cleanly**, and it was the one
-    place the notebook could not just be re-run. `snapshot_download` leaves an `.incomplete`
-    partial under `experiments/.cache/huggingface/download/`, and the **Xet** path
-    reconstructs the whole file into it *without truncating first* — so the partial is
-    prepended to the real bytes and it raises `File size mismatch: expected N bytes but
-    downloaded M`, with M − N exactly the partial's length. Measured here: 335,267 − 238,254
-    = 97,013. The partial is keyed by etag, so an unchanged remote file resolves to the same
-    one and the failure reproduces forever; retrying cannot clear it.
+    **A push that reads a file while a subprocess appends to it corrupts that file's record
+    on the Hub**, and one bad record stops the whole pull. It happened on 2_run:
+    `steer_induce__persona_v2__add__L15__a1.jsonl` is committed as 238,254 bytes with
+    335,267 stored, and byte 238,254 lands *mid-line* — the hourly `autopush` stat'd the
+    file partway through a row while `steer_batch` was appending, then hashed content that
+    had since grown. `push`'s lock serialises pushes against each other and does nothing
+    about a subprocess writing underneath one. A fresh clone reproduces it exactly, because
+    the damage is server-side.
 
-    `ckpt.pull` now repairs this: it deletes the `.incomplete` files, keeps their metadata so
-    the files that already landed are not re-fetched, and retries with Xet **off** — the
-    plain path issues a Range request from the partial's length and appends correctly, which
-    is the asymmetry that caused this.
+    Such a file is by construction the **resume partial of a cell that never finished** — its
+    manifest is `in_progress` — so it is worth a regeneration, not a result. `ckpt.pull`
+    therefore clears any local `.incomplete` partials, retries, and if the mismatch persists
+    fetches file by file and **skips** the unfetchable ones, naming them. `ST_COMPLETE`
+    requires the `.jsonl` beside the manifest, so a skipped cell regenerates rather than
+    being silently counted as done.
+
+    It does **not** try `HF_HUB_DISABLE_XET`. Measured against this very file on hub 1.7.1:
+    Xet fetched all 335,267 bytes and the *plain* path raised `Consistency check failed`,
+    since it compares against the size the HEAD reports. Xet is the lenient path on some
+    versions and the strict one on others, so disabling it can only lose a download that
+    would have worked.
 
     **steering_jailbreaks**: everything. The judged baseline defines both prompt sets and
     must be 1_run's exact split; 1_run's 36 manifests are what tell the cells below what is
@@ -200,10 +208,10 @@ def _(HF_REPO, HF_TOKEN, MODEL, OPENAI_KEY, REPO, TAG, mo, os):
     ST_META, ST_CSV = ST_ROOT / "meta", ST_ROOT / "csv"
 
     ckpt.setup(HF_REPO, token=HF_TOKEN.value)
-    # ckpt.pull repairs the stale-partial case itself, inside its own attempts loop, so
-    # there is no wrapper here: it deletes only the `.incomplete` files -- keeping the
-    # metadata, so the files that did land are not re-fetched -- and retries with Xet off,
-    # which is the path whose resume is correct.
+    # ckpt.pull handles a size mismatch itself, inside its own attempts loop, so there is no
+    # wrapper here: local `.incomplete` partials are deleted (their metadata kept, so files
+    # that did land are not re-fetched), and a mismatch that survives that is a broken record
+    # on the Hub, which it works around by fetching file by file and skipping those.
     print("extraction:", ckpt.pull(HF_REPO, token=HF_TOKEN.value,
                                    subpaths=["*/vectors/**", "*/meta/directions__*"],
                                    **EX_SCOPE))
