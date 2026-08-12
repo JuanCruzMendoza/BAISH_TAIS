@@ -574,8 +574,11 @@ def _(HF_REPO, HF_TOKEN, JUDGE_RPD, ST_ALL_STEMS, ST_CSV, ST_META, ST_SCOPE, ckp
         else:
             _done_rows += _left[_p.stem]
             _streak = 0
-    # One push for all of them: the hourly timer has been carrying the partials.
-    ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="2_run judged", **ST_SCOPE)
+    # One push for all of them: the hourly timer has been carrying the partials. Guarded,
+    # because a verification re-run with nothing left to grade would otherwise spend two
+    # commits walking 314 unchanged files.
+    if _todo:
+        ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="2_run judged", **ST_SCOPE)
     if _failed:
         print(f"! {len(_failed)} cells did not judge, re-run this cell: {_failed}")
     if _capped:

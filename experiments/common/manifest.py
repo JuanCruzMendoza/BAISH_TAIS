@@ -3,12 +3,17 @@ import hashlib
 import json
 import os
 import platform
+import re
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 CANON = dict(sort_keys=True, separators=(",", ":"), default=str)
+
+# A stem's own artefacts never continue it with `.<digit>`; another cell's alpha does.
+# See Run._own_files.
+_NUM_TAIL = re.compile(r"\.\d")
 
 
 def sha256_file(path):
@@ -106,9 +111,22 @@ class Run:
         return getattr(self.layout, kind or artefact_kind(suffix)) / f"{self.stem}{suffix}"
 
     def _own_files(self):
+        """Files belonging to *this* stem, which the glob alone does not give.
+
+        Stems are prefixes of each other whenever one alpha extends another --
+        `..__a1` against `..__a1.25`, which 1K_per_direction's 2_run is the first run to
+        produce. Archiving `a1` would then sweep `a1.25`'s four finished artefacts into
+        _archive along with its own, and since _archive is not pushed while the Hub still
+        holds the old live paths, the next pull would restore a cell the local tree had
+        silently dropped.
+
+        Every real artefact suffix starts with `_` or with `.` and a letter (`.jsonl`,
+        `.csv`, `.png`, `.pt`); a numeric stem continuation is always `.` and a digit.
+        That is the whole difference, and it is enough.
+        """
         for kind in ("csv", "figures", "vectors", "meta"):
             for p in Path(getattr(self.layout, kind)).glob(f"{self.stem}*"):
-                if p.is_file():
+                if p.is_file() and not _NUM_TAIL.match(p.name[len(self.stem):]):
                     yield kind, p
 
     def resume_from(self, suffix=".jsonl"):
