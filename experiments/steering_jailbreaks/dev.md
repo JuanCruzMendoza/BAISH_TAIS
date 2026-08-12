@@ -373,3 +373,124 @@ rows the no-op left movable.
   persona's L15). The other three are inside or at the null band, where projecting `b` out of `a`
   removes nothing and `perp` is the same experiment as `unprojected`. There is also no shared
   layer any more, so a pair has to run at `a`'s chosen layer using `û_b` at that same layer.
+
+### 2_run
+
+Two things 1_run left open, and nothing else:
+
+1. **Is α saturated?** 1_run stopped at 0.75 and the α curve was still moving on three of the four
+   directions. Extend all four to **α = 1.00 and 1.25** at their own layers, on both sets.
+2. **Is the `cohens_dz` layer the right *steering* layer?** 1_run picked one layer per direction from
+   extraction quality alone, and `probe_jailbreak_detection` shows that layer is not where the probe
+   discriminates jailbreak *families* best. Re-run the two framing directions at their
+   detection-best layer instead.
+
+#### New layers
+
+| direction | 1_run | 2_run adds | why (probe_jailbreak_detection/insights.md) |
+|---|---|---|---|
+| `story_v2_1k` | L23 | **L15** | largest fiction-vs-rest margin, +57.3 against L23's +28.3, with `nonfiction_other` at 0.0%; `cohens_dz` 2.80 is the highest of the large-margin layers |
+| `persona_v2` | L15 | **L4** ⚠ | largest roleplay − nonfiction margin of any layer (+50.4), and `cohens_dz_train` (2.77) and `mean_paired_cos` (0.606) both peak there |
+
+⚠ L4 is at depth 0.14, far outside the reporting band (11–25), so its cells carry
+`--allow-out-of-band`. `harm_v2` and `eval_v2` gain no new layer — the margin criterion is a
+fiction/roleplay criterion and says nothing about them.
+
+#### Configs
+
+α is **signed** and `steer_single.resolve` refuses the half with no headroom, so the sign is not a
+choice: restoring is `RESTORE_SIGN` (−1 for `story`/`persona`, +1 for `harm`/`eval`) on the success
+set and its mirror on the refusal set. The tables below give the signed value.
+
+**`steer_single` — 508 successes, restore refusal**
+
+| # | direction | mode | L | α |
+|---|---|---|---|---|
+| 1–2 | `harm_v2` | `add` | 21 | +1.00, +1.25 |
+| 3–4 | `eval_v2` | `add` | 9 ⚠ | +1.00, +1.25 |
+| 5–6 | `story_v2_1k` | `add` | 23 | −1.00, −1.25 |
+| 7–8 | `persona_v2` | `add` | 15 | −1.00, −1.25 |
+| 9–14 | `story_v2_1k` | `ablate`, then `add` | **15** | —, −0.25, −0.50, −0.75, −1.00, −1.25 |
+| 15–20 | `persona_v2` | `ablate`, then `add` | **4** ⚠ | —, −0.25, −0.50, −0.75, −1.00, −1.25 |
+| 21 | — | `noop` | 4 ⚠ | — |
+
+**`steer_induce` — 433 refusals, induce compliance**
+
+| # | direction | mode | L | α |
+|---|---|---|---|---|
+| 22–23 | `harm_v2` | `add` | 21 | −1.00, −1.25 |
+| 24–25 | `eval_v2` | `add` | 9 ⚠ | −1.00, −1.25 |
+| 26–27 | `story_v2_1k` | `add` | 23 | +1.00, +1.25 |
+| 28–29 | `persona_v2` | `add` | 15 | +1.00, +1.25 |
+| 30–34 | `story_v2_1k` | `add` | **15** | +0.25, +0.50, +0.75, +1.00, +1.25 |
+| 35–39 | `persona_v2` | `add` | **4** ⚠ | +0.25, +0.50, +0.75, +1.00, +1.25 |
+| 40 | — | `noop` | 4 ⚠ | — |
+
+**40 cells.** Only **two** new `noop`s: the no-op is per (set, layer set), so `story_v2_1k` at L15
+reuses the L15 no-op 1_run already ran for `persona_v2` — different directions, different stems,
+same layer — and L9/L21/L23 are unchanged.
+
+`ablate` appears only where suppressing that direction is the hypothesis — the framing axes on the
+success set — exactly as in 1_run. Ablating `story`/`persona` on already-refused prompts is not an
+induce lever, so those four cells are not run.
+
+With 1_run this gives a 5-point α curve (0.25 → 1.25) at every 1_run layer and at both new ones,
+which is what makes the saturation question answerable rather than a two-point extrapolation.
+
+#### Cost
+
+| | cells | rows | generations |
+|---|---|---|---|
+| success set | 21 | 508 | 10,668 |
+| refusal set | 19 | 433 | 8,227 |
+| | **40** | | **18,895** |
+
+≈3.0 h GPU at 1_run's measured rate. The baseline and the two prompt sets are 1_run's and are
+**not** recomputed — the split has to be identical or the cells are not comparable across runs.
+
+**Judging is a two-day job, and it is the binding constraint on this run.** Two limits, needing
+different handling:
+
+| limit | measured | consequence |
+|---|---|---|
+| tokens per minute | 200k TPM, ~1.2k tokens a call ≈ 165 calls/min | ~2.6 h at `--concurrency 6`; 8 workers sat on the ceiling and 429'd. Transient, so it retries with full jitter |
+| **requests per day** | **10,000 RPD** | 18,895 calls **cannot** finish in one day. Not retryable — no ladder outlives a day, and each attempt spends another request against a counter that is already empty |
+
+`judge_strongreject` exits **3** on the daily cap, distinctly from any other failure, so a caller
+looping over cells stops rather than marching the rest into the same wall. Resume is per row by
+`unit_id`, plus the judge's own response cache, so day two spends quota only on the remainder.
+≈$5.6 in total.
+
+#### Run order
+
+```bash
+M=Qwen/Qwen2.5-7B-Instruct; T=1K_per_direction
+python steer_batch.py $M --tag $T --script steer_single --jobs jobs_success_2.json
+python steer_batch.py $M --tag $T --script steer_induce --jobs jobs_refusal_2.json
+python judge_strongreject.py <results>/meta/<cell>.jsonl              # per new cell
+python aggregate.py $M --tag $T                                       # 1_run + 2_run together
+```
+
+`aggregate.py` spans the tag, so it re-reports 1_run's cells alongside these.
+
+#### Metrics
+
+Unchanged: target vs its own `noop`, matched on `prompt_set` × `layers_spec`. The α=1/1.25
+cells at L9/L21/L23 pair against **1_run's** no-ops, so they must be generated at 1_run's
+`--batch-size 32 --max-batch-tokens 65536` — greedy is bit-reproducible only at fixed batch
+composition, and changing either number breaks that pairing silently. The L4 cells get the two
+new no-ops.
+
+#### Open
+
+- **α = 1.25 is where 50_per_direction broke.** Every `eval` α=1 cell there was 80–97% degenerate.
+  Read `pct_degenerate` on the eval and α=1.25 cells before reading any ΔASR from them; a cell that
+  is mostly broken output has a ΔASR, and it means nothing.
+- **L4 is the riskiest cell in the run.** σ at L4 is 19.3 against 181.2 at L23, so α=1 is a ~9×
+  smaller absolute push — but it is applied 24 blocks upstream of the answer, and nothing in this
+  project has steered that shallow. If it produces salad at every α, that is the finding.
+- **The new-layer cells confound layer with detection quality**, deliberately. If story@L15 beats
+  story@L23 that is consistent with "steer where the probe discriminates", but with two layers and
+  one direction it is not yet evidence for a rule.
+- α is still not comparable across directions or layers (`|Δh|` is), and there is still **no
+  `random` arm** — nothing here is a specificity claim.

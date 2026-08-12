@@ -581,9 +581,12 @@ if __name__ == "__main__":
     try:
         main()
     except DailyQuotaExhausted as e:
-        # Exit 3, not 1: the caller loops over cells, and every remaining cell would hit
-        # the same wall. Rows already graded are on disk and resume covers them.
-        raise SystemExit(f"\nDAILY REQUEST QUOTA EXHAUSTED -- stopping, not retrying.\n"
-                         f"  {e}\n"
-                         f"  Graded rows are durable; re-run this cell when the quota "
-                         f"resets and it resumes where it stopped.") from None
+        # Exit 3, not 1: the caller loops over cells, and every remaining cell would hit the
+        # same wall -- it has to tell "come back tomorrow" apart from "this cell is broken,
+        # try the next one". SystemExit(str) prints the string but exits 1, so the message
+        # and the status are separate statements. Rows already graded are on disk.
+        print(f"\nDAILY REQUEST QUOTA EXHAUSTED -- stopping, not retrying.\n"
+              f"  {e}\n"
+              f"  Graded rows are durable; re-run when the quota resets and it resumes "
+              f"where it stopped.", file=sys.stderr)
+        raise SystemExit(3) from None
