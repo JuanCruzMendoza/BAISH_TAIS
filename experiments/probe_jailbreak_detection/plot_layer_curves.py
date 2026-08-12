@@ -6,6 +6,9 @@ One figure per probe. `--per-family` probes get one curve per jailbreak family; 
 other probe gets the `all` slice alone. `ref_tpr` rides along as a dashed grey line: it is
 also a percentage of a set clearing the same tau, so it shares the axis, and where it
 collapses the curve above it is not a claim about jailbreaks.
+
+`--all-layers` reads the `jb_metrics__<rule>__all` run and shades the reporting band, so
+the layers outside it are visibly outside it.
 """
 import argparse
 import csv
@@ -33,9 +36,13 @@ def read_rows(path):
 
 
 def series(rows, probe, kind, group):
+    """Layers with ref_tpr == 0 are dropped: tau sits above the whole positive pole
+    there, so nothing can clear it and pct_reads = 0 is the bar failing rather than a
+    reading. Only L0, the embedding output, does this."""
     xy = sorted((int(r["layer"]), float(r["pct_reads"]), float(r["ref_tpr"]))
                 for r in rows if r["probe"] == probe
-                and r["group_kind"] == kind and r["group"] == group)
+                and r["group_kind"] == kind and r["group"] == group
+                and float(r["ref_tpr"]) > 0)
     return [p[0] for p in xy], [p[1] for p in xy], [100 * p[2] for p in xy]
 
 
@@ -52,9 +59,11 @@ def curves(rows, probe, per_family):
     return out, tpr
 
 
-def plot(rows, probe, layer, per_family, rule, band, path):
+def plot(rows, probe, layer, per_family, rule, band, path, show_band=False):
     cs, tpr = curves(rows, probe, per_family)
     fig, ax = plt.subplots(figsize=(7.2, 4.4))
+    if show_band:
+        ax.axvspan(band[0], band[1], color="0.85", alpha=0.45, lw=0, zorder=0)
     for x, y, label, colour, lw in cs:
         ax.plot(x, y, marker="o", ms=3.2, lw=lw, color=colour, label=label)
     if tpr:
@@ -67,7 +76,9 @@ def plot(rows, probe, layer, per_family, rule, band, path):
         # runs into the title.
         ax.annotate(f" chosen L{layer}", (layer, 99), fontsize=8, color="0.25",
                     ha="left", va="top", rotation=90)
-    ax.set_xlabel("layer")
+    # In the label, not an annotation: at y=0 it collides with the curves that sit there.
+    ax.set_xlabel(f"layer   (shaded = reporting band L{band[0]}-{band[1]})"
+                  if show_band else "layer")
     ax.set_ylabel(f"% of jailbreaks clearing $\\tau$  ({rule})")
     ax.set_title(f"{probe} — `pct_reads` vs layer", fontsize=11)
     ax.set_ylim(-3, 103)
@@ -86,11 +97,14 @@ def main():
     ap.add_argument("--threshold", default="midpoint")
     ap.add_argument("--per-family", default="story_v2_1k,persona_v2",
                     help="probes drawn as one curve per family; the rest get `all`")
+    ap.add_argument("--all-layers", action="store_true",
+                    help="read the __all metrics run and shade the band")
     args = ap.parse_args()
 
     lay = cfg.Layout("probe_jailbreak_detection", args.model, args.tag, acts_cache=False)
-    up = mf.load_upstream(lay.meta / f"jb_metrics__{args.threshold}_manifest.json")
-    rows = read_rows(lay.csv / f"jb_metrics__{args.threshold}_rate.csv")
+    src = mf.stem("jb_metrics", args.threshold, "all" if args.all_layers else None)
+    up = mf.load_upstream(lay.meta / f"{src}_manifest.json")
+    rows = read_rows(lay.csv / f"{src}_rate.csv")
 
     probes = up["config"]["probes"]
     chosen = {a: int(l) for a, l in (up["config"].get("probe_layers") or {}).items()}
@@ -100,15 +114,17 @@ def main():
     if unknown:
         raise SystemExit(f"--per-family: not in the run: {unknown}; it holds {probes}")
 
-    stem = mf.stem("plot_layer_curves")
+    stem = mf.stem("plot_layer_curves", "all" if args.all_layers else None)
     config = {"probes": probes, "threshold_rule": args.threshold, "per_family": fam,
-              "chosen_layers": chosen or None}
+              "chosen_layers": chosen or None,
+              "layer_scope": up["config"].get("layer_scope", "band")}
     inputs = {"jb_metrics_run_key": up["run_key"]}
 
     with mf.Run(lay, stem, config, inputs) as run:
         for p in probes:
             path = run.artefact(f"_{p}.png")
-            plot(rows, p, chosen.get(p), p in fam, args.threshold, band, path)
+            plot(rows, p, chosen.get(p), p in fam, args.threshold, band, path,
+                 show_band=args.all_layers)
             print(f"  {Path(path).relative_to(lay.root).as_posix()}"
                   f"   {'4 families' if p in fam else 'all families'}")
 

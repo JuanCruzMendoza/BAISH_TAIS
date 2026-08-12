@@ -232,39 +232,49 @@ pole means and the pole quantiles disagree about where the boundary is.
 At L9 it reads almost nothing — and at L13–25 it reads **77–99%**. `ref_fpr` is 0.27. The chosen layer
 is doing all the work; see below.
 
-### `pct_reads` vs layer
+### `pct_reads` vs layer — **all 28 layers**
 
-`midpoint` throughout. Dashed grey is `ref_tpr` on the same axis — it is also a percentage of a set
-clearing the same τ, and where it sags the curve above it is not a statement about jailbreaks.
+`midpoint` throughout, **L1–L28** (the shaded span is the L11–25 reporting band). Dashed grey is
+`ref_tpr` on the same axis — it is also a percentage of a set clearing the same τ, and where it sags
+the curve above it is not a statement about jailbreaks. L0 is omitted: `ref_tpr` is 0 there, so its
+0% is τ sitting above the whole positive pole, not a reading.
 
-![story_v2_1k](results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_layer_curves_story_v2_1k.png)
-![persona_v2](results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_layer_curves_persona_v2.png)
-![harm_v2](results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_layer_curves_harm_v2.png)
-![eval_v2](results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_layer_curves_eval_v2.png)
+![story_v2_1k](results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_layer_curves__all_story_v2_1k.png)
+![persona_v2](results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_layer_curves__all_persona_v2.png)
+![harm_v2](results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_layer_curves__all_harm_v2.png)
+![eval_v2](results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_layer_curves__all_eval_v2.png)
 
-**`story_v2_1k` has three regimes, and the chosen layer is in none of the good one.** L14–18 is
-selective: fiction 41–68% while `nonfiction_other` sits at **0.0%** through L17. L19–21 is a level
-shift that fires on everything — hybrid overtakes fiction (77% vs 55% at L21) and nonfiction reaches
-32%. L22–25 decays, and L23 is on that tail. Margin = fiction − mean(other three):
+**`story_v2_1k` has two selective regions, one of them entirely outside the band, and the chosen
+layer is in neither.** L14–18 is selective: fiction 41–68% while `nonfiction_other` sits at **0.0%**
+through L17. **L4–L8 is a second one nobody had seen** — fiction 54–69% against nonfiction 1–10%.
+L10–13 between them is dead (fiction ≤7%), L19–21 is a level shift that fires on everything (hybrid
+overtakes fiction, 77% vs 55% at L21; nonfiction 32%), and L22–25 decays with L23 on that tail.
+Margin = fiction − mean(other three):
 
-| | L14 | **L15** | L16 | **L17** | L18 | L19 | L21 | **L23** | L25 |
-|---|---|---|---|---|---|---|---|---|---|
-| fiction | 40.9 | 62.5 | 52.1 | 63.1 | 67.6 | 62.1 | 55.3 | 33.9 | 7.4 |
-| nonfiction | 0.0 | 0.0 | 0.0 | 0.0 | 5.1 | 30.8 | 32.1 | 2.6 | 0.0 |
-| **margin** | +39.6 | **+57.3** | +49.1 | **+55.8** | +50.4 | +9.9 | +3.2 | +28.3 | +5.3 |
+| | L5 | L7 | **L8** | L14 | **L15** | **L17** | L18 | L19 | L21 | **L23** | L25 | L28 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| fiction | 54.2 | 69.3 | 57.8 | 40.9 | 62.5 | 63.1 | 67.6 | 62.1 | 55.3 | 33.9 | 7.4 | 11.0 |
+| nonfiction | 3.8 | 10.3 | 1.3 | 0.0 | 0.0 | 0.0 | 5.1 | 30.8 | 32.1 | 2.6 | 0.0 | 30.8 |
+| **margin** | +51.1 | +44.0 | **+53.1** | +39.6 | **+57.3** | **+55.8** | +50.4 | +9.9 | +3.2 | +28.3 | +5.3 | **−25.4** |
 
-L23 costs about half the sensitivity *and* half the selectivity of L15/L17. And the top three layers
-by margin are **L15, L17, L18 — the same three the 50-pair `jb_layer_select` picked**, at roughly
-double the margin, so this is a replication and not a large-n artefact.
+L15/L17 still win, but **L8 (+53.1) is within 4 points of them** at a `ref_tpr` of 0.98 — so the
+band was hiding a competitive early-layer candidate, not just noise. L23 costs about half the
+sensitivity *and* half the selectivity of either. The top band layers by margin are still L15, L17,
+L18 — the same three the 50-pair `jb_layer_select` picked. At **L28 the axis inverts** (fiction 11%,
+roleplay 43%, nonfiction 31%).
 
-**`persona_v2` never becomes a persona detector at any layer.** Its own margin
-(roleplay+hybrid − fiction+nonfiction) is *negative* at L11–13 and peaks at only +37 at L25, where
-every curve is collapsing; fiction − nonfiction is positive at all 15 layers. Its `ref_tpr` also
-decays from 0.98 at L14 to 0.84 by L18, so the flat 90%+ plateau is partly the bar sliding down.
+**`persona_v2` never becomes a persona detector at any layer.** fiction − nonfiction is positive at
+every layer from L1 to L23. The only layers where roleplay reads *above* fiction are **L24–L27**,
+three of which are outside the band — and there every curve is collapsing (`all` 54–63%). Its
+`ref_tpr` decays from 0.98 at L14 to 0.81 by L28, so the flat 90%+ plateau is partly the bar sliding
+down.
 
-**`harm_v2` and `eval_v2` are step functions, not curves.** `harm_v2` reads 94–100% at L11–13 and
-~40% thereafter; `eval_v2` reads 6–20% at L9–12 and 93–99% from L14. Both steps land where `ref_tpr`
-is 0.6–0.8, i.e. the transition is the threshold moving, not the axis appearing.
+**`harm_v2` and `eval_v2` are step functions, not curves — and both steps sit at the band edge.**
+`harm_v2` peaks at **95–100% across L9–L13**, then falls to ~40% for the entire rest of the stack;
+its chosen L21 is on that floor. `eval_v2` is the mirror image: 6–20% at L5–L12, then 93–99% from
+L14 on, and **its chosen L9 (6.3%) is the global minimum of the curve**. Both steps land exactly
+where `ref_tpr` moves (harm 0.79 → 0.59 at L13→14), so the transition is the threshold moving, not
+the axis appearing.
 
 ### The layer decides the answer, the threshold does not
 
@@ -282,11 +292,16 @@ sit inside. Only `story_v2_1k` has one (τ at +0.25 of it).
 - **`story_v2_1k` is the only probe that discriminates jailbreak framing**, and it does so in the
   right order at both thresholds. It is also the only one with a passable bar.
 - **The chosen layers are wrong for this task.** `cohens_dz_train` on the extraction poles put story
-  at L23; on jailbreaks L15/L17 double both its sensitivity and its selectivity. Note which criterion
-  survives: extraction's `mean_paired_cos` peak was **L16**, and extraction flagged the d_z-vs-mpc
-  disagreement (L23 vs L16, "~7 layers") as a property of the axis. On this task mpc is the one that
-  transfers. Picking a layer off these curves would be selecting on the test set, so the finding is
-  about the *criterion*, not a new layer to adopt.
+  at L23; on jailbreaks L15/L17 double both its sensitivity and its selectivity, and `eval_v2`'s L9
+  is the **single worst layer in the model** for reading jailbreaks on its own axis (6.3%, against
+  93–99% at L14–27). Note which criterion survives: extraction's `mean_paired_cos` peak was **L16**,
+  and extraction flagged the d_z-vs-mpc disagreement (L23 vs L16, "~7 layers") as a property of the
+  axis. On this task mpc is the one that transfers. Picking a layer off these curves would be
+  selecting on the test set, so the finding is about the *criterion*, not a new layer to adopt.
+- **The L11–25 band hid real structure**, which the all-layer sweep shows: `story_v2_1k`'s second
+  selective region at L4–L8 (best margin +53.1 at L8, within 4 points of the band's best), and
+  `harm_v2`'s 95–100% plateau starting at L9. The band was chosen on depth fraction, not on this
+  task, and for two of four probes the interesting layers straddle its lower edge.
 - **The 100-row subset was representative.** `story_v2_1k` reads 19.1% overall / 33.9% fiction here
   against 19.0% / 34.3% at 50_per_direction — 10× the prompts and a different layer, same answer. The
   extra 909 rows bought resolution on the slices, not a different headline.
@@ -298,6 +313,24 @@ sit inside. Only `story_v2_1k` has one (τ at +0.25 of it).
   fiction by construction — the one family-level prediction that fails outright.
 - **`harm_v2` and `eval_v2` are not usable at their chosen layers** on this task: `ref_tpr` 0.70/0.73
   and `ref_fpr` 0.11/0.27.
+
+### Two more layers to try
+
+Adding one layer per framing direction, chosen on this experiment rather than on the extraction
+poles alone.
+
+| direction | current | to try | why |
+|---|---|---|---|
+| `story_v2_1k` | L23 | **L15** | best fiction-vs-rest margin of any layer, **+57.3 against L23's +28.3**, with `nonfiction_other` at 0.0%; `mean_paired_cos` 0.679 sits at its L16 peak (0.683). `cohens_dz` is *not* its argument — 2.80 against L23's 3.74. |
+| `persona_v2` | L15 | **L4** | **`cohens_dz_train` peaks there** (2.77, the max over all 28 layers) and so does `mean_paired_cos` (0.606) — the two extraction criteria agree for once. It also has the **largest roleplay − nonfiction gap of any layer** (+50.4 at `midpoint`, +48.0 at `gap_mid`). |
+
+Both are outside or at the edge of where the band looked, which is why neither surfaced before.
+
+Two things to carry into the run. L4 was passed over originally for a reason: its train↔held-out
+`d_z` gap is 0.30, the widest among the high-`d_z` layers (L15's is 0.01). And **L4 still reads
+fiction above roleplay** (87.3% vs 70.9%), so its gap is against nonfiction only — no layer below
+L24 makes `persona_v2` prefer roleplay. Picking layers off these curves is also selection on the
+evaluation set; the honest framing is a second config to compare, not a replacement.
 
 ### Caveats
 

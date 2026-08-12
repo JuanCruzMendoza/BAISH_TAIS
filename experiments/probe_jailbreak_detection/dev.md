@@ -231,6 +231,11 @@ per jailbreak family, the rest the `all` slice — the question for `story_v2_1k
 | `plot_layer_curves_harm_v2.png` | 1, all families |
 | `plot_layer_curves_eval_v2.png` | 1, all families |
 
+`--all-layers` on both scripts sweeps L0–L28 instead of the band, writing
+`jb_metrics__<rule>__all_*` and `plot_layer_curves__all_*.png` so the band run is untouched.
+The band is shaded in those figures. L0 is the embedding output: `ref_tpr` is 0 there, so its
+`pct_reads` of 0 is the threshold failing, not a reading.
+
 ## Run order
 
 ```bash
@@ -244,6 +249,10 @@ python jb_readout.py $M --tag 1K_per_direction --axes $A
 python jb_metrics.py $M --tag 1K_per_direction --axes $A --layers $L --threshold midpoint
 python jb_metrics.py $M --tag 1K_per_direction --axes $A --layers $L --threshold gap_mid
 python plot_layer_curves.py $M --tag 1K_per_direction
+# the same over every layer 0..L, into a parallel `__all` stem
+python jb_metrics.py $M --tag 1K_per_direction --axes $A --layers $L --threshold midpoint --all-layers
+python jb_metrics.py $M --tag 1K_per_direction --axes $A --layers $L --threshold gap_mid --all-layers
+python plot_layer_curves.py $M --tag 1K_per_direction --all-layers
 ```
 
 ## Open

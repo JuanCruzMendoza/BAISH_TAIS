@@ -1,0 +1,92 @@
+{
+  "config": {
+    "arms": [
+      "framed"
+    ],
+    "band": [
+      11,
+      25
+    ],
+    "layer_rule": "explicit",
+    "layer_scope": "all",
+    "layers": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28
+    ],
+    "min_group": 5,
+    "probe_layers": {
+      "eval_v2": 9,
+      "harm_v2": 21,
+      "persona_v2": 15,
+      "story_v2_1k": 23
+    },
+    "probes": [
+      "story_v2_1k",
+      "persona_v2",
+      "harm_v2",
+      "eval_v2"
+    ],
+    "reference": "pooled train+heldout poles",
+    "seed": 20260731,
+    "threshold_rule": "gap_mid"
+  },
+  "env": {
+    "argv": [
+      "jb_metrics.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "1K_per_direction",
+      "--axes",
+      "story_v2_1k,persona_v2,harm_v2,eval_v2",
+      "--layers",
+      "story_v2_1k=23,persona_v2=15,harm_v2=21,eval_v2=9",
+      "--threshold",
+      "gap_mid",
+      "--all-layers"
+    ],
+    "git_diff_sha": "9a46c3aaa9216300fb57d95a09878076182d2bf8921b692fa73b8f4765844487",
+    "git_dirty": true,
+    "git_sha": "a8cc47aff5532eac5261a42ab09b7e3080de69d8",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-12T09:17:50",
+    "wall_s": 0.59
+  },
+  "inputs": {
+    "jb_readout_run_key": "d3ab25d600b0c6f7901e01b38f54b23ad32215487c81936129a85caa77256e83",
+    "jb_view_key": "eceda24e49aac6ccb64783efd401b48025a942ef70e6fb1cf74355f808dde8e8"
+  },
+  "notes": [],
+  "run_key": "d13bb77fc7c818c7e226a3441ecc9a92d5320d510df0da1f206b22398d8be7cc",
+  "status": "complete",
+  "stem": "jb_metrics__gap_mid__all"
+}

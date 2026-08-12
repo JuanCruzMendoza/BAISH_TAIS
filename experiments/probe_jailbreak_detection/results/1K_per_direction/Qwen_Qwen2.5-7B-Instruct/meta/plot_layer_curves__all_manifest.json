@@ -1,0 +1,47 @@
+{
+  "config": {
+    "chosen_layers": {
+      "eval_v2": 9,
+      "harm_v2": 21,
+      "persona_v2": 15,
+      "story_v2_1k": 23
+    },
+    "layer_scope": "all",
+    "per_family": [
+      "story_v2_1k",
+      "persona_v2"
+    ],
+    "probes": [
+      "story_v2_1k",
+      "persona_v2",
+      "harm_v2",
+      "eval_v2"
+    ],
+    "threshold_rule": "midpoint"
+  },
+  "env": {
+    "argv": [
+      "plot_layer_curves.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "1K_per_direction",
+      "--all-layers"
+    ],
+    "git_diff_sha": "d9d8bfc1abfe29a9560d13d6d15f29a79e5670976e9e6b9c93885e67bc8a4cc2",
+    "git_dirty": true,
+    "git_sha": "a8cc47aff5532eac5261a42ab09b7e3080de69d8",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-12T09:22:18",
+    "wall_s": 3.84
+  },
+  "inputs": {
+    "jb_metrics_run_key": "f11931e8ac198b4ed83e789b63aed75c5d0afa12ddcc78f77f1fc6d06cbcad1c"
+  },
+  "notes": [],
+  "run_key": "89fc6abd9b3a5552a2603eee2f6c02108dc76e3506d1c27d20415cdce9467b8c",
+  "status": "complete",
+  "stem": "plot_layer_curves__all"
+}

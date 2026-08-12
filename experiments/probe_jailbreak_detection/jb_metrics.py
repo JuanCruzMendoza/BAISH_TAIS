@@ -12,6 +12,9 @@ group, and averaged over the band.
 band plus those layers (a chosen layer may sit outside it) and `_chosen.csv` replaces
 `_band.csv`, since a band mean is not the number being reported.
 
+`--all-layers` scores every position 0..L instead, into its own `__all` stem so the band
+files are untouched. Position 0 is the embedding output, before any block.
+
 **Threshold.** Default `midpoint`: tau = (mean(pos) + mean(neg)) / 2 on the probe's
 own reference poles, pooled train + held-out (65 points each). Same rule as
 probe_select's `acc_at_train_thr`, so the two experiments cut in the same place. A
@@ -120,7 +123,11 @@ def rate_rows(probes, framed, ref, rows, layers_of, Lp1, rule):
 
 
 def band_rows(rate, band):
-    """Mean pct_reads over the band, per probe x slice."""
+    """Mean pct_reads over the scored layers, per probe x slice.
+
+    `band` labels the span actually averaged, which is the whole stack under
+    --all-layers, so band_lo/band_hi never claim a narrower range than was used.
+    """
     by = {}
     for r in rate:
         by.setdefault((r["probe"], r["group_kind"], r["group"]), []).append(r)
@@ -161,6 +168,8 @@ def main():
     ap.add_argument("--axes", default=None, help="comma list; default every probe in the readout")
     ap.add_argument("--layers", default=None, metavar="AXIS=LAYER,...",
                     help="one chosen layer per direction; writes _chosen.csv")
+    ap.add_argument("--all-layers", action="store_true",
+                    help="score every layer 0..L, not just the band; own __all stem")
     args = ap.parse_args()
 
     lay = cfg.Layout("probe_jailbreak_detection", args.model, args.tag, acts_cache=False)
@@ -187,22 +196,25 @@ def main():
         if any(not 0 <= l < Lp1 for l in chosen.values()):
             raise SystemExit(f"--layers outside 0..{Lp1 - 1}")
     # A chosen layer may sit outside the band (eval_v2 L9), so score the union.
-    layers_of = {a: sorted(set(band) | ({chosen[a]} if chosen else set())) for a in probes}
+    scope = set(range(Lp1)) if args.all_layers else set(band)
+    layers_of = {a: sorted(scope | ({chosen[a]} if chosen else set())) for a in probes}
 
     with (lay.csv / "jb_readout_rows.csv").open(encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f))
     assert [r["row_id"] for r in rows] == list(R["row_ids"]), "row order drifted"
 
     rate = rate_rows(probes, framed, R["ref"], rows, layers_of, Lp1, args.threshold)
-    head = chosen_rows(rate, chosen) if chosen else band_rows(rate, band)
+    scored = sorted(scope)
+    head = chosen_rows(rate, chosen) if chosen else band_rows(rate, scored)
     pct, tpr, fpr, gap = (("pct_reads", "ref_tpr", "ref_fpr", "gap_position") if chosen
                           else ("pct_reads_mean", "ref_tpr_mean", "ref_fpr_mean",
                                 "gap_position_mean"))
 
-    stem = mf.stem("jb_metrics", args.threshold)
+    stem = mf.stem("jb_metrics", args.threshold, "all" if args.all_layers else None)
     config = {"probes": probes, "threshold_rule": args.threshold,
               "reference": "pooled train+heldout poles", "band": [band[0], band[-1]],
               "layers": sorted({l for ls in layers_of.values() for l in ls}),
+              "layer_scope": "all" if args.all_layers else "band",
               "layer_rule": "explicit" if chosen else "band",
               "probe_layers": chosen, "min_group": MIN_GROUP, "arms": ["framed"],
               "seed": cfg.SEED}
@@ -213,7 +225,7 @@ def main():
         write_csv(run.artefact("_chosen.csv" if chosen else "_band.csv"), head)
 
         where = ("one chosen layer per probe" if chosen
-                 else f"band L{band[0]}-{band[-1]} ({len(band)} layers)")
+                 else f"L{scored[0]}-{scored[-1]} ({len(scored)} layers)")
         print(f"{len(rows)} jailbreak prompts, {where}, threshold = {args.threshold} "
               f"on {rate[0]['n_ref']} reference points per pole\n")
         print("pct of jailbreaks the probe reads as its direction"
