@@ -364,19 +364,36 @@ the `data/story_mode_v2` contrast, not "more literary"). Prediction: the steered
 refusal set (α > 0) and loses on the success set (α < 0). Runs off the existing `_judged.jsonl`, so
 no generation.
 
+**Configs.** One invocation per layer; it reads 1_run's L23 cells and 2_run's L15 cells.
+
+| knob | value |
+|---|---|
+| direction | `story_v2_1k` |
+| layers | **L23** (1_run, `cohens_dz`) and **L15** (2_run, detection-best) |
+| α | **±0.25, ±0.75** — magnitude on the CLI, sign resolved per prompt set from `cell.RESTORE_SIGN` |
+| prompt sets | `success` (α < 0, remove story) and `refusal` (α > 0, add story) |
+| comparison | each steered cell against its **own no-op** at the same layer and set |
+| judge | `gpt-4o-mini`, temperature 0, forced to OpenRouter (`--provider openrouter`) |
+| concurrency | 8 |
+| excluded | pairs where **either** side is degenerate (`outcome` or `det_degenerate`) |
+| truncation | both texts to 2,000 chars, so length cannot be the cue |
+
 ```bash
-python judge_narrativity.py $M --tag $T --direction story_v2_1k --layer 23 --alphas 0.25,0.75
+for L in 23 15; do
+  python judge_narrativity.py $M --tag $T --direction story_v2_1k --layer $L \
+      --alphas 0.25,0.75 --provider openrouter --concurrency 8
+done
 ```
 
-Two α magnitudes per set = 4 comparisons, **1,777 pairs** (18% of one day's request cap). Pairs where
-either side is degenerate are excluded — a repetition loop reads as more literary and would score as
-a story win.
+4 comparisons per layer, **1,777 + 1,798 = 3,575 pairs**. Measured 366 calls/min on OpenRouter, ~10
+min for both layers. Degenerate pairs are excluded because a repetition loop reads as more literary
+and would score as a story win.
 
-**Metrics.** `pct_steered_more_narrative` against a 50% null, Clopper–Pearson over `template_id`
-cluster means; `pct_neither`; `pct_picked_A`. A/B order is randomised per row, so `pct_picked_A` away
-from 50% is judge position bias and the win rate is not readable. Both texts are truncated to the
-same 2,000 chars — steered responses are systematically longer, and length would otherwise be the
-cue.
+**Metrics.** The steered-wins rate against a 50% null, reported twice: `pct_steered_more_narrative`
+(one vote per row) and `pct_cluster` (each `template_id` collapsed first, spec 0.7). The
+Clopper–Pearson CI belongs to the clustered one. Also `pct_neither`, the judge's escape rate, and
+`pct_picked_A` — A/B order is randomised per row, so away from 50% is position bias and the win rate
+is not readable.
 
 #### Open
 

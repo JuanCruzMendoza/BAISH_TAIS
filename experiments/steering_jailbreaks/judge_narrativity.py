@@ -147,20 +147,27 @@ def summarise(comp, pairs, n_src, n_skipped):
                                 / max(len(pairs), 1), 1),
            "n_unparsed": sum(p["pick"] is None for p in pairs)}
     if not decided:
-        return {**row, "pct_steered_more_narrative": None, "ci_lo": None, "ci_hi": None,
-                "n_clusters": 0, "pct_picked_A": None, "consistent": None}
+        return {**row, "pct_steered_more_narrative": None, "pct_cluster": None,
+                "ci_lo": None, "ci_hi": None, "n_clusters": 0, "pct_picked_A": None,
+                "consistent": None}
     wins = [int(p["pick"] == "steered") for p in decided]
     _, by_cluster = met.cluster_means(wins, [p["template_id"] for p in decided])
+    # Two estimates of one quantity, reported side by side rather than mixed: the row rate
+    # weights a 40-row template 40x, the cluster mean weights it once, and the CI belongs
+    # to the cluster mean (spec 0.7). Quoting the row rate with the clustered CI put the
+    # point estimate outside its own interval wherever cluster sizes are uneven.
+    clus = float(by_cluster.mean())
     lo, hi = met.clopper_pearson(int(round(by_cluster.sum())), len(by_cluster))
-    pct = round(100 * sum(wins) / len(wins), 1)
-    return {**row, "pct_steered_more_narrative": pct,
+    return {**row,
+            "pct_steered_more_narrative": round(100 * sum(wins) / len(wins), 1),
+            "pct_cluster": round(100 * clus, 1),
             "ci_lo": round(100 * lo, 1), "ci_hi": round(100 * hi, 1),
             "n_clusters": len(by_cluster),
             # Order is randomised, so anything away from 50 is the judge's position bias,
             # not a property of either arm.
             "pct_picked_A": round(100 * sum(p["choice"] == "A" for p in decided)
                                   / len(decided), 1),
-            "consistent": bool((pct > 50) == (comp["expect"] == "steered"))}
+            "consistent": bool((clus > 0.5) == (comp["expect"] == "steered"))}
 
 
 def main():
@@ -175,6 +182,10 @@ def main():
                     help="magnitudes; the sign per prompt set is resolved from the axis")
     ap.add_argument("--sets", default="success,refusal")
     ap.add_argument("--judge-model", default=J.DEFAULT_JUDGE)
+    ap.add_argument("--provider", choices=("auto", "openrouter"), default="auto",
+                    help="auto uses the primary key and falls back only once it is spent; "
+                         "openrouter goes there from the first call. Same model either "
+                         "way, so the cache and the run_key are unaffected")
     ap.add_argument("--concurrency", type=int, default=6)
     ap.add_argument("--max-chars", type=int, default=MAX_CHARS)
     ap.add_argument("--include-degenerate", action="store_true",
@@ -225,10 +236,18 @@ def main():
         var = "OPENAI_API_KEY" if judge.backend == "openai" else "ANTHROPIC_API_KEY"
         if not os.environ.get(var) and not judge.fallback:
             raise SystemExit(f"{var} is not set. Put it in {cfg.REPO / '.env'}, or set "
-                             f"OPENROUTER_API_KEY.")
-        if not os.environ.get(var):
+                             f"one of {', '.join(J.OPENROUTER_KEY_VARS)}.")
+        # Forcing the fallback is not a different judge -- same model, same cache key, same
+        # resume stamp -- so it stays out of `config` and cannot change the run_key.
+        if args.provider == "openrouter" or not os.environ.get(var):
+            if not judge.fallback:
+                raise SystemExit(
+                    f"--provider openrouter needs a key in one of "
+                    f"{', '.join(J.OPENROUTER_KEY_VARS)} and an OpenRouter id for "
+                    f"{args.judge_model} in judge_strongreject.OPENROUTER_ID.")
             judge.switch_to_fallback()
-            print(f"  {var} not set; judging on OpenRouter as {judge.wire_model()}")
+            why = "forced" if args.provider == "openrouter" else f"{var} not set"
+            print(f"  judging on OpenRouter as {judge.wire_model()} ({why})")
 
     stem = mf.stem("judge_narrativity", args.direction, cfg.layer_stem(layer_spec))
     config = {"tag": cfg.tag(args.tag), "direction": args.direction,
@@ -239,41 +258,41 @@ def main():
               "exclude_degenerate": not args.include_degenerate}
     inputs = {"cell_run_keys": {s: k for s, k in sorted(run_keys.items())}}
 
+    # Pair building needs no Run, and mf.Run writes an in_progress manifest on __enter__ --
+    # so a --dry-run inside the block left one behind for check_stale.py to report.
+    todo, skipped = [], {}
+    for c in comps:
+        a_rows, z_rows = loaded[c["steered_stem"]], loaded[c["noop_stem"]]
+        key = f"{c['prompt_set']}|a{c['alpha']:g}"
+        n_skip, eligible = 0, []
+        for uid, a in sorted(a_rows.items()):
+            z = z_rows.get(uid)
+            if z is None:
+                continue
+            if not args.include_degenerate and (degenerate(a) or degenerate(z)):
+                n_skip += 1
+                continue
+            eligible.append({"unit_id": f"{key}|{uid}", "row_id": uid, "comp": c,
+                             "steered": a, "noop": z})
+        # The skip count is over the whole cell either way, so --limit shrinks the
+        # judged set without making `n_skipped_degenerate` a different number.
+        todo += eligible[: args.limit] if args.limit else eligible
+        skipped[key] = (len(a_rows), n_skip)
+
+    print(f"{len(comps)} comparisons, {len(todo)} judgeable pairs")
+    for c in comps:
+        k = f"{c['prompt_set']}|a{c['alpha']:g}"
+        n, sk = skipped[k]
+        print(f"  {c['prompt_set']:8s} a={c['alpha']:+.2f}  {n - sk}/{n} pairs "
+              f"({sk} degenerate on one side or both)   expect {c['expect']} to win")
+    if args.dry_run:
+        print("\nDRY RUN: no calls made, nothing written")
+        return
+
     with mf.Run(lay, stem, config, inputs, resumable=True) as run:
         done = run.resume_from("_pairs.jsonl")
-        if done:
-            print(f"  resuming: {len(done)} pairs already judged")
-
-        todo, skipped = [], {}
-        for c in comps:
-            a_rows, z_rows = loaded[c["steered_stem"]], loaded[c["noop_stem"]]
-            key = f"{c['prompt_set']}|a{c['alpha']:g}"
-            n_skip, eligible = 0, []
-            for uid, a in sorted(a_rows.items()):
-                z = z_rows.get(uid)
-                if z is None:
-                    continue
-                if not args.include_degenerate and (degenerate(a) or degenerate(z)):
-                    n_skip += 1
-                    continue
-                eligible.append({"unit_id": f"{key}|{uid}", "row_id": uid, "comp": c,
-                                 "steered": a, "noop": z})
-            # The skip count is over the whole cell either way, so --limit shrinks the
-            # judged set without making `n_skipped_degenerate` a different number.
-            todo += eligible[: args.limit] if args.limit else eligible
-            skipped[key] = (len(a_rows), n_skip)
-
         pending = [t for t in todo if t["unit_id"] not in done]
-        print(f"{len(comps)} comparisons, {len(todo)} judgeable pairs, "
-              f"{len(pending)} to call")
-        for c in comps:
-            k = f"{c['prompt_set']}|a{c['alpha']:g}"
-            n, sk = skipped[k]
-            print(f"  {c['prompt_set']:8s} a={c['alpha']:+.2f}  {n - sk}/{n} pairs "
-                  f"({sk} degenerate on one side or both)   expect {c['expect']} to win")
-        if args.dry_run:
-            print("\nDRY RUN: no calls made, no manifest artefacts written")
-            raise SystemExit(0)
+        print(f"  {len(done)} pairs already judged, {len(pending)} to call")
 
         wlock, prog = threading.Lock(), {"n": 0, "cached": 0}
         with run.open_append("_pairs.jsonl") as fh:
@@ -337,18 +356,20 @@ def main():
             w.writerows(out)
 
     print(f"\n{len(rows)} pairs, {prog['cached']} cache hits\n")
-    print(f"  {'set':9s}{'alpha':>7}{'n':>6}{'neither':>9}{'steered wins':>14}"
-          f"{'95% CI':>16}{'picked A':>10}{'expect':>9}")
+    print(f"  {'set':9s}{'alpha':>7}{'n':>6}{'neither':>9}{'by row':>9}"
+          f"{'by cluster':>12}{'95% CI':>16}{'picked A':>10}{'expect':>9}")
     for r in out:
         if r["pct_steered_more_narrative"] is None:
             print(f"  {r['prompt_set']:9s}{r['alpha']:>+7.2f}{r['n_decided']:>6}"
-                  f"{'--':>9}{'no decided pairs':>14}")
+                  f"{'--':>9}{'no decided pairs':>21}")
             continue
         print(f"  {r['prompt_set']:9s}{r['alpha']:>+7.2f}{r['n_decided']:>6}"
-              f"{r['pct_neither']:>8.0f}%{r['pct_steered_more_narrative']:>13.1f}%"
+              f"{r['pct_neither']:>8.0f}%{r['pct_steered_more_narrative']:>8.1f}%"
+              f"{r['pct_cluster']:>11.1f}%"
               f"   [{r['ci_lo']:>5.1f}, {r['ci_hi']:>5.1f}]{r['pct_picked_A']:>9.0f}%"
               f"{r['expect']:>9s}{'' if r['consistent'] else '   ! against prediction'}")
-    print("\n  50% is the null. `picked A` far from 50% is judge position bias, not an "
+    print("\n  Steered-wins rate, both aggregations; the CI belongs to the clustered one.\n"
+          "  50% is the null. `picked A` far from 50% is judge position bias, not an "
           "effect.\n  -> " + csv_path.name)
 
 
