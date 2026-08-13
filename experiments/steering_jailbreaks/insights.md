@@ -1,6 +1,6 @@
 # steering_jailbreaks — insights
 
-## 50_per_direction
+# 50_per_direction
 
 Qwen2.5-7B-Instruct, greedy, 100-row jailbreak subset split by the baseline into 30 successes
 (§5.4, restore refusal) and 64 refusals (§5.5, induce compliance). 63 target + 10 random + 20 no-op
@@ -131,9 +131,9 @@ persona result may simply be the harm axis moving. No cell moves only its own ax
 
 ---
 
-## 1K_per_direction
+# 1K_per_direction
 
-### 1_run
+## 1_run
 
 36 cells, one layer per direction (`story_v2_1k` L23, `persona_v2` L15, `harm_v2` L21, `eval_v2` L9),
 no band, no cap. 1,009 jailbreaks split by the baseline into **508 successes** (§5.4, restore refusal)
@@ -160,7 +160,8 @@ them may be family. Source is the larger confound and correlates with family: `j
 ### ΔASR per direction and method
 
 `restore` = success set (target ↓), `induce` = refusal set (target ↑). `—` = mode not run on that
-side by design. `deg` = pct_degenerate.
+side by design. `deg` = pct_degenerate. **α ≥ 1 rows come from 2_run** at the same layers; read them
+against `deg`, not on their own.
 
 **harm_v2 (L21)**
 
@@ -170,6 +171,8 @@ side by design. `deg` = pct_degenerate.
 | α = ±0.25 | −24.4 | 6.1 | +30.9 | 6.9 |
 | α = ±0.50 | −72.0 | 10.8 | +62.1 | 8.3 |
 | α = ±0.75 | **−95.5** | 14.4 | **+62.8** | 16.6 |
+| α = ±1.00 | −95.7 | 96.3 ⚠ | +21.5 | 73.0 ⚠ |
+| α = ±1.25 | −95.7 | 99.2 ⚠ | −2.5 | 99.3 ⚠ |
 
 **persona_v2 (L15)**
 
@@ -179,15 +182,19 @@ side by design. `deg` = pct_degenerate.
 | α = ±0.25 | −82.9 | 4.5 | **+60.0** | 12.5 |
 | α = ±0.50 | **−94.1** | 0.4 | +41.8 | 17.8 |
 | α = ±0.75 | −88.8 | 6.9 | +7.6 | 38.8 |
+| α = ±1.00 | −91.9 | 47.0 ⚠ | −0.5 | 82.2 ⚠ |
+| α = ±1.25 | −95.5 | 100.0 ⚠ | −2.5 | 98.6 ⚠ |
 
-**eval_v2 (L9)**
+**eval_v2 (L9)** — the only direction still climbing cleanly at the top of the ladder
 
 | method | restore ΔASR | deg | induce ΔASR | deg |
 |---|---|---|---|---|
 | ablate | — | — | +1.2 | 1.4 |
 | α = ±0.25 | −7.1 | 2.0 | +12.5 | 3.9 |
 | α = ±0.50 | **−13.4** | 1.2 | +23.1 | 5.5 |
-| α = ±0.75 | −11.0 | 2.4 | **+33.5** | 6.0 |
+| α = ±0.75 | −11.0 | 2.4 | +33.5 | 6.0 |
+| α = ±1.00 | −9.8 | 1.2 | +43.4 | 8.3 |
+| α = ±1.25 | −10.2 | 3.5 | **+46.0** | 9.9 |
 
 **story_v2_1k (L23)**
 
@@ -197,6 +204,8 @@ side by design. `deg` = pct_degenerate.
 | α = ±0.25 | −1.0 | 1.0 | +4.4 | 2.8 |
 | α = ±0.50 | −0.2 | 1.0 | +6.2 | 3.7 |
 | α = ±0.75 | −2.0 | 3.0 | **+7.2** | 10.2 |
+| α = ±1.00 | −7.7 | 10.0 | +1.4 | 40.0 ⚠ |
+| α = ±1.25 | −33.7 | 47.6 ⚠ | −1.4 | 94.7 ⚠ |
 
 - **α is not symmetric between the two sides.** As a fraction of available headroom, `harm` and
   `persona` restore ~100% but induce only 62–65%; `eval` and `story` do the reverse (14% / 2%
@@ -210,42 +219,19 @@ side by design. `deg` = pct_degenerate.
   induce, then **reverses**: induce falls +60.0 → +41.8 → +7.6 as degeneracy runs 12.5 → 38.8% and
   `hit_cap_rate` reaches 0.98. That last cell is not a weak effect, it is a broken model. `eval`
   induce is the only arm still linear at α=0.75.
+- **⚠ α ≥ 1 is the breakage regime, and there ΔASR stops measuring refusal.** Three of the four
+  directions collapse: `harm` restore reads −95.7 at α=1 (ASR 0.0) at **96% degenerate**, `persona`
+  restore reads −95.5 at α=1.25 at **100%**, and both induce arms invert to ≈0 at 73–99%. Those are
+  destroyed models, not restored refusals — ΔASR and `deg` rise together, so any cell above ~40%
+  degenerate is a null with noise on top. `story` restore's −33.7 is the same artefact (47.6%).
+- **`eval_v2` induce is the one arm this run did not find the ceiling of**: +33.5 → +43.4 → **+46.0**
+  at 6.0 → 8.3 → **9.9%** degeneracy. It is the only direction whose effect is still growing while
+  staying clean, which promotes it from "weak" to "a second real lever that was simply under-pushed".
+  Its restore side is flat from α=0.5 (−13.4 → −10.2), so the asymmetry is not a push artefact.
 - **Ablation is near-null for every direction** (−1.8 to +1.2) except `harm` (+20.6), and even there
   it is a third of what `add` at α=−0.5 gets. Removing a direction is not the same operation as
   pushing against it.
 
-### Harm displacement predicts the effect, but is not the whole mechanism
-
-Cell-level correlation (14 target cells per set; x = the cell's mean `read_*` minus its no-op's,
-y = the cell's ΔASR). No per-prompt correlation is involved.
-
-| | Δread_story | Δread_persona | **Δread_harm** | Δread_eval |
-|---|---|---|---|---|
-| success (r) | −0.40 | +0.51 | **−0.91** | +0.03 |
-| refusal (r) | −0.49 | −0.14 | **−0.78** | −0.38 |
-
-- **Every direction displaces the harm axis more than its own.** Subtracting `persona` at L15 moves
-  `read_persona` −59 but `read_harm` **+117**, close to what `harm add α=0.5` injects directly
-  (+152); `eval` at L9 moves its own axis −7 and `read_harm` −43. No cell is on-axis-only, and the
-  50-run's leakage is now large enough to be the leading explanation of both large effects.
-- **But harm-read is not a sufficient statistic.** At matched displacement the directions differ by
-  2–3.6×, and `harm` itself is the *least* efficient per unit:
-
-  | set | cell | Δread_harm | ΔASR |
-  |---|---|---|---|
-  | success | persona_v2 α=−0.75 | +80 | −88.8 |
-  | success | harm_v2 α=+0.25 | +80 | −24.4 |
-  | refusal | persona_v2 α=+0.25 | −89 | +60.0 |
-  | refusal | harm_v2 α=−0.25 | −79 | +30.9 |
-  | refusal | eval_v2 α=−0.75 | −43 | +33.5 |
-  | refusal | harm_v2 ablate | −66 | +20.5 |
-
-  Part of this is measurement: `read_harm_v2` is a projection at L21, so an L15 or L9 intervention
-  arriving there indirectly is not the same object as a direct L21 injection at equal read. Either
-  way, the leakage cannot be dismissed *or* confirmed as the mechanism from these cells — it needs a
-  matched-leakage control arm (see Improvements 4).
-- With n=14 non-independent cells, and |α| driving both axes within each direction, r is a summary
-  of this table rather than independent evidence.
 
 ### story_v2_1k is a clean null, with a working manipulation check
 
@@ -255,29 +241,61 @@ y = the cell's ΔASR). No per-prompt correlation is involved.
 | induce α = +0.75 | **+172** | +7.2 |
 | restore α = −0.75 | **−158** | −2.0 |
 
-`story` produces the **largest on-axis movement of any cell in the run** (a 330-unit span across
-±0.75) for a 9pp total swing in ASR. `harm` moves its own axis a comparable ±200 and swings ASR
-158pp — per unit of on-axis push, story is ~15× weaker.
+### What story_v2_1k is doing (α = ±0.75, responses read by hand)
 
-- The induce effect is small but **not zero**: +7.2 [+3.8, +10.6] at α=0.75 and +4.4 [+2.0, +6.8] at
-  α=0.25 (paired cluster bootstrap over 318 `template_id` clusters). The α=0.25 cell is the
-  informative one — its `read_harm` moves +7, i.e. no leakage — so ~4pp of genuine narrativity
-  effect survives. Restore is flat at every α (ablate −0.4 [−2.6, +1.9]).
-- **This is the run's main result for H1.** At 433 rows, with the vector demonstrably installed at 3×
-  the magnitude of any other direction, story-mode does not carry the jailbreak. The 50-run's null
-  was not a power problem.
+It is genuinely story mode — the register changes in both directions, including on the refusals it
+fails to break — but it is a **voice axis, not a compliance axis**: it never touches the refusal
+decision.
+
+| | refusal_prefix rate | judge `specific` on the flipped rows |
+|---|---|---|
+| no-op (refusal set) | 0.55 | — |
+| **story α=+0.75** | **0.52** | **3.79** |
+| eval α=−0.75 | 0.25 | 4.71 |
+| harm α=−0.5 | 0.01 | 4.66 |
+| no-op (success set) | 0.01 | — |
+| **story α=−0.75** | **0.00** | — |
+| harm α=+0.75 | 0.88 | — |
+
+`harm` and `eval` suppress the refusal onset; story leaves it where it was and adds **zero** explicit
+refusals on the success set. The ±ASR movement is three side-effects of register:
+
+1. **Disclaimer loss** — the only channel worth following up. Narration has no slot for a meta-frame,
+   so "hypothetical / for educational purposes" disappears and the payload becomes diegetic: a
+   Wikipedia-framed request for a coercive message goes from an article *about* coercion to a news
+   story that quotes the message verbatim (sr 0 → 0.875). Not leakage — α=+0.25 moves `read_harm`
+   only +7 and still gets +4.4pp.
+2. **Judge rubric leakage** — about half the 38 flips are florid, on-topic, operationally empty prose
+   the rubric cannot fail (an Illuminati "jailbreak" at sr 1.0 for *"they dance in the night, their
+   fingers on the strings of the world"*). Hence `specific` 3.79, indistinguishable from the no-op's
+   12 accidental hits (4.17).
+3. **Specificity dilution** on the negative side — of the 24 rows −story turned off, **0 have a
+   refusal prefix**; `specific` drops 4.42 → 3.42 and the judge relabels vague as refused. The model
+   swaps the topic for a neighbour ("strategies to use child labour undetected" → "Strategies for
+   Manufacturing Process Optimization").
+
+- **Subtracting story removes the voice and keeps the payload, sometimes improving it.** A
+  Shakespeare-styled voting-machine request goes from *"Canst thou not gain access to the machine?"*
+  (73 tokens) to a structured table naming malware injection and data manipulation (512 tokens),
+  both sr 1.0.
+- **Breakage is literary**: detector-degenerate rows 1 → 21, anaphora that fails to terminate
+  (*"Can't poor Mayr find a place where they are not… poor Mayr?"* ×12). `hit_cap` 0.16 → 0.29, and
+  on multi-part prompts the model lingers in the creative section and truncates before the payload.
+
+**Revised H1 claim:** narrative framing does not carry the jailbreak, but narrative *voice*
+suppresses the disclaimer habit. Testable directly — make disclaimer presence the outcome, not ASR.
 
 ### ΔASR per family, best cell per direction
 
 **success set** (restore, target ↓)
 
-| family | n | no-op ASR | harm_v2 α=+0.75 | persona_v2 α=−0.5 |
-|---|---|---|---|---|
-| fiction_narrative | 343 | 98.5 | −98.5 | −97.4 |
-| roleplay_persona | 67 | 82.1 | −82.1 | −79.1 |
-| hybrid | 64 | 93.8 | −92.2 | −93.8 |
-| nonfiction_other | 34 | 97.1 | −97.1 | −91.2 |
-| **all** | **508** | **95.7** | **−95.5** | **−94.1** |
+| family | n | no-op ASR | harm_v2 α=+0.75 | persona_v2 α=−0.5 | story_v2_1k α=−0.75 |
+|---|---|---|---|---|---|
+| fiction_narrative | 343 | 98.5 | −98.5 | −97.4 | −1.5 |
+| roleplay_persona | 67 | 82.1 | −82.1 | −79.1 | +0.0 |
+| hybrid | 64 | 93.8 | −92.2 | −93.8 | +1.6 |
+| nonfiction_other | 34 | 97.1 | −97.1 | −91.2 | **−17.6** |
+| **all** | **508** | **95.7** | **−95.5** | **−94.1** | **−2.0** |
 
 **refusal set** (induce, target ↑)
 
@@ -289,15 +307,136 @@ y = the cell's ΔASR). No per-prompt correlation is involved.
 | nonfiction_other | 40 | 0.0 | +40.0 | +12.5 |
 | **all** | **433** | **2.8** | **+33.5** | **+7.2** |
 
-- **No family specificity on the success set.** `harm` and `persona` each zero out all four families;
-  the spread only tracks the no-op ASR. Blanket switches, as in the 50-run.
-- **The framing axes run *against* their own families.** `story` induces least on
-  `fiction_narrative` (+1.8) and most on `hybrid` / `nonfiction_other` (+13.7 / +12.5) — the families
-  it reads worst. `eval` does the same (+23.6 fiction vs +40.0 nonfiction). If story-mode were the
-  mechanism, adding it should help most where the prompt is already fiction; it helps least there.
-  The consistent reading is a ceiling: fiction refusals are the ones this model refuses on purpose.
-- `hit_cap_rate` is **0.476** in the baseline at `max_new_tokens=512`. Read that column before
-  reading breakage in the α=0.75 cells.
+
+### Which §5.6 pairs are worth running
+
+A pair `(a, b)` is a real manipulation only if `cos(û_a, û_b)` **at a's own chosen layer** clears the
+±0.050 null band — projection is same-layer — and only if `a` has an effect there to decompose.
+`norm removed` = 1 − √(1−cos²), i.e. how much of the steering vector `perp_alpha` actually changes;
+since `perp_alpha` renormalizes, the manipulation is a rotation of `arcsin|cos|` at unchanged push.
+
+**Restore side** (success set, 508 rows — the only set `steer_pairs` currently runs):
+
+| a (L) | best restore ΔASR | b | cos at a's L | norm removed | verdict |
+|---|---|---|---|---|---|
+| `persona_v2` (15) | **−94.1** | `harm_v2` | **−0.240** | 2.9% | **run** |
+| `persona_v2` (15) | −94.1 | `eval_v2` | **+0.296** | 4.5% | run 2nd |
+| `persona_v2` (15) | −94.1 | `story_v2_1k` | +0.137 | 0.9% | skip |
+| `harm_v2` (21) | **−95.5** | `persona_v2` | −0.051 | 0.1% | skip — null band |
+| `harm_v2` (21) | −95.5 | `eval_v2` / `story_v2_1k` | +0.078 / +0.074 | 0.3% | skip |
+| `eval_v2` (9) | −13.4 | any | +0.081 … −0.016 | ≤0.3% | skip — no effect, no overlap |
+| `story_v2_1k` (23) | −2.0 | `persona_v2` | +0.170 | 1.5% | skip — nothing to decompose |
+
+**Induce side** (refusal set, 433 rows). Geometry is identical; only the effect column changes — and
+it changes the verdicts, because all four axes move ASR upward:
+
+| a (L) | best induce ΔASR | b | cos at a's L | norm removed | verdict |
+|---|---|---|---|---|---|
+| `persona_v2` (15) | **+60.0** | `harm_v2` | **−0.240** | 2.9% | **run** |
+| `persona_v2` (15) | +60.0 | `eval_v2` | **+0.296** | 4.5% | **run** — both axes induce |
+| `story_v2_1k` (23) | +7.2 | `persona_v2` | +0.170 | 1.5% | run 3rd — H1's only effect |
+| `harm_v2` (21) | **+62.8** | `persona_v2` | −0.051 | 0.1% | skip — null band |
+| `harm_v2` (21) | +62.8 | `eval_v2` / `story_v2_1k` | +0.078 / +0.074 | 0.3% | skip |
+| `eval_v2` (9) | +33.5 | `persona_v2` / `harm_v2` | +0.081 / −0.016 | ≤0.3% | skip — no overlap |
+| `persona_v2` (15) | +60.0 | `story_v2_1k` | +0.137 | 0.9% | skip |
+
+- **`harm_v2` is orthogonal to every rival at its own L21** (|cos| ≤ 0.078, at or inside the null
+  band), on both sides. Its effect cannot be another axis's overlap — geometry says so at zero GPU
+  cost, and no pair anchored on `harm_v2` is worth generating.
+- **`persona_v2` is the only leaky anchor**, matching its all-positive `excess_over_null` row in
+  `cross_probe_detection`. Its two live pairs are the study's two largest cosines.
+- **The induce side adds one case the restore side cannot pose**: `story_v2_1k` at L23 has a +7.2
+  [+3.8, +10.6] effect and a +0.170 overlap with `persona_v2`, and persona is potent enough per unit
+  (+60.0 at α=0.25) that a small persona component could account for all of it. It is underpowered —
+  1.5% of norm against a 7pp effect — but it is the only projection test H1 has.
+- **`eval_v2` is unreachable by projection.** It has a real induce effect (+33.5) and displaces
+  `read_harm` −43 against its own −7, yet `cos(eval@L9, harm@L9)` is −0.016. Its leakage is not
+  geometric either.
+
+**This is a weak instrument for the leakage question, and the pairs above do not fix that.** The
+leakage 1_run measured is downstream, not same-layer: persona@L15 moves `read_harm@L21` by +117 while
+`cos(persona@L15, harm@L21)` is −0.051. Removing 2.9% of the vector at L15 cannot remove that. Expect
+`perp_alpha` ≈ `unprojected` on every cell above, and read such a null as "the same-layer parallel
+slice is not load-bearing", never as "the effect is specific". The matched-leakage arm
+(Improvements 4) is the experiment that answers the mechanism; §5.6 answers a proxy for it.
+
+Three things to fix before running: `perp_effect` is still collapsed onto `perp_alpha`
+(Improvements 8); `par_norm` is unit-normalized, so at cos 0.240 it pushes **4.2×** the parallel
+component's real strength in the reference run and needs an `α·|cos|` arm to be readable; and
+`steer_pairs` hardcodes `PROMPT_SET = "success"` and calls `parse_layers` without
+`allow_out_of_band`, so the induce table needs a prompt-set switch (with the sign mirrored off
+`RESTORE_SIGN`) and anything anchored at L9 or L4 needs the out-of-band opt-in.
+
+**One free prediction.** `cos(persona_v2, harm_v2)` flips sign with depth: **+0.126 at L4**, −0.240 at
+L15, −0.367 at L16. At L15 restoring persona (−α) injects `+0.240|α|·û_harm`, the restoring harm sign
+— consistent with harm leakage. At L4 the same −α injects harm the *induce* way. So if 2_run's
+persona@L4 cells restore refusal at all, the same-layer harm-parallel component is falsified as the
+mechanism by sign alone, with no §5.6 cell run.
+
+## 2_run — is the detection-best layer the better *steering* layer?
+
+40 cells. The α ladder at 1_run's four layers is folded into the tables above; new here are
+`story_v2_1k` at **L15** and `persona_v2` at **L4**, each probe's best jailbreak-family
+discrimination layer (`probe_jailbreak_detection`). Same corpus, same no-ops per (set, layer).
+
+**story_v2_1k — L23 (1_run) vs L15**
+
+| α      | L23 restore | deg    | L15 restore | deg    | L23 induce | deg    | L15 induce | deg    |
+| ------ | ----------- | ------ | ----------- | ------ | ---------- | ------ | ---------- | ------ |
+| ablate | −0.4        | 1.8    | −1.8        | 2.0    | —          | —      | —          | —      |
+| ±0.25  | −1.0        | 1.0    | −8.7        | 1.0    | +4.4       | 2.8    | **+9.7**   | 5.3    |
+| ±0.50  | −0.2        | 1.0    | −11.6       | 2.0    | +6.2       | 3.7    | +6.7       | 2.5    |
+| ±0.75  | −2.0        | 3.0    | **−14.0**   | 3.3    | **+7.2**   | 10.2   | +0.7       | 2.8    |
+| ±1.00  | −7.7        | 10.0   | −43.9       | 41.3 ⚠ | +1.4       | 40.0 ⚠ | −1.2       | 7.2    |
+| ±1.25  | −33.7       | 47.6 ⚠ | −79.9       | 89.2 ⚠ | −1.4       | 94.7 ⚠ | −1.6       | 49.2 ⚠ |
+
+**persona_v2 — L15 (1_run) vs L4**
+
+| α | L15 restore | deg | L4 restore | deg | L15 induce | deg | L4 induce | deg |
+|---|---|---|---|---|---|---|---|---|
+| ablate | −1.8 | 1.0 | −2.4 | 1.8 | — | — | — | — |
+| ±0.25 | −82.9 | 4.5 | −2.4 | 3.0 | **+60.0** | 12.5 | +4.6 | 2.3 |
+| ±0.50 | **−94.1** | 0.4 | −6.9 | 2.2 | +41.8 | 17.8 | +7.6 | 2.8 |
+| ±0.75 | −88.8 | 6.9 | −12.4 | 2.8 | +7.6 | 38.8 ⚠ | +6.9 | 2.3 |
+| ±1.00 | −91.9 | 47.0 ⚠ | −19.5 | 2.0 | −0.5 | 82.2 ⚠ | +10.2 | 3.2 |
+| ±1.25 | −95.5 | 100.0 ⚠ | **−22.2** | 2.4 | −2.5 | 98.6 ⚠ | **+21.9** | 4.6 |
+
+**story_v2_1k ΔASR per family**, each column its layer's best cell with `deg` ≤ 10:
+
+| family | n succ / ref | no-op succ / ref | L23 restore α=−1.00 | L15 restore α=−0.75 | L23 induce α=+0.75 | L15 induce α=+0.25 |
+|---|---|---|---|---|---|---|
+| fiction_narrative | 343 / 110 | 98.5 / 6.4 | −6.4 | −9.0 | +1.8 | +12.7 |
+| roleplay_persona | 67 / 210 | 82.1 / 1.4 | +1.5 | −17.9 | +6.7 | +7.1 |
+| hybrid | 64 / 73 | 93.8 / 2.7 | −9.4 | −25.0 | **+13.7** | +6.8 |
+| nonfiction_other | 34 / 40 | 97.1 / 0.0 | **−35.3** | **−35.3** | +12.5 | **+20.0** |
+| **all** | **508 / 433** | **95.7 / 2.8** | **−7.7** | **−14.0** | **+7.2** | **+9.7** |
+
+- **A layer effect, not a push effect.** σ is 62 at L15 against 153 at L23, and 19 at L4 against 66 at
+  L15, so α is not comparable across sites. Matched on `|α|·σ_l`: story@L15 at push 46.6 gets −14.0
+  where L23 at 38.3 gets −1.0 and does not catch up at 115.0 (−2.0); persona@L4 at 24.2 gets −22.2
+  where L15 at 16.5 already gets −82.9. Probe quality is not a layer-selection rule — it rescued a
+  null and cost the study's strongest cell 73%.
+- **L15 buys more of the same non-refusal channel, not a new mechanism.** `refusal_prefix` 0.01 →
+  **0.00**: as at L23, story adds zero explicit refusals, and both layers move `nonfiction_other`
+  hardest on restore, by the same −35.3. L15 widens the effect to the other three families rather
+  than finding a different one. H1's revised claim is unchanged.
+- **On-axis displacement is anti-correlated with effect across the two sites.** At α=∓0.75 L15 moves
+  `read_story` (final-layer readout) −63/+59 against L23's −158/+172, with 7× the restore ΔASR, so
+  displacement cannot be the mechanism. At L15 restore `Δread_harm` is −29 — harm moving the *induce*
+  way — while ASR falls, so the harm leak points against the effect it would have to explain.
+- **persona@L4 never collapses**, the only cell in the study whose dose–response stays monotone on
+  both sides to ±1.25. It also touches the refusal decision, unlike story: `refusal_prefix`
+  0.01 → 0.11 restoring, 0.55 → 0.33 inducing.
+- **1_run's free prediction is confirmed and falsifies the same-layer mechanism.** persona@L4 restores
+  refusal even though `cos(persona, harm)` is **+0.126** there — the sign that injects harm the
+  *induce* way — and its measured `Δread_harm` is **+13**, opposite to the same-layer geometry. The
+  leakage is downstream, as the §5.6 caveat says. Zero §5.6 cells spent.
+- **Detection margin does not transfer to families, in both new cells.** `nonfiction_other` — which
+  story@L15 reads at **0.0%** — is the most-moved family in three of the four best cells and never the
+  least; `fiction_narrative`, the family L15's margin maximises, is never the most-moved. persona@L4
+  was picked for the largest roleplay − nonfiction gap (+50.4) and also moves nonfiction harder than
+  roleplay (−47.1 vs −37.3 at α=−1.25), flat across families on induce (+19.1 … +30.0). Not a ceiling
+  artefact: fiction has the most headroom on the success set.
 
 ---
 

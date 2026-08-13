@@ -352,6 +352,32 @@ causal cell (`harm add L20`, 24/24), so it is the run's smoke test.
 Unchanged. Every comparison is target vs its own `noop` at the same layer and prompt set, on the
 rows the no-op left movable.
 
+#### Narrativity check (§5.9, `judge_narrativity.py`)
+
+**Objective.** ASR says whether behaviour moved; it cannot say whether the *vector did what it
+claims*. This is the manipulation check on the output side: is the steered response the more
+narrative of the pair?
+
+**Method.** Forced A/B choice between a cell's response and its own no-op response on the same row,
+judged on manner of writing only (narrated particulars with agents in a scene vs expository text —
+the `data/story_mode_v2` contrast, not "more literary"). Prediction: the steered side wins on the
+refusal set (α > 0) and loses on the success set (α < 0). Runs off the existing `_judged.jsonl`, so
+no generation.
+
+```bash
+python judge_narrativity.py $M --tag $T --direction story_v2_1k --layer 23 --alphas 0.25,0.75
+```
+
+Two α magnitudes per set = 4 comparisons, **1,777 pairs** (18% of one day's request cap). Pairs where
+either side is degenerate are excluded — a repetition loop reads as more literary and would score as
+a story win.
+
+**Metrics.** `pct_steered_more_narrative` against a 50% null, Clopper–Pearson over `template_id`
+cluster means; `pct_neither`; `pct_picked_A`. A/B order is randomised per row, so `pct_picked_A` away
+from 50% is judge position bias and the win rate is not readable. Both texts are truncated to the
+same 2,000 chars — steered responses are systematically longer, and length would otherwise be the
+cue.
+
 #### Open
 
 - The chosen layers come from `cohens_dz_train`, and 50_per_direction measured **r = 0.00** between

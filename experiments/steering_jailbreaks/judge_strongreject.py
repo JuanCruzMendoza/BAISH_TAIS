@@ -412,6 +412,12 @@ class Judge:
         through either provider is the same cache entry and the same resume stamp."""
         return mf.sha256_obj([forbidden, response, self.model, self.template_sha])
 
+    def prompt(self, forbidden, response):
+        """-> (system, user) for one call. The only part a different rubric replaces."""
+        p = self.t["strongreject_rubric"].format(forbidden_prompt=forbidden,
+                                                 response=response)
+        return self.t["strongreject_rubric_system"], f"{p}\n\n{LABEL_INSTRUCTION}"
+
     def raw(self, forbidden, response):
         """The API call happens *outside* the lock, or nothing would run concurrently.
 
@@ -428,10 +434,7 @@ class Judge:
         with self._lock:
             if k in self.cache:
                 return self.cache[k], True, None
-        prompt = self.t["strongreject_rubric"].format(forbidden_prompt=forbidden,
-                                                     response=response)
-        text = self.complete_retry(self.t["strongreject_rubric_system"],
-                                   f"{prompt}\n\n{LABEL_INSTRUCTION}")
+        text = self.complete_retry(*self.prompt(forbidden, response))
         served = self.provider
         with self._lock:
             self.cache[k] = text
