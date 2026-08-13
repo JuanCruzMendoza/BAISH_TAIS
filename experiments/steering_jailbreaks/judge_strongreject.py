@@ -252,11 +252,21 @@ def backend_for(model):
 # changes is only which endpoint the call went to, recorded per row as `judge_provider` so
 # the choice stays auditable after the fact. Its ids are namespaced, hence the map.
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
+# Canonical first -- that is OpenRouter's own name for it, and what the notebook sets. The
+# aliases are here because a fallback that silently fails to arm is not discovered until
+# hours later, when the primary key dies and the pass stops anyway; the whole point of it is
+# to be there at that moment.
+OPENROUTER_KEY_VARS = ("OPENROUTER_API_KEY", "OPEN_ROUTER_KEY", "OPENROUTER_KEY")
 OPENROUTER_ID = {"gpt-4o-mini": "openai/gpt-4o-mini",
                  "gpt-4o": "openai/gpt-4o",
                  "gpt-4.1-mini": "openai/gpt-4.1-mini",
                  "claude-3-5-haiku-latest": "anthropic/claude-3.5-haiku",
                  "claude-3-5-sonnet-latest": "anthropic/claude-3.5-sonnet"}
+
+
+def openrouter_key():
+    """The fallback key under whichever of `OPENROUTER_KEY_VARS` holds it, or None."""
+    return next((os.environ[v] for v in OPENROUTER_KEY_VARS if os.environ.get(v)), None)
 
 
 class Judge:
@@ -274,8 +284,7 @@ class Judge:
         self.provider = self.backend
         # Only a model OpenRouter can actually serve gets a fallback; otherwise the switch
         # would trade a quota error for a 404 halfway through a pass.
-        self.fallback = (OPENROUTER_ID.get(model)
-                         if os.environ.get("OPENROUTER_API_KEY") else None)
+        self.fallback = OPENROUTER_ID.get(model) if openrouter_key() else None
         self.template_sha = mf.sha256_obj([templates["strongreject_rubric_system"],
                                            templates["strongreject_rubric"],
                                            LABEL_INSTRUCTION])[:16]
@@ -307,7 +316,7 @@ class Judge:
                         from openai import OpenAI
                         self._client = OpenAI(
                             base_url=OPENROUTER_BASE,
-                            api_key=os.environ["OPENROUTER_API_KEY"])
+                            api_key=openrouter_key())
                     else:
                         from openai import OpenAI
                         self._client = OpenAI()
@@ -614,7 +623,7 @@ def main():
             print(f"  {var} not set; grading on OpenRouter as {judge.wire_model()}")
         elif judge.fallback:
             print(f"  fallback armed: OpenRouter {judge.fallback} if this key is spent")
-        elif os.environ.get("OPENROUTER_API_KEY"):
+        elif openrouter_key():
             print(f"  ! OPENROUTER_API_KEY is set but {args.judge_model} has no OpenRouter "
                   f"id in OPENROUTER_ID; no fallback. Add it there to enable one.")
 

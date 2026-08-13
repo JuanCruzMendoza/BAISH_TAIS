@@ -47,8 +47,11 @@ def _():
         else:
             sh("git", "rebase", "origin/main", allow_fail=True)
     sh("git", "log", "--oneline", "-1")
+    # `openai` is the judge's SDK, and OpenRouter speaks the same protocol so the fallback
+    # needs no second package. Named explicitly rather than relied on: molab happens to ship
+    # it, and 1_run's judging only worked because of that.
     sh("pip", "install", "-q", "transformers", "accelerate", "numpy", "matplotlib",
-       "huggingface_hub", "hf_xet")
+       "huggingface_hub", "hf_xet", "openai")
     sh("python", "-c",
        "import torch;print(torch.__version__, torch.cuda.is_available(), torch.cuda.get_device_name(0))")
 
