@@ -233,6 +233,11 @@ def _(HF_REPO, HF_TOKEN, MODEL, OPENAI_KEY, OPENROUTER_KEY, REPO, TAG, mo, os):
     # when 1_run hit it. Tier-dependent -- raise it here if the account tier has changed,
     # since it only sizes the estimate printed before the pass, not the pass itself.
     JUDGE_RPD = 10_000
+    # Push the judge pass every this many cells. Judged rows are the costliest artefact in
+    # the run -- real money and daily quota -- so they should not sit only on local disk
+    # waiting for the hourly timer. 5 caps the loss at ~20 min of grading and costs ~16
+    # commits over the 40 cells; raise it to spend fewer commits, lower it to risk less.
+    JUDGE_PUSH_EVERY = 5
     ST_ROOT = _pl.Path(REPO, "experiments/steering_jailbreaks/results", TAG,
                        MODEL.replace("/", "_"))
     ST_META, ST_CSV = ST_ROOT / "meta", ST_ROOT / "csv"
@@ -271,7 +276,8 @@ def _(HF_REPO, HF_TOKEN, MODEL, OPENAI_KEY, OPENROUTER_KEY, REPO, TAG, mo, os):
             return False
 
     st_pulled = True
-    return (JUDGE_RPD, ST_COMPLETE, ST_CSV, ST_META, ST_SCOPE, ST_TIMER, ckpt, st_pulled)
+    return (JUDGE_PUSH_EVERY, JUDGE_RPD, ST_COMPLETE, ST_CSV, ST_META, ST_SCOPE, ST_TIMER,
+            ckpt, st_pulled)
 
 
 @app.cell(hide_code=True)
@@ -542,6 +548,14 @@ def _(mo):
     the end of a pass, so a cell killed midway re-enters and resumes per row. 1_run's 36
     cells are skipped by the same test.
 
+    **Checkpointed every `JUDGE_PUSH_EVERY` cells, not just at the end.** Judged rows are
+    the costliest artefact in the run — real money and daily quota — so leaving them on
+    local disk until the hourly timer fires puts up to an hour of grading on a
+    disconnection. At ~4 min a cell, 5 caps the exposure near 20 minutes. The price is
+    commits: 2 per push at 314 files, so 8 pushes and ~16 commits over the 40 cells.
+    A batch stopped early by the daily cap or by two failures is pushed too — those cells
+    graded rows on the way to the wall.
+
     The judge sees the **bare request**, never the jailbreak wrapper, and the deterministic
     detectors run alongside it at no cost — `outcome` is degenerate when *either* says so.
     That matters most here: α = 1.25, and `eval_v2` at L9, are exactly where
@@ -551,8 +565,8 @@ def _(mo):
 
 
 @app.cell
-def _(HF_REPO, HF_TOKEN, JUDGE_RPD, ST_ALL_STEMS, ST_CSV, ST_META, ST_SCOPE, ckpt, sh,
-      st_steered):
+def _(HF_REPO, HF_TOKEN, JUDGE_PUSH_EVERY, JUDGE_RPD, ST_ALL_STEMS, ST_CSV, ST_META,
+      ST_SCOPE, ckpt, sh, st_steered):
     # cell 16
     import csv as _csv
     import json as _js
@@ -626,11 +640,21 @@ def _(HF_REPO, HF_TOKEN, JUDGE_RPD, ST_ALL_STEMS, ST_CSV, ST_META, ST_SCOPE, ckp
     # (`requests per day|RPD`), so a reworded 429 would read as transient, grind 7 retries a
     # row, and exit 1. Two consecutive failures of ANY kind therefore also stop the pass --
     # one bad cell is a bad cell, two in a row is a wall, whatever it is called.
-    _failed, _capped, _done_rows, _streak = [], False, 0, 0
+    # `_since` counts cells graded but not yet pushed. Judged rows cost money and API
+    # quota, so they are the most expensive thing here to lose to a disconnection -- and
+    # relying on the hourly timer alone puts up to an hour of grading at risk. At ~4 min a
+    # cell, pushing every JUDGE_PUSH_EVERY caps the exposure at roughly that many minutes
+    # times four. It is not free: each push is 2 commits at 314 files, so 40 cells at 5
+    # apiece is 8 pushes, ~16 commits for the pass. Raise the constant to trade safety back
+    # for commits.
+    _failed, _capped, _done_rows, _streak, _since = [], False, 0, 0, 0
     for _i, _p in enumerate(_todo, 1):
         print(f"[{_i}/{len(_todo)}] {_p.stem}  ({_left[_p.stem]:,} rows left)")
         _rc = sh("python", "experiments/steering_jailbreaks/judge_strongreject.py",
                  str(_p), "--concurrency", "6", allow_fail=True).returncode
+        # Before the break checks: a cell that hit the daily cap still graded rows on its
+        # way there, and those are exactly the ones worth not losing.
+        _since += 1
         if _rc == 3:
             _capped = True
             break
@@ -645,10 +669,14 @@ def _(HF_REPO, HF_TOKEN, JUDGE_RPD, ST_ALL_STEMS, ST_CSV, ST_META, ST_SCOPE, ckp
         else:
             _done_rows += _left[_p.stem]
             _streak = 0
-    # One push for all of them: the hourly timer has been carrying the partials. Guarded,
-    # because a verification re-run with nothing left to grade would otherwise spend two
+        if _since >= JUDGE_PUSH_EVERY:
+            ckpt.try_push(HF_REPO, token=HF_TOKEN.value, **ST_SCOPE,
+                          msg=f"2_run judged, {_i}/{len(_todo)} cells")
+            _since = 0
+    # Whatever the last partial batch left, including the cells a break stopped after.
+    # Nothing to push when the loop never ran, so a verification re-run does not spend two
     # commits walking 314 unchanged files.
-    if _todo:
+    if _since:
         ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="2_run judged", **ST_SCOPE)
     if _failed:
         print(f"! {len(_failed)} cells did not judge, re-run this cell: {_failed}")
