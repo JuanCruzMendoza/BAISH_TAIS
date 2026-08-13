@@ -448,18 +448,26 @@ which is what makes the saturation question answerable rather than a two-point e
 ≈3.0 h GPU at 1_run's measured rate. The baseline and the two prompt sets are 1_run's and are
 **not** recomputed — the split has to be identical or the cells are not comparable across runs.
 
-**Judging is a two-day job, and it is the binding constraint on this run.** Two limits, needing
-different handling:
+**Judging is the binding constraint.** Two limits, needing different handling:
 
 | limit | measured | consequence |
 |---|---|---|
 | tokens per minute | 200k TPM, ~1.2k tokens a call ≈ 165 calls/min | ~2.6 h at `--concurrency 6`; 8 workers sat on the ceiling and 429'd. Transient, so it retries with full jitter |
-| **requests per day** | **10,000 RPD** | 18,895 calls **cannot** finish in one day. Not retryable — no ladder outlives a day, and each attempt spends another request against a counter that is already empty |
+| **requests per day** | **10,000 RPD** | 18,895 calls do not fit under it. Not retryable — no ladder outlives a day, and each attempt spends another request against an empty counter |
 
-`judge_strongreject` exits **3** on the daily cap, distinctly from any other failure, so a caller
-looping over cells stops rather than marching the rest into the same wall. Resume is per row by
-`unit_id`, plus the judge's own response cache, so day two spends quota only on the remainder.
-≈$5.6 in total.
+**A second provider removes the day boundary.** With `OPENROUTER_API_KEY` set, an exhausted
+key (RPD 429, `insufficient_quota` 429, or 402) moves grading to OpenRouter serving the *same*
+`gpt-4o-mini` rather than ending the pass. The judge's identity is the model, so the cache key
+and the per-row resume stamp are unchanged and **nothing already graded is re-graded**; a row
+graded through either endpoint is a valid cache hit for the other. `judge_provider` records the
+endpoint per row — never part of a key, so it cannot trigger a re-grade — and `pct_via_fallback`
+carries it into each cell's summary, so a provider effect on scores is checkable rather than
+invisible.
+
+Without a fallback key nothing changes: `judge_strongreject` exits **3** on an exhausted key,
+distinctly from any other failure, so a caller looping over cells stops rather than marching the
+rest into the same wall, and resume per `unit_id` means the next day spends quota only on the
+remainder. ≈$5.6 in total either way.
 
 #### Run order
 

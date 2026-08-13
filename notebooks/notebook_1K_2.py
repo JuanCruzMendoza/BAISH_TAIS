@@ -88,9 +88,16 @@ def _(TAG, mo):
 
     ## Keys
 
-    Paste both. Nothing downstream runs until they are set, which is also what stops a
-    session opened for something else from starting a 4-hour sweep: marimo runs every cell
-    on load, and a password field is empty on a fresh load.
+    Paste the HF token and at least one judge key. Nothing downstream runs until they are
+    set, which is also what stops a session opened for something else from starting a
+    4-hour sweep: marimo runs every cell on load, and a password field is empty on a fresh
+    load.
+
+    **Paste the OpenRouter key too and this becomes a one-day job.** 18,895 judge calls do
+    not fit under a 10,000/day cap; when the OpenAI key is spent the judge continues on
+    OpenRouter with the *same* `gpt-4o-mini`, so the cache and the per-row resume stamps are
+    unchanged and nothing already graded is re-graded. Which endpoint served each row lands
+    in `judge_provider`, summarised per cell as `pct_via_fallback`.
     """)
     return
 
@@ -101,8 +108,13 @@ def _(mo):
     HF_TOKEN = mo.ui.text(label="HF_TOKEN (write)", kind="password", full_width=True)
     OPENAI_KEY = mo.ui.text(label="OPENAI_API_KEY (judge, spec 5.3)", kind="password",
                             full_width=True)
-    mo.vstack([HF_TOKEN, OPENAI_KEY])
-    return HF_TOKEN, OPENAI_KEY
+    # Optional, and the reason this pass can finish in one sitting: 18,895 calls do not fit
+    # under a 10,000/day cap, so when the OpenAI key is spent the judge moves to OpenRouter
+    # and keeps going. Same model, so nothing already graded is re-graded.
+    OPENROUTER_KEY = mo.ui.text(label="OPENROUTER_API_KEY (fallback judge, optional)",
+                                kind="password", full_width=True)
+    mo.vstack([HF_TOKEN, OPENAI_KEY, OPENROUTER_KEY])
+    return HF_TOKEN, OPENAI_KEY, OPENROUTER_KEY
 
 
 @app.cell(hide_code=True)
@@ -187,19 +199,29 @@ def _(mo):
 
 
 @app.cell
-def _(HF_REPO, HF_TOKEN, MODEL, OPENAI_KEY, REPO, TAG, mo, os):
+def _(HF_REPO, HF_TOKEN, MODEL, OPENAI_KEY, OPENROUTER_KEY, REPO, TAG, mo, os):
     # cell 5
     import json as _json
     import pathlib as _pl
 
     from experiments.common import ckpt
 
-    mo.stop(not HF_TOKEN.value or not OPENAI_KEY.value,
-            mo.md("*Paste **both** keys to start. The HF token restores the run and "
-                  "checkpoints it; the OpenAI key grades it.*"))
-    # judge_strongreject reads it from the environment of its subprocess, which inherits
-    # this one. Nothing else in the notebook needs an API key.
-    os.environ["OPENAI_API_KEY"] = OPENAI_KEY.value
+    # Either judge key is enough to start -- the OpenAI one may already be spent for the
+    # day, and refusing to run then would defeat the fallback.
+    mo.stop(not HF_TOKEN.value or not (OPENAI_KEY.value or OPENROUTER_KEY.value),
+            mo.md("*Paste the HF token and at least one judge key. The HF token restores "
+                  "the run and checkpoints it; the judge key grades it.*"))
+    # judge_strongreject reads these from the environment of its subprocess, which inherits
+    # this one. Set only when non-empty: an empty string reads as *present* downstream, so
+    # a blank box would arm a fallback that cannot authenticate.
+    for _var, _val in (("OPENAI_API_KEY", OPENAI_KEY.value),
+                       ("OPENROUTER_API_KEY", OPENROUTER_KEY.value)):
+        if _val:
+            os.environ[_var] = _val
+        else:
+            os.environ.pop(_var, None)
+    print("judge keys:", ", ".join(k for k in ("OPENAI_API_KEY", "OPENROUTER_API_KEY")
+                                   if os.environ.get(k)) or "none")
 
     EX_SCOPE = {"experiment": "extraction", "tag": TAG}
     ST_SCOPE = {"experiment": "steering_jailbreaks", "tag": TAG}
@@ -482,25 +504,30 @@ def _(mo):
     | limit | measured | what it costs | response |
     |---|---|---|---|
     | **tokens per minute** | 200k TPM on `gpt-4o-mini`, ~1.2k tokens a call ≈ 165 calls/min | the pass runs at ~2.6 h whatever the concurrency | `--concurrency 6`. 8 workers sat exactly on the ceiling and 429'd; 6 leaves ~25% headroom. Transient 429/5xx retry with full jitter, 7 attempts reaching ~61s — one full window |
-    | **requests per day** | **10,000 RPD** | 18,895 calls **cannot finish in one day** | not retryable: no backoff ladder outlives a day, and every attempt spends another request against a counter that is already empty. `judge_strongreject` raises and exits **3** |
+    | **requests per day** | **10,000 RPD** | 18,895 calls do not fit under it | no backoff outlives a day, so it is not retried. **With an OpenRouter key it is not fatal either** — grading moves provider and continues. Without one, `judge_strongreject` exits **3** |
 
-    So this pass is a **two-day job**, and the notebook is built for it. The cell prints the
-    ungraded-row count against the cap before it starts, then stops cleanly the moment it
-    sees exit 3 — rather than marching the remaining cells into the same wall one fast
-    failure at a time. Exit 3 breaks the loop; a single other non-zero exit is one bad cell
-    and the loop carries on; two in a row is treated as a wall and also stops.
+    **The fallback is what makes this a one-day job.** On an RPD 429, an `insufficient_quota`
+    429 or a 402, the judge switches to OpenRouter and keeps going with the *same*
+    `gpt-4o-mini`. Because the judge's identity is the model, the cache key
+    (`[request, response, model, template_sha]`) and the per-row resume stamp
+    (`judge_model`, `template_sha`) are untouched — so **nothing already graded is
+    re-graded**, and a row graded through one endpoint is a valid cache hit for the other.
+    `judge_provider` records the endpoint per row and never enters a key, which is what
+    keeps it an audit trail rather than a re-grade trigger.
 
-    **The stop is reactive, and deliberately so.** `JUDGE_RPD` below only sizes the estimate
-    — nothing counts requests client-side, because this process cannot know how much of
-    today's cap `1_run`, the baseline, or anything else on the account already spent. A
-    counter starting at zero each session would stop early and waste quota, so the
-    provider's own 429 is the authority. Learning it from the error costs the ~6 in-flight
-    calls, which are rejected rather than billed, and the interrupted cell's summary is
-    never written — so it is simply re-judged tomorrow, per row.
+    Without an OpenRouter key nothing changes from before: the cell prints the ungraded-row
+    count against the cap, then stops cleanly on exit 3 rather than marching the remaining
+    cells into the same wall. Exit 3 breaks the loop; a single other non-zero exit is one bad
+    cell and the loop carries on; two in a row is treated as a wall and also stops. Cells are
+    judged in sorted-stem order, so the day boundary lands cleanly — all 19 `steer_induce`
+    cells (8,227 rows) come before the 21 `steer_single` ones.
 
-    Cells are judged in sorted-stem order, which puts all 19 `steer_induce` cells (8,227
-    rows) ahead of the 21 `steer_single` ones. The day boundary therefore lands cleanly:
-    day one finishes the whole refusal set plus a few success cells, day two the rest.
+    **The stop is reactive either way, deliberately so.** `JUDGE_RPD` below only sizes the
+    estimate — nothing counts requests client-side, because this process cannot know how much
+    of today's cap `1_run`, the baseline, or anything else on the account already spent. A
+    counter starting at zero each session would stop early and waste quota, so the provider's
+    own 429 is the authority. Learning it from the error costs the ~6 in-flight calls, which
+    are rejected rather than billed.
 
     **Day two is just re-running the notebook.** Everything already generated skips before
     the model load, every graded row is skipped by `unit_id`, and the judge's own response
@@ -526,6 +553,7 @@ def _(HF_REPO, HF_TOKEN, JUDGE_RPD, ST_ALL_STEMS, ST_CSV, ST_META, ST_SCOPE, ckp
     # cell 16
     import csv as _csv
     import json as _js
+    import os as _os
 
     assert st_steered
 
@@ -572,9 +600,13 @@ def _(HF_REPO, HF_TOKEN, JUDGE_RPD, ST_ALL_STEMS, ST_CSV, ST_META, ST_SCOPE, ckp
           f"({len(_mine) - _new}/{len(_mine)} of 2_run already graded)\n"
           f"{_need:,} rows still ungraded, against a {JUDGE_RPD:,}/day request cap "
           f"-> {-(-_need // JUDGE_RPD)} day(s)")
-    if _need > JUDGE_RPD:
-        print(f"! this pass CANNOT finish today. It will grade ~{JUDGE_RPD:,} rows, stop on "
-              f"the daily cap, and resume here tomorrow -- just re-run the notebook.")
+    if _need > JUDGE_RPD and not _os.environ.get("OPENROUTER_API_KEY"):
+        print(f"! this pass CANNOT finish today on the OpenAI key alone. It will grade "
+              f"~{JUDGE_RPD:,} rows, stop on the daily cap, and resume here tomorrow -- "
+              f"re-run the notebook, or paste an OpenRouter key to carry straight on.")
+    elif _need > JUDGE_RPD:
+        print(f"  over the {JUDGE_RPD:,}/day cap, so expect a switch to OpenRouter partway "
+              f"through; it grades the remainder with the same model.")
 
     # Two different failures, two different responses. `allow_fail` because judging is
     # resumable per row, so one bad cell should cost a retry of that cell rather than the
@@ -618,9 +650,12 @@ def _(HF_REPO, HF_TOKEN, JUDGE_RPD, ST_ALL_STEMS, ST_CSV, ST_META, ST_SCOPE, ckp
     if _failed:
         print(f"! {len(_failed)} cells did not judge, re-run this cell: {_failed}")
     if _capped:
+        _also = (" Both the OpenAI key and the OpenRouter fallback are spent."
+                 if _os.environ.get("OPENROUTER_API_KEY") else
+                 " Paste an OpenRouter key to carry on without waiting.")
         print(f"\n! DAILY REQUEST CAP -- stopped cleanly after ~{_done_rows:,} rows, "
-              f"~{_need - _done_rows:,} to go. Everything graded is on the Hub. Re-run the "
-              f"notebook after the quota resets; the GPU cells will all skip.")
+              f"~{_need - _done_rows:,} to go.{_also} Everything graded is on the Hub; "
+              f"re-run the notebook and the GPU cells will all skip.")
     st_judged = not _capped and not _failed
     return (st_judged,)
 

@@ -10,6 +10,11 @@ been reported as successes.
 
 Writes <stem>_judged.jsonl (rows, resumable) and <stem>_summary.csv (the cell's own
 one-line table, which aggregate.py concatenates).
+
+With OPENROUTER_API_KEY set, a primary key that is spent for the day does not end the pass:
+grading continues on OpenRouter with the *same model*, so the cache key and the per-row
+resume stamp are unchanged and nothing already graded is re-graded. Which endpoint served a
+row is recorded in `judge_provider`, and summarised as `pct_via_fallback`.
 """
 import argparse
 import collections
@@ -48,10 +53,26 @@ class DailyQuotaExhausted(RuntimeError):
 # (RPD): Limit 10000, Used 10000". The provider's own "try again in 8.64s" is misleading:
 # the counter refills over a day, not seconds.
 _RPD = re.compile(r"requests per day|\bRPD\b", re.I)
+# Out of credit rather than out of rate. Same practical meaning for one key -- no ladder
+# fixes it -- so it routes to the fallback provider too, not to a retry.
+_NO_CREDIT = re.compile(r"insufficient_quota|exceeded your current quota|billing", re.I)
 
 
 def _daily_quota(e):
     return getattr(e, "status_code", None) == 429 and bool(_RPD.search(str(e)))
+
+
+def _key_exhausted(e):
+    """This key is spent for the day: nothing a backoff can outlast.
+
+    Three ways to say it, all terminal for the key and none for the *run* when a second
+    provider is configured: the RPD 429, a 429 that says the account is out of quota rather
+    than out of rate, and a bare 402.
+    """
+    code = getattr(e, "status_code", None) or getattr(
+        getattr(e, "response", None), "status_code", None)
+    return (_daily_quota(e) or code == 402
+            or (code == 429 and bool(_NO_CREDIT.search(str(e)))))
 
 
 def _retryable(e):
@@ -61,7 +82,7 @@ def _retryable(e):
     another request against the counter that is already empty. Retrying it turned an
     error that should surface in seconds into hours of grinding, so it raises instead.
     """
-    if _daily_quota(e):
+    if _key_exhausted(e):
         return False
     code = getattr(e, "status_code", None)
     if code is None:
@@ -226,12 +247,35 @@ def backend_for(model):
     raise SystemExit(f"unknown judge model {model!r}: expected claude-* or gpt-*")
 
 
+# OpenRouter is a *transport*, not another judge: it serves the same model, so the model id
+# stays the judge's identity and the cache key and per-row resume stamp are untouched. What
+# changes is only which endpoint the call went to, recorded per row as `judge_provider` so
+# the choice stays auditable after the fact. Its ids are namespaced, hence the map.
+OPENROUTER_BASE = "https://openrouter.ai/api/v1"
+OPENROUTER_ID = {"gpt-4o-mini": "openai/gpt-4o-mini",
+                 "gpt-4o": "openai/gpt-4o",
+                 "gpt-4.1-mini": "openai/gpt-4.1-mini",
+                 "claude-3-5-haiku-latest": "anthropic/claude-3.5-haiku",
+                 "claude-3-5-sonnet-latest": "anthropic/claude-3.5-sonnet"}
+
+
 class Judge:
-    """One pinned model at temperature 0, with a response-keyed cache (spec 0.11)."""
+    """One pinned model at temperature 0, with a response-keyed cache (spec 0.11).
+
+    The model is pinned; the *provider* is not. When the primary key is spent for the day
+    and `OPENROUTER_API_KEY` is set, calls move to OpenRouter and the pass continues with
+    the same model, the same cache and the same resume stamps -- so nothing already graded
+    is re-graded. `judge_provider` on each row says which endpoint produced it.
+    """
 
     def __init__(self, model, templates, cache_path):
         self.model, self.t = model, templates
         self.backend = backend_for(model)
+        self.provider = self.backend
+        # Only a model OpenRouter can actually serve gets a fallback; otherwise the switch
+        # would trade a quota error for a 404 halfway through a pass.
+        self.fallback = (OPENROUTER_ID.get(model)
+                         if os.environ.get("OPENROUTER_API_KEY") else None)
         self.template_sha = mf.sha256_obj([templates["strongreject_rubric_system"],
                                            templates["strongreject_rubric"],
                                            LABEL_INSTRUCTION])[:16]
@@ -252,11 +296,18 @@ class Judge:
     def client(self):
         with self._client_lock:
             if self._client is None:
-                pkg = "anthropic" if self.backend == "anthropic" else "openai"
+                pkg = "anthropic" if self.provider == "anthropic" else "openai"
                 try:
-                    if self.backend == "anthropic":
+                    if self.provider == "anthropic":
                         import anthropic
                         self._client = anthropic.Anthropic()
+                    elif self.provider == "openrouter":
+                        # OpenAI-compatible, so the same SDK and the same call shape;
+                        # only the base_url and the key differ.
+                        from openai import OpenAI
+                        self._client = OpenAI(
+                            base_url=OPENROUTER_BASE,
+                            api_key=os.environ["OPENROUTER_API_KEY"])
                     else:
                         from openai import OpenAI
                         self._client = OpenAI()
@@ -264,6 +315,22 @@ class Judge:
                     raise SystemExit(f"pip install {pkg}, or pass --dry-run to score "
                                      f"only the detector columns")
             return self._client
+
+    def switch_to_fallback(self):
+        """Move to OpenRouter. True if this call is the one that switched.
+
+        Idempotent under concurrency: every worker in flight sees the same exhausted key at
+        roughly the same moment, and only the first should rebuild the client or print.
+        """
+        with self._client_lock:
+            if self.provider == "openrouter" or not self.fallback:
+                return False
+            self.provider, self._client = "openrouter", None
+            return True
+
+    def wire_model(self):
+        """The id to put on the request, which is not the id that identifies the judge."""
+        return self.fallback if self.provider == "openrouter" else self.model
 
     def complete_retry(self, system, user):
         """`complete` with bounded backoff on throttling and transient server errors.
@@ -273,14 +340,34 @@ class Judge:
         times only delays the message that says what is wrong.
         """
         for attempt in range(RETRIES):
+            used = self.provider          # which endpoint this attempt actually went to
             try:
                 return self.complete(system, user)
             except Exception as e:
-                if _daily_quota(e):
-                    # Re-typed so main() can say what happened once, instead of every
-                    # worker printing a provider traceback that buries the one line
-                    # that matters.
-                    raise DailyQuotaExhausted(str(e)) from None
+                if _key_exhausted(e):
+                    # A ladder cannot outlast a spent key, but the *run* is only over if
+                    # there is nowhere else to send the call.
+                    if used == "openrouter":
+                        # The fallback is spent too, so there is nowhere left. Naming it
+                        # matters: otherwise the message sends you to the wrong dashboard.
+                        raise DailyQuotaExhausted(f"OpenRouter (fallback): {e}") from None
+                    if self.switch_to_fallback():
+                        print(f"\n  ! primary judge key exhausted, continuing on OpenRouter "
+                              f"as {self.wire_model()} -- same model, same cache, so "
+                              f"nothing already graded is re-graded. {str(e)[:110]}")
+                    elif not self.fallback:
+                        # Re-typed so main() says what happened once, instead of every
+                        # worker printing a provider traceback that buries the one line
+                        # that matters.
+                        raise DailyQuotaExhausted(str(e)) from None
+                    # else: a concurrent worker switched while this call was in flight, so
+                    # this error came from the old provider -- retry, do not end the run.
+                    #
+                    # The retry does spend an attempt. The budget is there for throttling
+                    # and is 7 deep, so borrowing one is cheaper than a while-loop that
+                    # could spin on a provider answering instantly.
+                    continue
+
                 if attempt == RETRIES - 1 or not _retryable(e):
                     raise
                 # FULL jitter -- uniform over [0, backoff), not backoff plus a second.
@@ -292,23 +379,28 @@ class Judge:
                 # simulation reproduced neither rate, so that slowdown has another
                 # explanation (serialised fsync per row is the open suspect).
                 time.sleep(random.uniform(0, min(BACKOFF_CAP, 2.0 ** attempt)))
+        # Only reachable if the last attempt was a provider switch, which `continue`s.
+        # Without this the function would return None and `raw` would cache it as a grade.
+        raise RuntimeError(f"judge: {RETRIES} attempts exhausted without a response")
 
     def complete(self, system, user):
         """One call at temperature 0. The rubric's system prompt stays the *system*
         prompt on both backends -- demoting it to user text is a different protocol
         from the published one (spec 5.3)."""
-        if self.backend == "anthropic":
+        if self.provider == "anthropic":
             msg = self.client().messages.create(
-                model=self.model, max_tokens=MAX_TOKENS, temperature=0,
+                model=self.wire_model(), max_tokens=MAX_TOKENS, temperature=0,
                 system=system, messages=[{"role": "user", "content": user}])
             return "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
         r = self.client().chat.completions.create(
-            model=self.model, max_tokens=MAX_TOKENS, temperature=0,
+            model=self.wire_model(), max_tokens=MAX_TOKENS, temperature=0,
             messages=[{"role": "system", "content": system},
                       {"role": "user", "content": user}])
         return r.choices[0].message.content or ""
 
     def key(self, forbidden, response):
+        """`self.model`, never `wire_model()`. The judge is the model, so a row graded
+        through either provider is the same cache entry and the same resume stamp."""
         return mf.sha256_obj([forbidden, response, self.model, self.template_sha])
 
     def raw(self, forbidden, response):
@@ -319,22 +411,29 @@ class Judge:
         requests, so two wrappers over one goal that both get refused identically will
         do it. They receive the same graded text, so the cost is a redundant call rather
         than a wrong grade.
+
+        Returns (text, cache_hit, provider). `provider` is which endpoint served *this*
+        call, so it is None on a cache hit -- the row it came from already recorded one.
         """
         k = self.key(forbidden, response)
         with self._lock:
             if k in self.cache:
-                return self.cache[k], True
+                return self.cache[k], True, None
         prompt = self.t["strongreject_rubric"].format(forbidden_prompt=forbidden,
                                                      response=response)
         text = self.complete_retry(self.t["strongreject_rubric_system"],
                                    f"{prompt}\n\n{LABEL_INSTRUCTION}")
+        served = self.provider
         with self._lock:
             self.cache[k] = text
             with self.cache_path.open("a", encoding="utf-8") as f:
-                f.write(json.dumps({"key": k, "raw": text}) + "\n")
+                # `provider` rides along for traceability and is deliberately NOT in the
+                # key: the grade belongs to the model, so either endpoint's answer is a
+                # valid hit for the other.
+                f.write(json.dumps({"key": k, "raw": text, "provider": served}) + "\n")
                 f.flush()
                 os.fsync(f.fileno())
-        return text, False
+        return text, False, served
 
 
 # -------------------------------------------------------------------- summary
@@ -376,6 +475,11 @@ def summarise(rows, meta):
                           for r in rows) / n, 1),
             "out_tokens": round(sum(r["out_tokens"] for r in rows) / n, 1),
             "hit_cap_rate": round(sum(r["hit_cap"] for r in rows) / n, 4),
+            # Same judge, different endpoint: this is what makes that auditable instead of
+            # invisible. Rows graded before the column existed, and cache hits, are null --
+            # neither is a fallback row, so both count as 0 here.
+            "pct_via_fallback": round(
+                100 * sum(r.get("judge_provider") == "openrouter" for r in rows) / n, 1),
             **{c: round(v, 3) for c, v in reads.items()}}
 
 
@@ -499,9 +603,20 @@ def main():
         cfg.load_env()
         judge = Judge(args.judge_model, templates, meta_dir / "judge_cache.jsonl")
         var = "OPENAI_API_KEY" if judge.backend == "openai" else "ANTHROPIC_API_KEY"
-        if not os.environ.get(var):
+        # The fallback key alone is enough to grade: the primary may already be spent for
+        # the day, and refusing to start then would be refusing the whole point of it.
+        if not os.environ.get(var) and not judge.fallback:
             raise SystemExit(f"{var} is not set. Put it in {cfg.REPO / '.env'} as "
-                             f"{var}=... (gitignored), or export it in the shell.")
+                             f"{var}=... (gitignored), or export it in the shell.\n"
+                             f"OPENROUTER_API_KEY on its own also works.")
+        if not os.environ.get(var):
+            judge.switch_to_fallback()
+            print(f"  {var} not set; grading on OpenRouter as {judge.wire_model()}")
+        elif judge.fallback:
+            print(f"  fallback armed: OpenRouter {judge.fallback} if this key is spent")
+        elif os.environ.get("OPENROUTER_API_KEY"):
+            print(f"  ! OPENROUTER_API_KEY is set but {args.judge_model} has no OpenRouter "
+                  f"id in OPENROUTER_ID; no fallback. Add it there to enable one.")
 
     out_path = meta_dir / f"{stem}_judged.jsonl"
     # Resume is per row, but a row only counts as done if it was graded by *this*
@@ -532,14 +647,18 @@ def main():
             d = detectors(r["response"], r.get("hit_cap", 0))
             scores = {"refused": None, "convincing": None, "specific": None,
                       "outcome": det_label(d), "strongreject": None, "judge_raw": None}
-            hit = 0
+            hit, served = 0, None
             if judge is not None:
-                raw, hit = judge.raw(r["request"], r["response"])
+                raw, hit, served = judge.raw(r["request"], r["response"])
                 scores = {**parse_scores(raw), "judge_raw": raw[-400:]}
                 if scores["outcome"] is None:
                     scores["outcome"] = det_label(d)
             scores["outcome_judge"] = scores["outcome"]
             scores["outcome"] = reconcile(scores["outcome"], d)
+            # Audit only, and outside `stamp` on purpose: the resume gate keys on
+            # (judge_model, template_sha), so recording the endpoint here cannot make a row
+            # look stale and force a re-grade. None on a cache hit -- no call was made.
+            scores["judge_provider"] = served
             with wlock:
                 fh.write(json.dumps({**r, **d, **scores, **stamp}, default=str) + "\n")
                 fh.flush()
