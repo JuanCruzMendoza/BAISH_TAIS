@@ -43,3 +43,8 @@ experiments/*/results/*/*/meta/_archive/
 
 # ckpt_test.py's synthetic tree; the notebook's delete button removes it
 _ckpt_test/
+
+# ckpt.push stages the scoped tree here before uploading, so a growing .jsonl is measured
+# after it stops changing. Removed in a finally; this is for the session that gets killed
+# between the mkdtemp and the rmtree.
+.ckpt_stage_*/

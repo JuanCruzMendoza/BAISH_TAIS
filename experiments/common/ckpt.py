@@ -6,9 +6,12 @@ the guarantee: the results are on the Hub the moment it returns. pull() puts the
 in the tree the scripts read, so run_key resume skips the cells already done.
 """
 import os
+import shutil
 import tarfile
+import tempfile
 import threading
 import time
+from fnmatch import fnmatch
 from pathlib import Path
 
 from huggingface_hub import HfApi, snapshot_download
@@ -150,6 +153,48 @@ def unpack_blobs(root=None, experiment=None, tag=None, keep_tar=False):
     return out
 
 
+# ------------------------------------------------------- staged push
+# Files a running cell may be appending to while a push reads them. upload_folder stats a
+# file and then uploads it, so a row landing in between commits a size that does not
+# describe the content -- and the strict download path then refuses the file from every
+# machine, forever. Measured: steer_induce__persona_v2__add__L15__a1.jsonl recorded at
+# 238,254 with 335,267 stored, byte 238,254 mid-row.
+LIVE = ("*.jsonl",)
+
+
+def _stage(root, patterns, ignore, dest):
+    """Mirror the scoped tree into `dest`, snapshotting the append-only files.
+
+    A snapshot fixes the race by making the file stop changing before it is measured. It
+    may still stop mid-row -- nothing here can pause a generating subprocess -- so it is
+    trimmed back to its last complete line, which costs nothing: every writer in this repo
+    ends a row with a newline, and spec 0.11's resume reads what is there and regenerates
+    the rest.
+
+    Everything not append-only is hard-linked, so the extraction blob cache costs directory
+    entries rather than 1.6 GB. That is also why `dest` has to sit on root's filesystem;
+    the copy2 fallback is only for a filesystem that refuses the link.
+    """
+    from huggingface_hub.utils import filter_repo_objects
+
+    rel = (p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
+    keep = list(filter_repo_objects(rel, allow_patterns=patterns, ignore_patterns=ignore))
+    snapped = 0
+    for r in keep:
+        src, dst = root / r, dest / r
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if any(fnmatch(r, pat) for pat in LIVE):
+            data = src.read_bytes()
+            dst.write_bytes(data[: data.rfind(b"\n") + 1])
+            snapped += 1
+        else:
+            try:
+                os.link(src, dst)
+            except OSError:                      # cross-device, or a filesystem without it
+                shutil.copy2(src, dst)
+    return len(keep), snapped
+
+
 def push(repo_id, root=None, token=None, msg="ckpt", experiment=None, tag=None,
          pack=False):
     root = Path(root or cfg.REPO / "experiments")
@@ -166,10 +211,21 @@ def push(repo_id, root=None, token=None, msg="ckpt", experiment=None, tag=None,
                                 commit_message=f"{msg}: {BLOB_TAR} ({n} blobs)")
                 tar.unlink()
             ignore.append("*/acts/blobs/*")
-        return api.upload_folder(
-            folder_path=str(root), repo_id=repo_id, repo_type="dataset",
-            allow_patterns=scope(experiment, tag), ignore_patterns=ignore,
-            commit_message=msg)
+        patterns = scope(experiment, tag)
+        # Beside root, not in /tmp: os.link needs one filesystem, and falling back to
+        # copy2 for every blob would turn a free mirror into a 1.6 GB one. Dot-prefixed
+        # and removed in the finally, so it never shows up in git status for long -- and it
+        # is root's *parent*, so a concurrent walk of root cannot see it.
+        stage = Path(tempfile.mkdtemp(dir=str(root.parent), prefix=".ckpt_stage_"))
+        try:
+            n_all, n_snap = _stage(root, patterns, ignore, stage)
+            print(f"  staged {n_all} file(s), {n_snap} snapshotted")
+            return api.upload_folder(
+                folder_path=str(stage), repo_id=repo_id, repo_type="dataset",
+                allow_patterns=patterns, ignore_patterns=ignore,
+                commit_message=msg)
+        finally:
+            shutil.rmtree(stage, ignore_errors=True)
 
 
 def try_push(repo_id, root=None, token=None, msg="ckpt", experiment=None, tag=None,

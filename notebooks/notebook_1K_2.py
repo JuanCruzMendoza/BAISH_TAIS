@@ -119,21 +119,26 @@ def _(mo):
     here does. That also removes the read-quota 429 that `HF_HUB_DISABLE_XET=1` was meant
     to dodge there.
 
-    **A push that reads a file while a subprocess appends to it corrupts that file's record
-    on the Hub**, and one bad record stops the whole pull. It happened on 2_run:
-    `steer_induce__persona_v2__add__L15__a1.jsonl` is committed as 238,254 bytes with
-    335,267 stored, and byte 238,254 lands *mid-line* — the hourly `autopush` stat'd the
-    file partway through a row while `steer_batch` was appending, then hashed content that
-    had since grown. `push`'s lock serialises pushes against each other and does nothing
-    about a subprocess writing underneath one. A fresh clone reproduces it exactly, because
+    **The push is staged, and that is not cosmetic.** `upload_folder` stats a file and then
+    uploads it, so a row landing in between commits a size that does not describe the
+    content — and the strict download path then refuses that file from every machine,
+    permanently. It happened on 2_run before the fix:
+    `steer_induce__persona_v2__add__L15__a1.jsonl` went up recorded at 238,254 bytes with
+    335,267 stored, byte 238,254 landing *mid-row*, because the hourly timer read it while
+    `steer_batch` was appending. `push`'s lock serialises pushes against each other and did
+    nothing about a subprocess writing underneath one. A fresh clone reproduced it exactly:
     the damage is server-side.
 
-    Such a file is by construction the **resume partial of a cell that never finished** — its
-    manifest is `in_progress` — so it is worth a regeneration, not a result. `ckpt.pull`
-    therefore clears any local `.incomplete` partials, retries, and if the mismatch persists
-    fetches file by file and **skips** the unfetchable ones, naming them. `ST_COMPLETE`
-    requires the `.jsonl` beside the manifest, so a skipped cell regenerates rather than
-    being silently counted as done.
+    `push` now mirrors the scoped tree into a staging directory first and uploads from
+    there, so every file has stopped changing before it is measured. The `.jsonl` files are
+    snapshotted and trimmed to their last complete row — a mid-row cut costs nothing, since
+    spec 0.11's resume reads what is there and regenerates the rest. Everything else is
+    hard-linked, so the mirror is directory entries rather than bytes.
+
+    `pull` covers the damage already on the Hub: it clears local `.incomplete` partials,
+    retries, and if a mismatch survives that, fetches file by file and **skips** the
+    unfetchable ones, naming them. `ST_COMPLETE` requires the `.jsonl` beside the manifest,
+    so a skipped cell regenerates rather than being silently counted as done.
 
     It does **not** try `HF_HUB_DISABLE_XET`. Measured against this very file on hub 1.7.1:
     Xet fetched all 335,267 bytes and the *plain* path raised `Consistency check failed`,
