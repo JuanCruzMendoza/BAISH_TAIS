@@ -65,21 +65,22 @@ def _(TAG, mo):
     mo.md(f"""
     # {TAG} — steering_jailbreaks, **2_run**
 
-    Spec: `experiments/steering_jailbreaks/dev.md`, *{TAG} / 2_run*. **40 cells**, and
-    nothing else: extraction and `probe_jailbreak_detection` are done and are only *read*
-    here.
+    Spec: `experiments/steering_jailbreaks/dev.md`, *{TAG}*. Extraction and
+    `probe_jailbreak_detection` are done and are only *read* here.
 
-    Two questions 1_run left open:
+    **2_run — done, 40 cells.** (1) α extended to 1.00 / 1.25 at all four 1_run layers, on
+    both sets. (2) `story_v2_1k` re-run at **L15** and `persona_v2` at **L4**, their best
+    jailbreak-*detection* layers, over 0.25 → 1.25 plus `ablate`. 18,895 generations.
 
-    1. **Is α saturated?** All four 1_run layers — `harm_v2` L21, `eval_v2` L9,
-       `story_v2_1k` L23, `persona_v2` L15 — get **α = 1.00 and 1.25** on top of 1_run's
-       0.25 / 0.50 / 0.75, on both sets.
-    2. **Is the `cohens_dz` layer the right *steering* layer?** `story_v2_1k` is re-run at
-       **L15** and `persona_v2` at **L4** — their best jailbreak-*detection* layers — over
-       the full grid 0.25 / 0.50 / 0.75 / 1.00 / 1.25 plus `ablate`.
+    **3_run — this pass, 4 cells.** `eval_v2` at L9 is the only arm that had not found its
+    ceiling: induce reached **+45.1** ASR on coherent rows at α=1.25 with just 9.9%
+    degeneracy, still climbing. It gets **α = ±1.50 and ±2.00**. 1,882 generations, ≈20 min
+    GPU and ≈15 min of judging.
 
-    21 cells on the successes, 19 on the refusals: **18,895 generations**, ≈3.0 h GPU and
-    ≈2.6 h of judging.
+    `ONLY = {{"eval_v2"}}` in the cell-list cell is what keeps the pass to those four. It is a
+    scope filter on job *emission*, so it holds even if a manifest fails to return from the
+    Hub — the completeness check alone would re-generate such a cell. Widen or clear it to
+    re-open the earlier passes.
 
     ## Resume
 
@@ -357,9 +358,10 @@ def _(mo):
     the refusal set. "α = 1.25 restore" is therefore **−1.25** for story and **+1.25** for
     harm; a hand-written sign slip fails at parse time rather than producing a floor.
 
-    Only **two** new `noop`s. The no-op is per (set, layer set), so `story_v2_1k` at L15
-    reuses the one 1_run already ran there for `persona_v2`, and L9 / L21 / L23 are
-    unchanged.
+    The no-op is per (set, layer set), so 2_run needed only two new ones — `story_v2_1k` at
+    L15 reuses `persona_v2`'s — and 3_run needs none, since L9 already has its pair from
+    1_run. A no-op is emitted only for a layer that has no complete one, derived from the
+    jobs that survive `ONLY`.
 
     `ablate` appears only where suppressing that direction is the hypothesis — the framing
     axes on the success set, as in 1_run. Ablating `story` / `persona` on already-refused
@@ -392,6 +394,15 @@ def _(MODEL, ST_COMPLETE, TAG, mo):
     # same layer, so their stems differ and the L15 no-op serves both.
     NEW_AXES, GRID = ({"story_v2_1k": 15, "persona_v2": 4},
                       (0.25, 0.50, 0.75, 1.00, 1.25))
+    # 3_run. eval_v2's induce arm is the only one that had not found its ceiling by α=1.25:
+    # +45.1 ASR on coherent rows at 9.9% degeneracy, still climbing. Two more rungs, that
+    # axis only. {axis: (layer, alphas)}.
+    EXTRA = {"eval_v2": (9, (1.50, 2.00))}
+    # Hard scope for this pass: only these axes may emit a cell. Deliberately independent of
+    # the manifest check below -- that one skips what is *recorded* as done, so a manifest
+    # that failed to come back from the Hub would silently re-generate a finished cell. This
+    # cannot. Set to None to re-open the full 2_run list.
+    ONLY = {"eval_v2"}
 
     # Read from the config, not hardcoded: the band -- and so which layer needs the
     # out-of-band opt-in -- is a function of depth. A small JSON, not the weights.
@@ -418,8 +429,19 @@ def _(MODEL, ST_COMPLETE, TAG, mo):
                 out.append(["--direction", axis, "--layers", str(layer), *_oob(layer)])
             for a in GRID:
                 out.append(_add(axis, layer, _cell.RESTORE_SIGN[axis] * flip * a))
-        for layer in sorted(set(NEW_AXES.values()) - set(ST_1RUN.values())):
-            out.append(["--arm", "noop", "--layers", str(layer), *_oob(layer)])
+        for axis, (layer, alphas) in EXTRA.items():
+            for a in alphas:
+                out.append(_add(axis, layer, _cell.RESTORE_SIGN[axis] * flip * a))
+        if ONLY is not None:
+            out = [j for j in out if j[j.index("--direction") + 1] in ONLY]
+        # A no-op per layer these targets actually steer, and only where one is not already
+        # complete. Derived from the emitted jobs *after* the ONLY filter, so narrowing the
+        # scope narrows this too -- and an eval-only pass adds none, since L9 already has its
+        # pair from 1_run.
+        _script = "steer_single" if prompt_set == "success" else "steer_induce"
+        for layer in sorted({int(j[j.index("--layers") + 1]) for j in out}):
+            if not ST_COMPLETE(f"{_script}__noop__L{layer}"):
+                out.append(["--arm", "noop", "--layers", str(layer), *_oob(layer)])
         return out
 
     def _stems(script, prompt_set, job):
@@ -507,8 +529,9 @@ def _(mo):
     mo.md(r"""
     ## Judge — API, and **two** rate limits
 
-    One call per row, **18,895** over the 40 new cells, ≈$5.6. Two separate ceilings bind,
-    and they need different handling:
+    One call per ungraded row — **1,882** for 3_run's four cells, ≈$0.6, against 18,895 and
+    ≈$5.6 when 2_run's forty went through. Two separate ceilings bind, and they need
+    different handling:
 
     | limit | measured | what it costs | response |
     |---|---|---|---|

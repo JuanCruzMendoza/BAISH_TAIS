@@ -545,3 +545,36 @@ new no-ops.
   one direction it is not yet evidence for a rule.
 - α is still not comparable across directions or layers (`|Δh|` is), and there is still **no
   `random` arm** — nothing here is a specificity claim.
+
+### 3_run
+
+**Objective:** find `eval_v2`'s ceiling. It is the only arm 2_run left still climbing — induce at
+α=1.25 reached +45.1 ASR on coherent rows at 9.9% degeneracy, against +34.7 at α=0.75 — so its
+apparent weakness at 1_run's α ≤ 0.75 was under-pushing, not absence of an effect.
+
+#### Configs
+
+`eval_v2` at its 1_run layer **L9** ⚠, two more rungs on each side. No other direction, no new
+layer, and no new `noop` — L9's pair exists from 1_run.
+
+| # | script | set | direction | mode | L | α |
+|---|---|---|---|---|---|---|
+| 1–2 | `steer_single` | 508 successes | `eval_v2` | `add` | 9 ⚠ | +1.50, +2.00 |
+| 3–4 | `steer_induce` | 433 refusals | `eval_v2` | `add` | 9 ⚠ | −1.50, −2.00 |
+
+**4 cells, 1,882 generations** (≈20 min GPU, ≈15 min judging, ≈$0.6). Batch parameters stay at
+1_run's `32 / 65536`, so these pair against the existing L9 no-ops.
+
+#### Metrics
+
+Unchanged, and read on **non-degenerate rows only** — a broken response scores `strongreject == 0`
+for 87% of degenerate rows, exactly what a refusal scores, so an all-rows ASR cannot tell a restored
+refusal from a destroyed model.
+
+#### Open
+
+- **α=2.00 is past where every other direction collapsed.** `harm` and `persona` were ≥96%
+  degenerate by α=1.25; `eval` was at 3.5 / 9.9%. If it breaks here the answer is "the ceiling is
+  breakage", which is still an answer — but read `pct_degenerate` and the surviving n before ΔASR.
+- The restore side is flat from α=0.5 (−13.7 → −10.1), so these two rungs are expected to confirm a
+  ceiling there rather than move it. They are run for the symmetric ladder, not on a prediction.
