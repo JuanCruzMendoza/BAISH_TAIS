@@ -316,7 +316,7 @@ two ASR columns are what decide the verdict.
   — with the study's most potent axis sitting at +0.137 in the same subspace. Quantitatively live: at
   α=−0.75 (push 46.6) the persona component is 6.4, and persona@L15 already reaches −86.1 at push
   16.5. A persona contaminant is a sufficient alternative explanation for story's only non-trivial
-  ASR effect, so H1 needs this cell. `par_norm` at `α·|cos|` is the arm that answers it.
+  ASR effect, so H1 needs this cell. `par_component` is the arm that answers it.
 - **`persona_v2 × harm_v2` is already answered, on both layers, at zero GPU cost.** 2_run's persona@L4
   restores refusal where `cos(persona, harm)` is **+0.126** — the sign that injects harm the *induce*
   way — and its `Δread_harm` is **+13**, opposite to the same-layer geometry. The same-layer harm
@@ -343,14 +343,17 @@ Recommended: story@L15 restore α=−0.75 / induce α=+0.25 (2_run's own clean p
 supplies the free reference curve); persona@L15 induce α=+0.25 (64% of headroom), restore needs a new
 α ≈ 0.125 cell because 0.25 is already at 90%.
 
-Four things to fix before running: `perp_effect` is not a distinguishable arm — `α_eff = α₀/√(1−cos²)`
-is +1% to +5% here, below the ±3pp noise floor, and it collapsed onto `perp_alpha` at 50_per_direction
-because `match_alpha`'s grid steps by √2 and cannot resolve that. `par_norm` is unit-normalized, so at
-cos 0.137 it pushes **7.3×** the parallel component's real strength and needs an `α·|cos|` arm to be a
-decomposition of the reference. `steer_pairs` hardcodes `PROMPT_SET = "success"`, so the induce column
-needs a prompt-set switch with the sign mirrored off `RESTORE_SIGN`. And `single_twin` does not compare
-`batch_size`, so the free reference must be run at the steer_single cells' batching or the twin was
-generated at a different composition than the perp arms.
+Three things to know before running. **`perp_effect` is not a distinguishable arm** — `α_eff =
+α₀/√(1−cos²)` is +1% to +5% here, below the ±3pp noise floor, and it collapsed onto `perp_alpha` at
+50_per_direction because `match_alpha`'s grid steps by √2 and cannot resolve that; pass `--arms`
+explicitly. **`par_norm` was replaced by `par_component`** (unnormalised, `|u| = |cos|`) — the old arm
+injected `1/|cos|` of the reference's b-content, 4.2× at cos 0.240 and 7.3× at cos 0.137, and would
+have read "b suffices" from the overdose; the rename means 50_per_direction's eight `par_norm` cells
+cannot cache-hit under the new semantics. **`single_twin` does not compare `batch_size`**, so pass the
+steer_single cells' batching or the free reference was generated at a different batch composition than
+the arms — greedy is bit-reproducible only at fixed composition. The induce column needed a
+`--prompt-set` switch, now added: the sign is `RESTORE_SIGN × SET_SIGN`, and `single_twin` looks up
+`steer_induce` stems on the refusal set rather than `steer_single` ones.
 
 ## 2_run — is the detection-best layer the better *steering* layer?
 

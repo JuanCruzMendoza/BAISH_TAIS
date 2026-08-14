@@ -141,7 +141,17 @@ Does direction `a` still work once `b` is projected out of it? Four arms per ord
 | `unprojected` | `û_a` | reference |
 | `perp_alpha` | `unit(û_a − (û_a·û_b) û_b)` | same as reference |
 | `perp_effect` | same vector | retuned so the a-probe readout at layer L moves as far as the reference did |
-| `par_norm` | `unit((û_a·û_b) û_b)` | same as reference — the control that makes the result readable |
+| `par_component` | `(û_a·û_b) û_b`, **not** unit-norm | same as reference — the control that makes the result readable |
+
+**`par_component` is not normalised, and that is the point.** Its norm is `|cos|`, so at the
+reference α it injects exactly the b-content the reference push carries. Unit-normalising it — the
+arm's original form, `par_norm` — injects `1/|cos|` times that, **4.2×** at cos 0.240 and **7.3×** at
+cos 0.137, so a sufficiency arm would be given four to seven times the dose it is meant to model and
+would read "b suffices" from the overdose alone. `perp_alpha` stays normalised on purpose: the
+necessity question is whether `a` still works *at unchanged strength* when re-pointed off `b`, and the
+√(1−cos²) it drops is 1–5% here, below the noise floor. So the two arms are not an algebraic split of
+the reference; they are necessity and sufficiency measured separately. `push_frac` in each manifest
+records the arm's actual push fraction, since α alone no longer states it.
 
 **Default `--layers steer_band`.** The projection is recomputed **per layer** (`û_a[l]`, `û_b[l]` differ;
 cross-layer projection is meaningless), so a joint set is fine. `steer_band` is the default because it is
@@ -578,3 +588,89 @@ refusal from a destroyed model.
   breakage", which is still an answer — but read `pct_degenerate` and the surviving n before ΔASR.
 - The restore side is flat from α=0.5 (−13.7 → −10.1), so these two rungs are expected to confirm a
   ceiling there rather than move it. They are run for the symmetric ladder, not on a prediction.
+
+### 4_run — projection (§5.6)
+
+**Objective:** does direction `a` still move behaviour once `b` is projected out of it? The pair that
+motivates the run is `story_v2_1k` × `persona_v2` at **L15**: story@L15 is the only story cell with a
+non-trivial ASR effect (−13.9 restore, +9.1 induce), it sits at persona's own chosen layer, and
+`cos = +0.137` there — so a persona contaminant is a live alternative explanation for H1's one
+positive result. The three persona-anchored pairs decompose the study's strongest cell.
+
+#### The two arms
+
+Per layer `l`, with `û_a`, `û_b` the unit directions **at that layer** and `c = û_a · û_b`:
+
+```
+û_a = c·û_b + r        r = û_a − c·û_b        r·û_b = 0        |r| = √(1−c²)
+```
+
+| arm | vector | ‖v‖ | asks |
+|---|---|---|---|
+| `unprojected` | `û_a` | 1 | reference |
+| `perp_alpha` | `r / √(1−c²)` | 1 | **necessity** — does `a` still work with `b` fully removed? |
+| `par_component` | `c·û_b` | **\|c\|** | **sufficiency** — does `b`'s share alone reproduce it? |
+
+Every arm is pushed at the **same signed α**, `Δh_l = α·σ_l·v_l`, with `σ_l` read from **a's**
+extraction file for all three so they share one absolute scale.
+
+**Why `perp_alpha` is normalised and `par_component` is not.** Necessity asks whether `a` works *at
+unchanged strength* once re-pointed off `b`, so `perp_alpha` is renormalised to ‖v‖=1; the √(1−c²) it
+drops is 1–5% here, under the ±3pp noise floor. Sufficiency asks what `b`'s **actual share of the
+reference push** does, which is `α·c` — so `par_component` must keep ‖v‖=|c|. Normalising it (the
+arm's earlier form, `par_norm`) injects `1/|c|` times that — 4.2× at cos 0.240, 7.3× at cos 0.137 —
+and would read "b suffices" from the overdose alone. The two arms are therefore *not* an algebraic
+split of the reference; they are necessity and sufficiency measured separately. `push_frac` in each
+manifest records the arm's actual ‖v‖.
+
+Component-wise: `unprojected` = α on `a`, α·c on `b`; `perp_alpha` = α·√(1−c²) on `a`, **0** on `b`;
+`par_component` = α·c on `b`, **α·c²** on `a` — so `par_component` is not a b-only arm and tests the
+*shared* component's sufficiency.
+
+`perp_effect` is **not run**: `α_eff = α₀/√(1−c²)` is +1% to +5% here, below the noise floor.
+
+#### Configs
+
+All at **L15**, `add`, greedy, 1_run's batch `32 / 65536` — so `unprojected` resolves to the existing
+`steer_single` / `steer_induce` twin in every config and is skipped. α is the anchor's largest
+`deg`-clean ASR delta (story −0.75 / +0.25, persona −0.50 / +0.25); its sign is
+`RESTORE_SIGN × SET_SIGN`, so success and refusal cells never share a stem.
+
+| # | set | a → b | c | α | `perp_alpha` | `par_component` |
+|---|---|---|---|---|---|---|
+| 1–2 | 508 successes | `story_v2_1k` → `persona_v2` | +0.137 | −0.75 | story −0.743, persona 0 | persona −0.103, story −0.014 |
+| 3–4 | 508 successes | `persona_v2` → `story_v2_1k` | +0.137 | −0.50 | persona −0.495, story 0 | story −0.069, persona −0.009 |
+| 5–6 | 508 successes | `persona_v2` → `eval_v2` | +0.296 | −0.50 | persona −0.478, eval 0 | eval −0.148, persona −0.044 |
+| 7–8 | 508 successes | `persona_v2` → `harm_v2` | −0.240 | −0.50 | persona −0.485, harm 0 | harm +0.120, persona −0.029 |
+| 9–10 | 433 refusals | `story_v2_1k` → `persona_v2` | +0.137 | +0.25 | story +0.248, persona 0 | persona +0.034, story +0.005 |
+| 11–12 | 433 refusals | `persona_v2` → `story_v2_1k` | +0.137 | +0.25 | persona +0.248, story 0 | story +0.034, persona +0.005 |
+| 13–14 | 433 refusals | `persona_v2` → `eval_v2` | +0.296 | +0.25 | persona +0.239, eval 0 | eval +0.074, persona +0.022 |
+| 15–16 | 433 refusals | `persona_v2` → `harm_v2` | −0.240 | +0.25 | persona +0.243, harm 0 | harm −0.060, persona +0.014 |
+
+Coefficients are in α units; multiply by `σ_l`. Signs: **−** suppresses story/persona (restoring),
+**+** adds harm/eval (restoring). **16 cells, 7,528 generations** (≈1.3 h GPU, ≈1 h judging, ≈$2.4);
+no new references and no new `noop` — L15's pair exists on both sets from 1_run.
+
+#### Metrics
+
+Unchanged, target vs its own `noop` at L15 on the same prompt set, on non-degenerate rows. Each cell
+also reports `cos_ab_band` against the ±0.050 null band and `push_frac`; the off-axis `read_*` deltas
+are the manipulation check that says whether the contamination was geometric at all.
+
+#### Open
+
+- **α is at the anchor's peak, so the reference is saturated on the persona pairs** (ASR 1.6 against a
+  curve that moves 11pp between α=0.25 and 0.50). Partial attribution is unrecoverable there — only
+  the qualitative necessity read is, and it is bimodal enough to survive: effect intact ⇒ ASR stays
+  near 2, effect carried by `b` ⇒ ASR jumps toward 96.
+- **Same-layer projection cannot reach the leakage 1_run measured.** persona@L15 moves `read_harm`
+  +117 while `cos(persona@L15, harm@L21)` is −0.051, and 2_run's persona@L4 cell already falsified the
+  same-layer harm route by sign. A null on pair 7–8 means the same-layer harm component is not
+  load-bearing, **not** that harm is not the mechanism.
+- **`persona → eval` is a sign control, not a leakage test.** `c = +0.296` but eval is a refusal axis,
+  so the reference pushes eval at −0.148 — eval's *inducing* sign, against the −94.6 it would have to
+  explain. `par_component` there should move ASR the wrong way; if it does not, the arm is not doing
+  what the decomposition says.
+- **`persona → story` is answered by arithmetic** (story alone at full α gets −13.9, so 14% of it
+  cannot produce −94.6). It is run as a method control, not on a prediction.
+- No `random` arm, so nothing here is a specificity claim.

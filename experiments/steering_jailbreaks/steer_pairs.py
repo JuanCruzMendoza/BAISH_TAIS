@@ -9,7 +9,8 @@ prompts that jailbroke the unsteered model:
     perp_alpha           unit(u_a - (u_a.u_b) u_b)  same alpha  plan 7c as written
     perp_effect          the same vector, alpha retuned so the a-probe readout at layer L
                          moves as far as the unprojected run moved it
-    par_norm             unit((u_a.u_b) u_b)        same alpha  the control
+    par_component        (u_a.u_b) u_b              same alpha  the control -- NOT unit
+                         norm, so it delivers the b-content the reference actually has
 
 Projection is recomputed **per layer**: u_a[l] and u_b[l] differ, so a joint set steers a
 different a_perp at each layer. Cross-layer projection is meaningless (spec 2.3), which is
@@ -38,12 +39,23 @@ from experiments.common import (config as cfg, generate as gen, hooks as hk,
 from experiments.steering_jailbreaks import cell, sets
 
 SCRIPT = "steer_pairs"
-PROMPT_SET = "success"
-ARMS = ("unprojected", "perp_alpha", "perp_effect", "par_norm")
+ARMS = ("unprojected", "perp_alpha", "perp_effect", "par_component")
+
+# Which 5.4/5.5 script owns each prompt set, and so which stem `unprojected` would duplicate.
+OWNER = {"success": "steer_single", "refusal": "steer_induce"}
+# The sign of `add` that pushes the wanted way on each set: 0.5's restoring sign on the
+# successes, its mirror on the refusals. Same rule as steer_single/steer_induce's mode map.
+SET_SIGN = {"success": +1.0, "refusal": -1.0}
 
 
 def decompose(ua, ub, layers):
-    """Per layer: unit a_perp, unit a_par, and cos(u_a, u_b)."""
+    """Per layer: unit a_perp, the a_par *component*, and cos(u_a, u_b).
+
+    `par` is deliberately **not** unit-normalised: |p| = |cos|, so pushing it at the
+    reference alpha delivers exactly the b-content the reference push delivers. Normalising
+    it would inject 1/|cos| times that -- 4.2x at cos 0.240 -- and a sufficiency arm given
+    four times the dose it is meant to model answers nothing.
+    """
     perp, par, cosv = np.array(ua), np.array(ua), np.zeros(ua.shape[0])
     for l in layers:
         c = float(ua[l] @ ub[l])
@@ -51,7 +63,7 @@ def decompose(ua, ub, layers):
         r = ua[l] - p
         cosv[l] = c
         perp[l] = r / max(np.linalg.norm(r), 1e-12)
-        par[l] = p / max(np.linalg.norm(p), 1e-12)
+        par[l] = p
     return perp, par, cosv
 
 
@@ -93,14 +105,19 @@ def match_alpha(tok, model, prompts, u, sigma, layers, target, u_final, base,
     return float(best), trace
 
 
-def single_twin(lay, a_name, layer_spec, alpha, config):
-    """The steer_single cell `unprojected` would duplicate, if it exists and matches.
+def single_twin(lay, a_name, layer_spec, alpha, config, batch_size, max_batch_tokens):
+    """The 5.4/5.5 cell `unprojected` would duplicate, if it exists and matches.
 
     Same vector, mode, layers, alpha and prompt set means the same generations -- byte
     identical, since composition is fixed by the prompt set. Compared on the semantic
     knobs only: steer_single's config carries cap/tau keys this script never sets.
+
+    Batching is compared too, unlike the semantic knobs: greedy is bit-reproducible only at
+    fixed batch size *and* composition (spec 0.10), so a twin generated at another batch
+    size is not a reference the perp arms can be paired against.
     """
-    stem = cell.stem_for("steer_single", a_name, "add", layer_spec, alpha, None, "target")
+    twin_script = OWNER[config["prompt_set"]]
+    stem = cell.stem_for(twin_script, a_name, "add", layer_spec, alpha, None, "target")
     path = Path(lay.meta) / f"{stem}_manifest.json"
     if not path.exists():
         return None
@@ -112,6 +129,12 @@ def single_twin(lay, a_name, layer_spec, alpha, config):
     prior = m.get("config", {})
     if any(prior.get(k) != config.get(k) for k in keys):
         return None
+    if (prior.get("batch_size"), prior.get("max_batch_tokens")) != (batch_size,
+                                                                   max_batch_tokens):
+        print(f"  ! {stem} matches semantically but was generated at batch "
+              f"{prior.get('batch_size')}/{prior.get('max_batch_tokens')}, not "
+              f"{batch_size}/{max_batch_tokens} -- not reusable as a reference")
+        return None
     return stem
 
 
@@ -122,6 +145,8 @@ def main():
     ap.add_argument("--pair", required=True, help="a,b -- b is projected out of a")
     ap.add_argument("--both-orders", action="store_true", help="also run (b, a)")
     ap.add_argument("--layers", default="steer_band", help=cfg.LAYER_SPEC)
+    ap.add_argument("--prompt-set", default="success", choices=list(OWNER),
+                    help="success = restore refusal (5.4), refusal = induce compliance (5.5)")
     ap.add_argument("--alpha", type=float, default=0.5, help="magnitude; sign from spec 0.5")
     ap.add_argument("--arms", default=",".join(ARMS))
     ap.add_argument("--force-unprojected", action="store_true",
@@ -149,10 +174,10 @@ def main():
     layers = cfg.parse_layers(args.layers, n_layers)
 
     _, all_rows = sets.jailbreak_rows(args.model, args.tag, tok=tok)
-    keep = set(sets.outcome_ids(sets.baseline_judged(args.model, args.tag), "success"))
+    keep = set(sets.outcome_ids(sets.baseline_judged(args.model, args.tag), args.prompt_set))
     rows = [r for r in all_rows if r["unit_id"] in keep]
     if not rows:
-        raise SystemExit("baseline has no successful jailbreaks: nothing to project")
+        raise SystemExit(f"baseline has no {args.prompt_set} rows: nothing to project")
     prompts = [r["prompt"] for r in rows]
 
     orders = [tuple(names)] + ([tuple(reversed(names))] if args.both_orders else [])
@@ -163,9 +188,10 @@ def main():
         perp, par, cosv = decompose(ua, ub, layers)
         null = met.random_cos_band(ua.shape[-1])
         stab = lopo_stability(pa, layers)
-        alpha = cell.RESTORE_SIGN[a_name] * abs(args.alpha)
+        alpha = cell.RESTORE_SIGN[a_name] * SET_SIGN[args.prompt_set] * abs(args.alpha)
 
-        print(f"\n{a_name} - proj({b_name}), layers {layers[0]}-{layers[-1]}, alpha {alpha:+g}")
+        print(f"\n{a_name} - proj({b_name}) on {args.prompt_set}, "
+              f"layers {layers[0]}-{layers[-1]}, alpha {alpha:+g}")
         print(f"  cos(u_a,u_b) band-mean {cosv[layers].mean():+.3f}  "
               f"(null band +/-{null:.3f})   lopo_cos_stability "
               f"{'n/a' if stab is None else f'{stab:.3f}'}")
@@ -191,11 +217,17 @@ def main():
 
         for arm in arms:
             u, a = {"unprojected": (ua, alpha), "perp_alpha": (perp, alpha),
-                    "perp_effect": (perp, alpha_eff), "par_norm": (par, alpha)}[arm]
+                    "perp_effect": (perp, alpha_eff), "par_component": (par, alpha)}[arm]
+            # |u| is 1 except for par_component, where it is |cos|. alpha alone therefore
+            # does not state that arm's push, so record the fraction it actually delivers.
+            push_frac = round(float(np.mean([np.linalg.norm(u[l]) for l in layers])), 4)
             # `unprojected` is u_a alone: no b in the stem, and none in the run_key
             # either, or the second pair would archive the first pair's manifest and
             # regenerate the identical rows.
             solo = arm == "unprojected"
+            # The prompt set is not in the stem and does not need to be: SET_SIGN flips the
+            # sign of `a` between the two sets, so a success cell and a refusal cell at the
+            # same |alpha| always stem differently (`a-0.75` vs `a0.75`).
             stem = mf.stem(SCRIPT, a_name if solo else f"{a_name}-perp-{b_name}",
                            cfg.layer_stem(args.layers), f"a{a:g}", arm)
             ut = torch.from_numpy(np.ascontiguousarray(u)).float()
@@ -203,9 +235,10 @@ def main():
             specs = hk.build("add", layers, ut, counter, alpha=a, sigma=sigma)
             config = {"direction": a_name, "projected_out": None if solo else b_name,
                       "arm": arm,
-                      "mode": "add", "prompt_set": PROMPT_SET,
+                      "mode": "add", "prompt_set": args.prompt_set,
                       "layers_spec": str(args.layers), "layers": layers,
                       "n_layers_steered": len(layers), "alpha": a,
+                      "push_frac": push_frac,
                       "per_layer_coef": hk.per_layer_coef("add", layers, a),
                       "alpha_unprojected": None if solo else alpha,
                       "self_effect_target": None if solo else round(target, 4),
@@ -221,7 +254,8 @@ def main():
                       "direction_run_key": pa.get("run_key"),
                       "projected_run_key": None if solo else pb.get("run_key")}
             if solo and not args.force_unprojected:
-                twin = single_twin(lay, a_name, args.layers, a, config)
+                twin = single_twin(lay, a_name, args.layers, a, config,
+                                   args.batch_size, args.max_batch_tokens)
                 if twin is not None:
                     print(f"  {arm}: identical to {twin} -- skipped. Read that cell as "
                           f"the reference (--force-unprojected to regenerate)")
