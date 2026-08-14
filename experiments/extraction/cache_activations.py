@@ -91,14 +91,19 @@ def cache_one(lay, mdl_env, dataset, split, args, subsample, poles):
                   f"{views.view_path(lay, dataset, split).name}")
             return 0
 
-        done = 0
-        for chunk in batches:
+        done, step = 0, max(1, len(batches) // 5)
+        for i, chunk in enumerate(batches, 1):
             h = mdl.last_token_hidden(tok, model, [texts[s] for s in chunk],
                                       batch_size=len(chunk))
             for sha, row in zip(chunk, h):
                 acts.write(lay, sha, row)
             done += len(chunk)
-            print(f"  {done}/{len(todo)}", end="\r")
+            if cfg.LIVE:
+                print(f"  {done}/{len(todo)}", end="\r")
+            elif i % step == 0 or i == len(batches):
+                # Five lines instead of one per batch, and each one names the cell: piped
+                # output does not overwrite, so a counter would bury the header above.
+                print(f"  {dataset}/{split}: {done}/{len(todo)} prompts")
 
         print(f"\nview_key {view['view_key'][:16]}  ->  "
               f"{views.view_path(lay, dataset, split).name}")

@@ -8,6 +8,8 @@ app = marimo.App(width="medium", auto_download=["html"])
 def _():
     # cell 1
     import os, pathlib, subprocess, sys
+    from collections import deque
+
     import marimo as mo
 
     MODEL = "google/gemma-2-9b-it"
@@ -30,11 +32,29 @@ def _():
     REPO = str(ROOTS[0]) if ROOTS else str(NB / "BAISH_TAIS")
 
     def sh(*a, cwd=None, allow_fail=False):
-        p = subprocess.run(a, cwd=cwd or REPO, capture_output=True, text=True)
-        print(p.stdout[-4000:], p.stderr[-2000:])
+        """Stream the subprocess's output while it runs, keeping the tail for the error.
+
+        Captured output arrives only when the process exits, so "which cell is generating
+        now" reached the screen hours after it stopped being the answer -- for a
+        `steer_batch` driving 40 cells under one load, that is the whole run. `-u` because
+        a piped child block-buffers its own stdout, so the line naming a cell would
+        otherwise land 8 KB later, next to a different cell.
+        """
+        a = list(a)
+        if a[:1] == ["python"]:
+            a.insert(1, "-u")
+        p = subprocess.Popen(a, cwd=cwd or REPO, stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, text=True, errors="replace",
+                             bufsize=1)
+        tail = deque(maxlen=60)
+        for line in p.stdout:
+            line = line.rstrip()
+            tail.append(line)
+            print(line)
+        p.wait()
         if p.returncode and not allow_fail:
             raise RuntimeError(f"exit {p.returncode}: {' '.join(map(str, a))}\n"
-                               f"{(p.stderr or p.stdout)[-1500:]}")
+                               + "\n".join(tail))
         return p
 
     if not pathlib.Path(REPO, "experiments").exists():
@@ -314,6 +334,9 @@ def _(AXES, EX_CACHED, EX_SCOPE, HF_REPO, HF_TOKEN, MODEL, TAG, ckpt, pulled, sh
         _timer = ckpt.autopush(HF_REPO, every=3600, token=HF_TOKEN.value, pack=True,
                                **EX_SCOPE)
         try:
+            # 8 cells in one process; cache_activations prints `[i/8] <dataset>/<split>`
+            # as it enters each and a heartbeat inside it.
+            print(f"=== caching activations: {', '.join(AXES)} x train,heldout ===")
             sh("python", "experiments/extraction/cache_activations.py", MODEL, "--tag", TAG,
                "--dataset", ",".join(AXES), "--split", "train,heldout")
         finally:
@@ -334,9 +357,13 @@ def _(AXES, DONE, EX_ROOT, EX_SCOPE, HF_REPO, HF_TOKEN, MODEL, TAG, ckpt, ex_cac
     # probe_select emits the per-layer table and stops -- no band rule, no primary layer.
     _todo = [a for a in AXES if not (DONE(EX_ROOT, f"directions__{a}")
                                      and DONE(EX_ROOT, f"probe_select__{a}"))]
-    for _a in _todo:
+    print(f"to extract: {_todo or 'nothing'}"
+          + (f" | already done: {[a for a in AXES if a not in _todo]}" if _todo else ""))
+    for _i, _a in enumerate(_todo, 1):
+        print(f"\n=== [{_i}/{len(_todo)}] extract_direction {_a} (+ curve) ===")
         sh("python", "experiments/extraction/extract_direction.py", MODEL,
            "--tag", TAG, "--direction", _a, "--curve")
+        print(f"\n=== [{_i}/{len(_todo)}] probe_select {_a} ===")
         sh("python", "experiments/extraction/probe_select.py", MODEL,
            "--tag", TAG, "--direction", _a)
     if _todo:
@@ -392,6 +419,8 @@ def _(DONE, JB_ROOT, MODEL, TAG, ex_done, sh):
     # --view-only writes acts/views/jailbreaks__all.json from the tokenizer alone: no
     # weights, and it reproduces the GPU path's view_key exactly, so no run_key moves.
     _vo = ["--view-only"] if DONE(JB_ROOT, "jb_readout") else []
+    print("=== jailbreaks/all: "
+          + ("view only, no weights ===" if _vo else "caching 1,009 activations ==="))
     sh("python", "experiments/extraction/cache_activations.py", MODEL, "--tag", TAG,
        "--dataset", "jailbreaks", "--split", "all", "--poles", "pos", *_vo)
     jb_cached = True
@@ -405,6 +434,7 @@ def _(AXES, DONE, HF_REPO, HF_TOKEN, JB_ROOT, JB_SCOPE, MODEL, TAG, ckpt, jb_cac
     if DONE(JB_ROOT, "jb_readout"):
         print("jb_readout complete -- skipped")
     else:
+        print(f"=== jb_readout: {', '.join(AXES)} over 1,009 prompts, every layer ===")
         sh("python", "experiments/probe_jailbreak_detection/jb_readout.py", MODEL,
            "--tag", TAG, "--axes", ",".join(AXES))
         # The one push that matters here: after it the 1,009 jailbreak blobs are disposable.
@@ -422,9 +452,11 @@ def _(AXES, DONE, HF_REPO, HF_TOKEN, JB_ROOT, JB_SCOPE, MODEL, RULES, TAG, ckpt,
     # the chosen ones do not exist yet, and this sweep is what they are read off.
     _todo = [r for r in RULES if not DONE(JB_ROOT, f"jb_metrics__{r}__all")]
     for _rule in _todo:
+        print(f"\n=== jb_metrics --all-layers, threshold {_rule} ===")
         sh("python", "experiments/probe_jailbreak_detection/jb_metrics.py", MODEL,
            "--tag", TAG, "--axes", ",".join(AXES), "--threshold", _rule, "--all-layers")
     if _todo or not DONE(JB_ROOT, "plot_layer_curves__all"):
+        print("\n=== plot_layer_curves --all-layers ===")
         sh("python", "experiments/probe_jailbreak_detection/plot_layer_curves.py", MODEL,
            "--tag", TAG, "--all-layers")
         ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="jb_metrics all-layers", **JB_SCOPE)
@@ -500,10 +532,12 @@ def _(AXES, CHOSEN, DONE, HF_REPO, HF_TOKEN, JB_ROOT, JB_SCOPE, LAYER_ARG, MODEL
     # whenever the gate changes, because `probe_layers` is part of what DONE compares.
     _todo = [r for r in RULES if not DONE(JB_ROOT, f"jb_metrics__{r}", probe_layers=CHOSEN)]
     for _rule in _todo:
+        print(f"\n=== jb_metrics at {LAYER_ARG}, threshold {_rule} ===")
         sh("python", "experiments/probe_jailbreak_detection/jb_metrics.py", MODEL,
            "--tag", TAG, "--axes", ",".join(AXES), "--layers", LAYER_ARG,
            "--threshold", _rule)
     if _todo:
+        print("\n=== plot_layer_curves (band) ===")
         sh("python", "experiments/probe_jailbreak_detection/plot_layer_curves.py", MODEL,
            "--tag", TAG)
         ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="jb_metrics chosen", **JB_SCOPE)
@@ -536,14 +570,17 @@ def _(AXES, CHOSEN, CP_ROOT, CP_SCOPE, DONE, HF_REPO, HF_TOKEN, LAYER_ARG, MODEL
     assert jb_chosen
     _run = False
     if not DONE(CP_ROOT, "cross_auroc", probe_layers=CHOSEN):
+        print(f"\n=== cross_auroc at {LAYER_ARG} ===")
         sh("python", "experiments/cross_probe_detection/cross_auroc.py", MODEL, "--tag", TAG,
            "--axes", ",".join(AXES), "--layers", LAYER_ARG, "--diag", "heldout")
         _run = True
     if not DONE(CP_ROOT, "geometry", chosen_layers=CHOSEN):
+        print(f"\n=== geometry at {LAYER_ARG} ===")
         sh("python", "experiments/cross_probe_detection/geometry.py", MODEL, "--tag", TAG,
            "--axes", ",".join(AXES), "--layers", LAYER_ARG)
         _run = True
     if _run:
+        print("\n=== plot_matrices ===")
         sh("python", "experiments/cross_probe_detection/plot_matrices.py", MODEL, "--tag", TAG)
         ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="cross_probe_detection", **CP_SCOPE)
     else:
@@ -590,10 +627,12 @@ def _(BATCH, HF_REPO, HF_TOKEN, MODEL, ST_COMPLETE, ST_ROOT, ST_SCOPE, TAG, ckpt
         if not ST_COMPLETE("gen_baseline"):
             _timer = ckpt.autopush(HF_REPO, every=3600, token=HF_TOKEN.value, **ST_SCOPE)
             try:
+                print("=== gen_baseline: unsteered greedy over all 1,009 prompts ===")
                 sh("python", "experiments/steering_jailbreaks/gen_baseline.py", MODEL,
                    "--tag", TAG, "--split", "all", "--decoding", "greedy", *BATCH)
             finally:
                 _timer.set()
+        print("\n=== judging gen_baseline -- this is what defines the two prompt sets ===")
         sh("python", "experiments/steering_jailbreaks/judge_strongreject.py",
            str(_jsonl), "--concurrency", "6")
         ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="gen_baseline", **ST_SCOPE)
@@ -673,6 +712,9 @@ def _(BATCH, HF_REPO, HF_TOKEN, MODEL, ST_JOBS, ST_SCOPE, TAG, ckpt, sh):
     if _n:
         _timer = ckpt.autopush(HF_REPO, every=3600, token=HF_TOKEN.value, **ST_SCOPE)
         try:
+            # steer_batch names each cell by its stem as it enters it, and cell.emit
+            # repeats it with a quarter-by-quarter row count.
+            print(f"=== steer_single: {_n} pending cell(s) on the success set ===")
             sh("python", "experiments/steering_jailbreaks/steer_batch.py", MODEL, "--tag", TAG,
                "--script", "steer_single", "--jobs", _path, *BATCH)
         finally:
@@ -692,6 +734,7 @@ def _(BATCH, HF_REPO, HF_TOKEN, MODEL, ST_JOBS, ST_SCOPE, TAG, ckpt, sh, st_succ
     if _n:
         _timer = ckpt.autopush(HF_REPO, every=3600, token=HF_TOKEN.value, **ST_SCOPE)
         try:
+            print(f"=== steer_induce: {_n} pending cell(s) on the refusal set ===")
             sh("python", "experiments/steering_jailbreaks/steer_batch.py", MODEL, "--tag", TAG,
                "--script", "steer_induce", "--jobs", _path, *BATCH)
         finally:
@@ -793,7 +836,11 @@ def _(HF_REPO, HF_TOKEN, JUDGE_PUSH_EVERY, JUDGE_RPD, ST_ROOT, ST_SCOPE, ckpt, s
         # also stop -- one bad cell is a bad cell, two in a row is a wall.
         failed, capped, done_rows, streak, since = [], False, 0, 0, 0
         for i, p in enumerate(todo, 1):
-            print(f"[{i}/{len(todo)}] {p.stem}  ({left[p.stem]:,} rows left)")
+            # One line per cell, and it is the only per-cell progress there is: the
+            # judge's own per-row counter is terminal-only (cfg.LIVE), so a 500-row cell
+            # prints this line and its summary, not 500 numbered lines.
+            print(f"\n=== [{i}/{len(todo)}] judging {p.stem}  "
+                  f"({left[p.stem]:,} rows ungraded) ===")
             rc = sh("python", "experiments/steering_jailbreaks/judge_strongreject.py",
                     str(p), "--concurrency", "6", allow_fail=True).returncode
             # Before the break checks: a cell that hit the cap still graded rows on the way.
@@ -851,6 +898,7 @@ def _(HF_REPO, HF_TOKEN, MODEL, ST_SCOPE, TAG, ckpt, sh, st_judged):
         print("judging did not finish -- aggregate SKIPPED. Re-run the notebook; every GPU "
               "cell will skip and judging resumes.")
     else:
+        print("=== aggregate over every cell at this tag ===")
         sh("python", "experiments/steering_jailbreaks/aggregate.py", MODEL, "--tag", TAG)
         ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="aggregate", **ST_SCOPE)
     st_agg = True
@@ -912,6 +960,7 @@ def _(CHOSEN, DONE, HF_REPO, HF_TOKEN, MODEL, NARR_ALPHAS, ST_ROOT, ST_SCOPE, TA
         # Runs off the existing _judged.jsonl -- no generation. Each steered cell against
         # its own no-op at the same layer and set; pairs where either side is degenerate are
         # excluded, because a repetition loop reads as more literary.
+        print(f"=== narrativity: story_v2_1k at L{_layer}, alphas {_mags}, both sets ===")
         sh("python", "experiments/steering_jailbreaks/judge_narrativity.py", MODEL,
            "--tag", TAG, "--direction", "story_v2_1k", "--layer", str(_layer),
            "--alphas", ",".join(f"{m:g}" for m in _mags), "--concurrency", "8", *_prov)
@@ -1041,7 +1090,8 @@ def _(BATCH, HF_REPO, HF_TOKEN, MODEL, OOB, PAIR_JOBS, ST_SCOPE, TAG, ckpt, sh):
     # invocation the usual guarantees hold: resume per row, and a complete arm cache-hits.
     _jobs = PAIR_JOBS["success"]
     for _i, (_a, _b, _layer, _mag) in enumerate(_jobs, 1):
-        print(f"[{_i}/{len(_jobs)}] success  {_a} - proj({_b})  L{_layer}  |alpha| {_mag:g}")
+        print(f"\n=== [{_i}/{len(_jobs)}] steer_pairs success: {_a} - proj({_b}) "
+              f"at L{_layer}, |alpha| {_mag:g} ===")
         sh("python", "experiments/steering_jailbreaks/steer_pairs.py", MODEL, "--tag", TAG,
            "--prompt-set", "success", "--pair", f"{_a},{_b}", "--layers", str(_layer),
            "--alpha", f"{_mag:g}", "--arms", "perp_alpha,par_component",
@@ -1061,7 +1111,8 @@ def _(BATCH, HF_REPO, HF_TOKEN, MODEL, OOB, PAIR_JOBS, ST_SCOPE, TAG, ckpt, pair
     assert pairs_success
     _jobs = PAIR_JOBS["refusal"]
     for _i, (_a, _b, _layer, _mag) in enumerate(_jobs, 1):
-        print(f"[{_i}/{len(_jobs)}] refusal  {_a} - proj({_b})  L{_layer}  |alpha| {_mag:g}")
+        print(f"\n=== [{_i}/{len(_jobs)}] steer_pairs refusal: {_a} - proj({_b}) "
+              f"at L{_layer}, |alpha| {_mag:g} ===")
         sh("python", "experiments/steering_jailbreaks/steer_pairs.py", MODEL, "--tag", TAG,
            "--prompt-set", "refusal", "--pair", f"{_a},{_b}", "--layers", str(_layer),
            "--alpha", f"{_mag:g}", "--arms", "perp_alpha,par_component",
@@ -1083,6 +1134,7 @@ def _(HF_REPO, HF_TOKEN, JUDGE, MODEL, PAIR_STEMS, ST_SCOPE, TAG, ckpt, pairs_st
         print("judging did not finish -- aggregate SKIPPED. Re-run the notebook.")
     else:
         # aggregate.py spans the tag, so this re-reports the alpha sweep alongside the pairs.
+        print("=== aggregate: the alpha sweep and the pairs together ===")
         sh("python", "experiments/steering_jailbreaks/aggregate.py", MODEL, "--tag", TAG)
         ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="pairs aggregate", **ST_SCOPE)
         # check_stale spans the whole tag, so it also reports the jailbreak activations that

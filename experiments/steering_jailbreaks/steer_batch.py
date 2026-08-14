@@ -24,7 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from experiments.common import config as cfg, generate as gen, model as mdl
-from experiments.steering_jailbreaks import steer_single
+from experiments.steering_jailbreaks import cell, steer_single
 
 # script -> (stem prefix, prompt_set, baseline outcome to steer)
 SCRIPTS = {"steer_single": ("steer_single", "success", "success"),
@@ -72,7 +72,7 @@ def main():
     for i, job in enumerate(jobs):
         p = steer_single.add_cell_args(argparse.ArgumentParser(prog=f"job[{i}]"))
         a = p.parse_args([args.model, *base, *[str(x) for x in job]])
-        steer_single.resolve(a, prompt_set)          # illegal mode/direction/alpha
+        direction, mode = steer_single.resolve(a, prompt_set)   # illegal mode/direction/alpha
         cells = steer_single.cell_specs(a, n_layers)  # exactly one of --layers/--sweep
         for spec in cells:
             # cell_specs passes --layers through as a string; this is the same call
@@ -81,17 +81,21 @@ def main():
                 cfg.parse_layers(spec, n_layers, a.allow_out_of_band)
             except ValueError as e:
                 raise SystemExit(f"job[{i}] {' '.join(str(x) for x in job)}: {e}")
-        parsed.append((job, a, len(cells)))
+        # The stems this job will write, resolved here so the run log names the cell
+        # rather than the argv tail it came from.
+        stems = [cell.stem_for(script, direction, mode, spec, a.alpha, a.tau_q, a.arm)
+                 for spec in cells]
+        parsed.append((job, a, stems))
     print(f"{len(parsed)} jobs validated for {args.script} ({prompt_set} set) "
-          f"-> {sum(c for _, _, c in parsed)} cells, L={n_layers}, "
+          f"-> {sum(len(s) for _, _, s in parsed)} cells, L={n_layers}, "
           f"batch {args.batch_size} / {args.max_batch_tokens} tokens")
 
     t0 = time.time()
     tok, model = mdl.load(args.model)
     print(f"model loaded once in {time.time() - t0:.0f}s\n")
 
-    for i, (job, a, n) in enumerate(parsed, 1):
-        print(f"[{i}/{len(parsed)}] {' '.join(str(x) for x in job)}  ({n} cell(s))")
+    for i, (job, a, stems) in enumerate(parsed, 1):
+        print(f"\n[{i}/{len(parsed)}] {', '.join(stems)}")
         steer_single.run(a, script, prompt_set, want, tok=tok, model=model)
 
     print(f"\n{len(parsed)} jobs in {(time.time() - t0) / 60:.1f} min, one model load")

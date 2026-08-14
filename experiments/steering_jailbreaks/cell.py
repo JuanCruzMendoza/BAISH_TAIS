@@ -162,13 +162,27 @@ def emit(lay, src, stem, config, inputs, rows, specs, layers, tok, model,
     probes = final_layer_probes(src, AXES)
     with mf.Run(lay, stem, config, inputs, resumable=True) as run_:
         done = run_.resume_from(".jsonl")
+        # Named *before* the generation, not only after it: a cell is minutes of GPU, and
+        # a driver that runs 40 of them under one load is otherwise silent about which one
+        # is running right now.
+        print(f"  {stem}: generating {len(rows) - len(done)} rows ({len(done)} cached), "
+              f"N={len(layers)} layers {layers[0]}-{layers[-1]}")
+        mark = {"pct": 0}
+
+        def progress(i, n):
+            if cfg.LIVE:
+                print(f"    {i}/{n}", end="\r")
+                return
+            pct = 100 * i // n
+            if pct >= mark["pct"] + 25 or i == n:      # 4-5 lines a cell, each named
+                mark["pct"] = pct
+                print(f"    {stem}: {i}/{n} rows")
+
         with run_.open_append(".jsonl") as fh:
             info = gen.run(tok, model, rows, gen.Sink(fh), done, batch_size,
                            max_batch_tokens, max_new_tokens, specs=specs, probes=probes,
-                           decode=decode, counter=counter,
-                           progress=lambda i, n: print(f"    {i}/{n}", end="\r"))
+                           decode=decode, counter=counter, progress=progress)
         if info["n_rows_run"] and info["hook_calls_last"] == 0:
             raise RuntimeError(f"{stem}: hooks never fired -- the intervention did nothing")
-        print(f"\n  {stem}: {info['n_rows_run']} generated, {len(done)} cached, "
-              f"N={len(layers)} layers {layers[0]}-{layers[-1]}")
+        print(f"\n  {stem}: done, {info['n_rows_run']} generated, {len(done)} cached")
         return run_.run_key

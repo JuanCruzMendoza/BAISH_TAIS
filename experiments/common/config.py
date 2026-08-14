@@ -9,10 +9,18 @@ Layout:
         meta/      manifests, runs.csv, _archive/, *_deciles.json
 """
 import os
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 DATA = REPO / "data"
+
+# Per-row and per-batch counters are written for a terminal, where `\r` overwrites in
+# place. Piped into a notebook nothing overwrites, so a 500-row judge pass arrives as 500
+# lines of "1/500, 2/500, ..." and the line that says *which* cell is running scrolls away.
+# Callers print those counters only when this is true; the lines naming the unit being
+# computed are printed either way, with a coarse heartbeat standing in for the counter.
+LIVE = sys.stdout.isatty()
 
 SEED = 20260731
 DEFAULT_TAG = "base"

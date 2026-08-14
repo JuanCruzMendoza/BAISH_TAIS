@@ -677,7 +677,10 @@ def main():
                 os.fsync(fh.fileno())
                 prog["n"] += 1
                 prog["cached"] += hit
-                print(f"  judged {prog['n']}/{len(todo)}", end="\r")
+                # Terminal only. Piped, this is one line per row -- ~500 of them a cell,
+                # 19k over a pass -- and the caller already names the cell it is judging.
+                if cfg.LIVE:
+                    print(f"  judged {prog['n']}/{len(todo)}", end="\r")
 
         if args.concurrency > 1 and judge is not None:
             with ThreadPoolExecutor(max_workers=args.concurrency) as ex:

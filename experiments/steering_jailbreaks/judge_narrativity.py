@@ -327,7 +327,10 @@ def main():
                     os.fsync(fh.fileno())
                     prog["n"] += 1
                     prog["cached"] += hit
-                    print(f"  judged {prog['n']}/{len(pending)}", end="\r")
+                    # Terminal only, as in judge_strongreject: piped, this is one line per
+                    # pair and it buries the comparison it belongs to.
+                    if cfg.LIVE:
+                        print(f"  judged {prog['n']}/{len(pending)}", end="\r")
 
             if args.concurrency > 1:
                 with ThreadPoolExecutor(max_workers=args.concurrency) as ex:
