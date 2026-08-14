@@ -1,0 +1,61 @@
+{
+  "config": {
+    "alpha_mags": [
+      0.25,
+      0.75
+    ],
+    "direction": "story_v2_1k",
+    "exclude_degenerate": true,
+    "judge_model": "gpt-4o-mini",
+    "layers_spec": "15",
+    "limit": null,
+    "max_chars": 2000,
+    "prompt_sets": [
+      "success",
+      "refusal"
+    ],
+    "tag": "1K_per_direction",
+    "template_sha": "bb6f93e9e4491fcf"
+  },
+  "env": {
+    "argv": [
+      "experiments/steering_jailbreaks/judge_narrativity.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "1K_per_direction",
+      "--direction",
+      "story_v2_1k",
+      "--layer",
+      "15",
+      "--alphas",
+      "0.25,0.75",
+      "--provider",
+      "openrouter",
+      "--concurrency",
+      "8"
+    ],
+    "git_diff_sha": "2e23635e485600be4cea2bc2f36b08aedd92e0d6e5c51d24f66018c92dd2802c",
+    "git_dirty": true,
+    "git_sha": "1c97933c5b941b686970da536e225cd7a5b7ab9a",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 1798,
+    "timestamp": "2026-08-13T13:21:38",
+    "wall_s": 0.55
+  },
+  "inputs": {
+    "cell_run_keys": {
+      "steer_induce__noop__L15": "90f2993e2707f1d82c870fbfabf922d6dabf3c7c4ce55e423918b970b5fc7da1",
+      "steer_induce__story_v2_1k__add__L15__a0.25": "8a8e4fb255360b232d6782c512eae5257547aa0117c48a8a1946d1f047430651",
+      "steer_induce__story_v2_1k__add__L15__a0.75": "987468d7f7c1e22061e0f24e4b8753ab1312ae097b73038e3dcfcb9dc89ef120",
+      "steer_single__noop__L15": "8bdfdfbdb04fa72bbb3fadfebc534a03c1d724132ee5b7f221b89a6ff4bc2436",
+      "steer_single__story_v2_1k__add__L15__a-0.25": "b35ad2b5cfc29c048d9816426652315b7163d0becab09b1fb2bf91df3a19f854",
+      "steer_single__story_v2_1k__add__L15__a-0.75": "90c14177d29f46693fb007399bd276a20d4af82e45d7c59cc3b5319469a2464f"
+    }
+  },
+  "notes": [],
+  "run_key": "5c14b46f79d534568635656d9cf3d46d7b297cfe676069b8b4621238a55cdbef",
+  "status": "complete",
+  "stem": "judge_narrativity__story_v2_1k__L15"
+}

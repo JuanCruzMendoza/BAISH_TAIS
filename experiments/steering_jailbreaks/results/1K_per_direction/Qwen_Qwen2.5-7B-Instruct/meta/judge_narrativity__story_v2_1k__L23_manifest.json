@@ -1,0 +1,61 @@
+{
+  "config": {
+    "alpha_mags": [
+      0.25,
+      0.75
+    ],
+    "direction": "story_v2_1k",
+    "exclude_degenerate": true,
+    "judge_model": "gpt-4o-mini",
+    "layers_spec": "23",
+    "limit": null,
+    "max_chars": 2000,
+    "prompt_sets": [
+      "success",
+      "refusal"
+    ],
+    "tag": "1K_per_direction",
+    "template_sha": "bb6f93e9e4491fcf"
+  },
+  "env": {
+    "argv": [
+      "experiments/steering_jailbreaks/judge_narrativity.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "1K_per_direction",
+      "--direction",
+      "story_v2_1k",
+      "--layer",
+      "23",
+      "--alphas",
+      "0.25,0.75",
+      "--provider",
+      "openrouter",
+      "--concurrency",
+      "8"
+    ],
+    "git_diff_sha": "2e23635e485600be4cea2bc2f36b08aedd92e0d6e5c51d24f66018c92dd2802c",
+    "git_dirty": true,
+    "git_sha": "1c97933c5b941b686970da536e225cd7a5b7ab9a",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 1777,
+    "timestamp": "2026-08-13T13:21:19",
+    "wall_s": 0.72
+  },
+  "inputs": {
+    "cell_run_keys": {
+      "steer_induce__noop__L23": "ec295e65a1fb605c24a800d93e3a2ba4a984a05a83ddc0b02565d8fa7cda873f",
+      "steer_induce__story_v2_1k__add__L23__a0.25": "f713585dd268d4e22461c89db120a5f08fdb1728068a72111013711f2901217a",
+      "steer_induce__story_v2_1k__add__L23__a0.75": "d796c8027513126330eb16d6438dfd61db2916619a27bdcfbbbd68dd70c9376b",
+      "steer_single__noop__L23": "920d27f42953fc366b80ce8ed6aec1e4b32715c502ea2c7b33d8bf83887578cd",
+      "steer_single__story_v2_1k__add__L23__a-0.25": "70f3137496d5a9a578f2f8e496a0878cf86e54a28d982c7904dad4f0eb72b8e9",
+      "steer_single__story_v2_1k__add__L23__a-0.75": "9166e1aa38e5e00ac7640e4988a219d5c95d50427f6006fb810db3bbd3841552"
+    }
+  },
+  "notes": [],
+  "run_key": "6b08de3a4231e0ac3c53e549f6147d9ebcb6820a4a954a4fc1352602d58b8699",
+  "status": "complete",
+  "stem": "judge_narrativity__story_v2_1k__L23"
+}

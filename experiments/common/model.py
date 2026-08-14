@@ -1,5 +1,6 @@
 """Model loading, chat template, read position (spec 0.4)."""
 import hashlib
+import os
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -20,9 +21,18 @@ def tokenizer(model_id):
 
 
 def load(model_id, dtype=torch.bfloat16, device_map="auto"):
+    """`$ATTN_IMPL` overrides the attention kernel; unset leaves transformers' own choice.
+
+    Gemma-2 soft-caps the attention logits and the sdpa/flash kernels drop that, so it
+    needs `eager` -- a different set of activations and a different generation, not a
+    speed knob. An environment variable rather than an argument: every script here loads
+    through this one call and none of them should have to know.
+    """
     tok = tokenizer(model_id)
-    model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=dtype,
-                                                device_map=device_map)
+    impl = os.environ.get("ATTN_IMPL")
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id, torch_dtype=dtype, device_map=device_map,
+        **({"attn_implementation": impl} if impl else {}))
     model.eval()
     return tok, model
 

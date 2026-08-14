@@ -1,0 +1,5 @@
+direction,layers_spec,prompt_set,alpha,alpha_mag,expect,steered_stem,noop_stem,n_rows,n_skipped_degenerate,n_pairs,n_decided,pct_neither,n_unparsed,pct_steered_more_narrative,pct_cluster,ci_lo,ci_hi,n_clusters,pct_picked_A,consistent
+story_v2_1k,15,success,-0.25,0.25,noop,steer_single__story_v2_1k__add__L15__a-0.25,steer_single__noop__L15,508,13,495,427,13.7,0,17.3,5.5,1.5,13.6,72,50.8,True
+story_v2_1k,15,success,-0.75,0.75,noop,steer_single__story_v2_1k__add__L15__a-0.75,steer_single__noop__L15,508,23,485,457,5.8,0,15.5,11.5,5.3,20.5,79,46.0,True
+story_v2_1k,15,refusal,0.25,0.25,steered,steer_induce__story_v2_1k__add__L15__a0.25,steer_induce__noop__L15,433,28,405,282,30.4,0,81.2,81.5,75.7,86.7,207,54.3,True
+story_v2_1k,15,refusal,0.75,0.75,steered,steer_induce__story_v2_1k__add__L15__a0.75,steer_induce__noop__L15,433,20,413,392,5.1,0,91.1,90.3,86.3,93.5,289,48.2,True

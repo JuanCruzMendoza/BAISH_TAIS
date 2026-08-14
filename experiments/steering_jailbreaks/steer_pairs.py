@@ -149,6 +149,8 @@ def main():
                     help="success = restore refusal (5.4), refusal = induce compliance (5.5)")
     ap.add_argument("--alpha", type=float, default=0.5, help="magnitude; sign from spec 0.5")
     ap.add_argument("--arms", default=",".join(ARMS))
+    ap.add_argument("--allow-out-of-band", action="store_true",
+                    help="permit an anchor's chosen layer outside the reporting band")
     ap.add_argument("--force-unprojected", action="store_true",
                     help="generate the reference arm even when steer_single already has it")
     ap.add_argument("--decoding", default="greedy", choices=list(gen.DECODINGS))
@@ -171,7 +173,10 @@ def main():
     lay = cfg.Layout(sets.EXPERIMENT, args.model, args.tag, acts_cache=False)
     tok, model = mdl.load(args.model)
     n_layers = model.config.num_hidden_layers
-    layers = cfg.parse_layers(args.layers, n_layers)
+    layers = cfg.parse_layers(args.layers, n_layers, args.allow_out_of_band)
+    # Same escape as steer_single's: the projection runs at the anchor's *chosen* layer,
+    # which a second model can put outside the band.
+    out_of_band = sorted(set(layers) - set(cfg.band(n_layers)))
 
     _, all_rows = sets.jailbreak_rows(args.model, args.tag, tok=tok)
     keep = set(sets.outcome_ids(sets.baseline_judged(args.model, args.tag), args.prompt_set))
@@ -250,6 +255,11 @@ def main():
                       "max_new_tokens": args.max_new_tokens, "batch_size": args.batch_size,
                       "max_batch_tokens": args.max_batch_tokens, "position": "all_tokens",
                       "n_rows": len(rows), "seed": cfg.SEED}
+            # Added only when it fires, so an in-band cell keeps the config dict -- and so
+            # the run_key -- it already had, and no completed cell is invalidated by the
+            # escape existing. Same rule as cell.run's.
+            if out_of_band:
+                config["out_of_band"] = out_of_band
             inputs = {"unit_ids": [r["unit_id"] for r in rows],
                       "direction_run_key": pa.get("run_key"),
                       "projected_run_key": None if solo else pb.get("run_key")}

@@ -92,12 +92,12 @@ the refit — as `extraction`'s ~0.005 d_z estimate predicted.
 
 `excess_over_null` = folded AUROC − what 20 random unit directions get on that axis and layer:
 
-| probe (L) | story_v2_1k | persona_v2 | harm_v2 | eval_v2 |
-|---|---|---|---|---|
-| story_v2_1k (23) | **+0.289** | +0.146 | +0.017 | −0.047 |
-| persona_v2 (15) | +0.231 | **+0.373** | +0.172 | +0.230 |
-| harm_v2 (21) | +0.094 | −0.121 | **+0.341** | −0.078 |
-| eval_v2 (9) | −0.014 | +0.031 | +0.011 | **+0.356** |
+| probe (L)        | story_v2_1k | persona_v2 | harm_v2    | eval_v2    |
+| ---------------- | ----------- | ---------- | ---------- | ---------- |
+| story_v2_1k (23) | **+0.289**  | +0.146     | +0.017     | −0.047     |
+| persona_v2 (15)  | +0.231      | **+0.373** | +0.172     | +0.230     |
+| harm_v2 (21)     | +0.094      | −0.121     | **+0.341** | −0.078     |
+| eval_v2 (9)      | −0.014      | +0.031     | +0.011     | **+0.356** |
 
 ![excess over null](results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_matrices_excess_over_null.png)
 
