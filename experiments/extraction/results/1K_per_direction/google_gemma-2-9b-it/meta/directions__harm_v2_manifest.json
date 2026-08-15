@@ -1,0 +1,45 @@
+{
+  "config": {
+    "curve": true,
+    "curve_seeds": 5,
+    "curve_step": 50,
+    "direction": "harm_v2",
+    "estimator": "diff_in_means",
+    "n_pairs": 800,
+    "position": "last_token",
+    "seed": 20260731
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/extract_direction.py",
+      "google/gemma-2-9b-it",
+      "--tag",
+      "1K_per_direction",
+      "--direction",
+      "harm_v2",
+      "--curve"
+    ],
+    "git_diff_sha": "ec17189588d784ce042b37d15cf750fd181e8dd37f5011bec1c5846937758547",
+    "git_dirty": true,
+    "git_sha": "51a17beaec42ae9051394f6a3dc1f8650a384568",
+    "host": "5fefe2b1-e0e1-41d4-b792-535583e1be46-n8zsf",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.11",
+    "resumed_from": 0,
+    "timestamp": "2026-08-15T02:00:00",
+    "wall_s": 0.58
+  },
+  "inputs": {
+    "source_files": [
+      {
+        "path": "data/harm_v2/pairs.jsonl",
+        "sha256": "c1a5ca9a48e9d2d65567bb11ce70127061e7cca98aacc141e3481afe8ecf94fe"
+      }
+    ],
+    "view_key": "a3747f3a4a974f1e96862479639ea3c86397d3ab248bdc8a555af3e467c48f23"
+  },
+  "notes": [],
+  "run_key": "eed04aa92e3e5fa23583ccd6c7e242dac66776cc3a5b4b63d2095813ab16ab2c",
+  "status": "complete",
+  "stem": "directions__harm_v2"
+}

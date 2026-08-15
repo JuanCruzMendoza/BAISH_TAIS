@@ -1,0 +1,44 @@
+{
+  "config": {
+    "direction": "persona_v2",
+    "layers": [
+      0,
+      5,
+      9,
+      14,
+      19,
+      23,
+      28,
+      33,
+      37,
+      42
+    ],
+    "with_heldout": true
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/plot_figures.py",
+      "google/gemma-2-9b-it",
+      "--tag",
+      "1K_per_direction",
+      "--with-heldout"
+    ],
+    "git_diff_sha": null,
+    "git_dirty": false,
+    "git_sha": "51a17beaec42ae9051394f6a3dc1f8650a384568",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-15T10:24:55",
+    "wall_s": 1.38
+  },
+  "inputs": {
+    "directions_run_key": "09d4c1522196bf7081303c96419a0c8fef5f3f0857f714c8f46288be0867f0d5",
+    "probe_select_run_key": "e5587ef9c90ba300edc913033d37c8e109cb38d354ee13af85a559d859ba59bd"
+  },
+  "notes": [],
+  "run_key": "19992c354a11cdd6a1bbb16fd042978a9e8255767207509b3b3e9655a335af8d",
+  "status": "complete",
+  "stem": "plot__persona_v2"
+}

@@ -1,0 +1,36 @@
+{
+  "config": {
+    "auroc_vector": "lopo",
+    "direction": "harm_v2",
+    "dz_vector": "full_sample",
+    "interval": "clopper_pearson",
+    "seed": 20260731,
+    "selection": "manual (insights.md)"
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/probe_select.py",
+      "google/gemma-2-9b-it",
+      "--tag",
+      "1K_per_direction",
+      "--direction",
+      "harm_v2"
+    ],
+    "git_diff_sha": "ec17189588d784ce042b37d15cf750fd181e8dd37f5011bec1c5846937758547",
+    "git_dirty": true,
+    "git_sha": "51a17beaec42ae9051394f6a3dc1f8650a384568",
+    "host": "5fefe2b1-e0e1-41d4-b792-535583e1be46-n8zsf",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.11",
+    "resumed_from": 0,
+    "timestamp": "2026-08-15T02:00:27",
+    "wall_s": 25.51
+  },
+  "inputs": {
+    "view_key": "a3747f3a4a974f1e96862479639ea3c86397d3ab248bdc8a555af3e467c48f23"
+  },
+  "notes": [],
+  "run_key": "09cdec78f93f6e61b67398412f0c1f409fd6bbfd450f99d52a314c7ba9db2af8",
+  "status": "complete",
+  "stem": "probe_select__harm_v2"
+}

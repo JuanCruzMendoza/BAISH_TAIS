@@ -1,0 +1,36 @@
+{
+  "config": {
+    "auroc_vector": "lopo",
+    "direction": "story_v2_1k",
+    "dz_vector": "full_sample",
+    "interval": "clopper_pearson",
+    "seed": 20260731,
+    "selection": "manual (insights.md)"
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/probe_select.py",
+      "google/gemma-2-9b-it",
+      "--tag",
+      "1K_per_direction",
+      "--direction",
+      "story_v2_1k"
+    ],
+    "git_diff_sha": "ec17189588d784ce042b37d15cf750fd181e8dd37f5011bec1c5846937758547",
+    "git_dirty": true,
+    "git_sha": "51a17beaec42ae9051394f6a3dc1f8650a384568",
+    "host": "5fefe2b1-e0e1-41d4-b792-535583e1be46-n8zsf",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.11",
+    "resumed_from": 0,
+    "timestamp": "2026-08-15T01:23:19",
+    "wall_s": 26.65
+  },
+  "inputs": {
+    "view_key": "43961a9680df00a99d4c853fdb6e0079dd629c3f606bb9734be03baa290272f8"
+  },
+  "notes": [],
+  "run_key": "c17d20cd4b77bf8a2e666d0846b206d836628ed9994803d4819b00d78f76d7e0",
+  "status": "complete",
+  "stem": "probe_select__story_v2_1k"
+}

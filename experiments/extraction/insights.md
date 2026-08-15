@@ -151,7 +151,7 @@ says nothing about request-invariance here.
 
 ---
 
-# 1K_per_direction
+# 1K_per_direction - Qwen 7B
 
 Qwen2.5-7B-Instruct (L=28, d=3584), **800 train / 200 held-out** pairs per direction, last token.
 Band = L11–25. No length foil and no `story_v1`; the framing axes carry their task inside the
@@ -285,3 +285,67 @@ credits contrast consistency, not the fitted direction — geometry still has to
    recompute it on the disjoint remainder.
 3. If length matters for the H1 claim, cache a `length` view at this tag and re-run `probe_select` —
    the columns are still emitted when the view exists.
+
+
+# 1K_per_direction - Gemma 9B
+
+`google/gemma-2-9b-it` (L=42, d=3584), **800 train / 200 held-out** pairs per direction, last token,
+`eager` attention. Band = **L17–38**. Same four axes and datasets as the Qwen run; no length foil.
+
+# Extraction
+### Where to read each axis
+
+`cohens_dz_train` selects, `cohens_dz_heldout` (200 unseen pairs) confirms; `plateau` is every layer
+within 1 SE of the argmax, SE ≈ √((1+d_z²/2)/n), so it is what the column can resolve.
+
+| direction | **d_z train argmax** | plateau | d_z held-out argmax | gap tr−ho | peak mpc | depth |
+|---|---|---|---|---|---|---|
+| `story_v2_1k` | **L28** (3.62) | L27–28, 30 | L28 (3.81) | −0.20 | L21 (0.670) | 0.67 |
+| `persona_v2` | **L15** (2.83) ⚠ | L14–17 | L18 (2.62) | +0.29 | L4 (0.586) | 0.36 |
+| `harm_v2` | **L19** (1.32) | L18–21 | L21 (1.21) | +0.13 | L28 (0.432) | 0.45 |
+| `eval_v2` | **L8** (2.16) ⚠ | L7–8 | L7 (2.28) | −0.11 | L7 (0.355) | 0.19 |
+
+⚠ outside the band, so those cells need `--allow-out-of-band`.
+
+
+## Probe jailbreak detection
+
+## story: the fiction − nonfiction margin disagrees with d_z
+
+`pct_reads` per jailbreak family at each layer (`probe_jailbreak_detection`, all 1,009 rows; n = 472
+fiction / 306 roleplay / 153 hybrid / 78 nonfiction). The margin is fiction − nonfiction: how far the
+probe separates the jailbreaks it should read from the ones it should not.
+
+| layer | fiction | roleplay | hybrid | nonfiction | **margin** | margin (`gap_mid`) | all | ref_tpr |
+|---|---|---|---|---|---|---|---|---|
+| L2 | 72.9 | 41.2 | 70.6 | 10.3 | **+62.6** | +62.2 | 58.1 | 0.93 |
+| L7 | 72.2 | 23.5 | 56.9 | 7.7 | **+64.6** | +62.2 | 50.1 | 0.95 |
+| L9 | 68.9 | 17.3 | 28.8 | 5.1 | **+63.7** | +56.1 | 42.2 | 0.99 |
+| **L15** | 83.9 | 33.7 | 59.5 | 6.4 | **+77.5** | **+71.4** | 59.0 | 1.00 |
+| L16 | 71.2 | 36.3 | 69.3 | 3.8 | **+67.3** | +59.3 | 55.1 | 1.00 |
+| L18 | 99.2 | 96.7 | 100.0 | 59.0 | **+40.2** | +62.7 | 95.4 | 1.00 |
+| L28 (d_z peak) | 15.5 | 6.5 | 15.0 | 0.0 | **+15.5** | +1.9 | 11.5 | 1.00 |
+
+**L15 is the margin peak under both threshold rules**, and it is the same layer `persona_v2`'s d_z
+picks — as at the Qwen tag, where story's detection-best layer was also persona's chosen one.
+
+**The two criteria pick layers 13 apart, and the gap is large.** At L28 the probe reads 15.5% of
+fiction jailbreaks against 83.9% at L15, with `ref_tpr` = 1.00 at both — the bar is passable, so this
+is the probe genuinely not reading jailbreaks as story that deep. Past L19 every curve collapses
+(band-mean margin +14.5, best deep layer +18.2), which is most of the reporting band.
+
+**L18 is a saturation layer, not a discriminating one**: 95.4% of all jailbreaks clear τ there,
+including 59% of `nonfiction_other`. Its high fiction number is not separation.
+
+
+![story_v2_1k pct_reads by family](../probe_jailbreak_detection/results/1K_per_direction/google_gemma-2-9b-it/figures/plot_layer_curves__all_story_v2_1k.png)
+![story_v2_1k effect size](results/1K_per_direction/google_gemma-2-9b-it/figures/plot__story_v2_1k_cohens_dz_train.png)
+
+
+
+## Chosen layers per direction
+
+- Persona: L15
+- Story: L28 and L15
+- Eval: L8
+- Harm: L19

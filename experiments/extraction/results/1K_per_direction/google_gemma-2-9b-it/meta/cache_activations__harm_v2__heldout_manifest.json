@@ -1,0 +1,51 @@
+{
+  "config": {
+    "append_task": false,
+    "batch_size": 8,
+    "dataset": "harm_v2",
+    "dtype": "float16",
+    "poles": [
+      "pos",
+      "neg"
+    ],
+    "position": "last_token",
+    "seed": 20260731,
+    "split": "heldout",
+    "subsample": null
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/cache_activations.py",
+      "google/gemma-2-9b-it",
+      "--tag",
+      "1K_per_direction",
+      "--dataset",
+      "story_v2_1k,persona_v2,harm_v2,eval_v2",
+      "--split",
+      "train,heldout"
+    ],
+    "git_diff_sha": "ec17189588d784ce042b37d15cf750fd181e8dd37f5011bec1c5846937758547",
+    "git_dirty": true,
+    "git_sha": "51a17beaec42ae9051394f6a3dc1f8650a384568",
+    "host": "5fefe2b1-e0e1-41d4-b792-535583e1be46-n8zsf",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.11",
+    "resumed_from": 37,
+    "timestamp": "2026-08-15T01:02:24",
+    "wall_s": 2.54
+  },
+  "inputs": {
+    "chat_template_sha": "ecd6ae513fe103f0",
+    "source_files": [
+      {
+        "path": "data/harm_v2/pairs_heldout.jsonl",
+        "sha256": "1bb1b9cb5641995528a1f88e9257c199b9772c63ec6a5aaa7b0d7b45b5d075c0"
+      }
+    ],
+    "view_key": "9f7bdafd48cd915c1bcd2791c5162cec24691d5e381ad20776aba646bb645129"
+  },
+  "notes": [],
+  "run_key": "724354b24b0a3fff80d067755b529bf6aeda85cef54e9c88350df71df3825926",
+  "status": "complete",
+  "stem": "cache_activations__harm_v2__heldout"
+}

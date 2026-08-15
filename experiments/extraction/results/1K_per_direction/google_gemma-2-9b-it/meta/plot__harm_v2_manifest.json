@@ -1,0 +1,44 @@
+{
+  "config": {
+    "direction": "harm_v2",
+    "layers": [
+      0,
+      5,
+      9,
+      14,
+      19,
+      23,
+      28,
+      33,
+      37,
+      42
+    ],
+    "with_heldout": true
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/plot_figures.py",
+      "google/gemma-2-9b-it",
+      "--tag",
+      "1K_per_direction",
+      "--with-heldout"
+    ],
+    "git_diff_sha": null,
+    "git_dirty": false,
+    "git_sha": "51a17beaec42ae9051394f6a3dc1f8650a384568",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-15T10:24:52",
+    "wall_s": 1.27
+  },
+  "inputs": {
+    "directions_run_key": "eed04aa92e3e5fa23583ccd6c7e242dac66776cc3a5b4b63d2095813ab16ab2c",
+    "probe_select_run_key": "09cdec78f93f6e61b67398412f0c1f409fd6bbfd450f99d52a314c7ba9db2af8"
+  },
+  "notes": [],
+  "run_key": "36c53006882042d401a69351f529e9fdc1f8f37b27acab2b3d6c056f3001aa42",
+  "status": "complete",
+  "stem": "plot__harm_v2"
+}

@@ -1,0 +1,36 @@
+{
+  "config": {
+    "auroc_vector": "lopo",
+    "direction": "persona_v2",
+    "dz_vector": "full_sample",
+    "interval": "clopper_pearson",
+    "seed": 20260731,
+    "selection": "manual (insights.md)"
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/probe_select.py",
+      "google/gemma-2-9b-it",
+      "--tag",
+      "1K_per_direction",
+      "--direction",
+      "persona_v2"
+    ],
+    "git_diff_sha": "ec17189588d784ce042b37d15cf750fd181e8dd37f5011bec1c5846937758547",
+    "git_dirty": true,
+    "git_sha": "51a17beaec42ae9051394f6a3dc1f8650a384568",
+    "host": "5fefe2b1-e0e1-41d4-b792-535583e1be46-n8zsf",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.11",
+    "resumed_from": 0,
+    "timestamp": "2026-08-15T01:41:46",
+    "wall_s": 20.94
+  },
+  "inputs": {
+    "view_key": "f36e4d97bc18f02cf9c3e42eab2be3ba7ad61e4f69b6c90bbdd554e682ca0ccd"
+  },
+  "notes": [],
+  "run_key": "e5587ef9c90ba300edc913033d37c8e109cb38d354ee13af85a559d859ba59bd",
+  "status": "complete",
+  "stem": "probe_select__persona_v2"
+}

@@ -1,0 +1,45 @@
+{
+  "config": {
+    "curve": true,
+    "curve_seeds": 5,
+    "curve_step": 50,
+    "direction": "eval_v2",
+    "estimator": "diff_in_means",
+    "n_pairs": 800,
+    "position": "last_token",
+    "seed": 20260731
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/extract_direction.py",
+      "google/gemma-2-9b-it",
+      "--tag",
+      "1K_per_direction",
+      "--direction",
+      "eval_v2",
+      "--curve"
+    ],
+    "git_diff_sha": "ec17189588d784ce042b37d15cf750fd181e8dd37f5011bec1c5846937758547",
+    "git_dirty": true,
+    "git_sha": "51a17beaec42ae9051394f6a3dc1f8650a384568",
+    "host": "5fefe2b1-e0e1-41d4-b792-535583e1be46-n8zsf",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.11",
+    "resumed_from": 0,
+    "timestamp": "2026-08-15T02:18:18",
+    "wall_s": 0.56
+  },
+  "inputs": {
+    "source_files": [
+      {
+        "path": "data/eval_v2/pairs.jsonl",
+        "sha256": "7bf6499280b8fee6b77a4b2b3212a499a693b1d62a2ceee378d748371b9a1528"
+      }
+    ],
+    "view_key": "0bfc5146e68fcca83f1d37ec341491d35be34490a4de77de07918adf9ce7430f"
+  },
+  "notes": [],
+  "run_key": "9adc11e4cc5da0be96347d9024ca8f9fac378465d430078502f830f78afbb744",
+  "status": "complete",
+  "stem": "directions__eval_v2"
+}

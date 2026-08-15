@@ -105,18 +105,27 @@ def _(MODEL, TAG, mo):
 
     Every stage is guarded on an artefact, not on a checkbox: what is already complete is
     skipped **before** the model load, so re-running the notebook after a kill is the way to
-    resume, and a judge-only session needs no GPU at all.
+    resume.
 
-    Three points stop and wait for you — the notebook runs everything above them and halts:
+    **This notebook only generates.** Every judge pass runs on your own machine — ~23k API
+    calls over 3–5 h, during which a rented GPU would be idle and billed, and no API key
+    needs to reach the instance. It hands off through the Hub: it pushes, prints the exact
+    commands, and stops.
 
-    | gate | what to read first | what to type |
+    Five points stop and wait for you:
+
+    | stop | what to read first | what to do |
     |---|---|---|
-    | **1 — layers** | `probe_select__<axis>.csv` (`cohens_dz_train`) and `jb_metrics__*__all_rate.csv` (fiction − nonfiction `pct_reads`, for story) | one layer per direction |
-    | **2 — narrativity α** | `aggregate_controls.csv`: story cells with an effect and low `pct_degenerate` | the α magnitudes to judge |
-    | **3 — pairs** | `geometry_cos_chosen.csv` (cos at a's layer vs the ±3/√d null band) + the α curve | the ordered pairs and their α |
+    | **gate 1 — layers** | already decided: story L28+L15, persona L15, harm L19, eval L8 | nothing — the box is prefilled |
+    | **judge the baseline** | — | run it locally, push, re-run here |
+    | **judge the sweep** | — | run it locally + `aggregate.py` |
+    | **gate 3 — pairs** | `geometry_cos_chosen.csv` (cos at a's layer vs the ±3/√d null band) + the α curve | type the ordered pairs and their α |
+    | **judge the pairs** | — | run it locally + `aggregate.py` |
 
-    Nothing below a gate runs until it is filled in. Everything above it is already on the
-    Hub by then.
+    The baseline stop is a real dependency, not a convenience: the two prompt sets *are* the
+    baseline's 3-way labels, so the sweep cannot be built until it is graded. The narrativity
+    check (§5) is judge-only and never appears here — it runs locally off the `_judged.jsonl`
+    files. `research/spec-whole-rerun.md` §J lists every local command.
 
     ## Gemma-2 specifics
 
@@ -133,17 +142,12 @@ def _(MODEL, TAG, mo):
 @app.cell
 def _(mo):
     # cell 3
+    # The only credential this notebook needs. No judge key: grading runs off the GPU box
+    # (see the hand-off cells), so an API key never reaches the rented instance.
     HF_TOKEN = mo.ui.text(label="HF_TOKEN (write, and gemma-2 licence accepted)",
                           kind="password", full_width=True)
-    OPENAI_KEY = mo.ui.text(label="OPENAI_API_KEY (judge, spec 5.3)", kind="password",
-                            full_width=True)
-    # Optional but close to necessary here: ~19k judge calls do not fit under a 10,000/day
-    # cap, so when the OpenAI key is spent the judge moves to OpenRouter and keeps going.
-    # Same model, so nothing already graded is re-graded.
-    OPENROUTER_KEY = mo.ui.text(label="OPENROUTER_API_KEY (fallback judge, optional)",
-                                kind="password", full_width=True)
-    mo.vstack([HF_TOKEN, OPENAI_KEY, OPENROUTER_KEY])
-    return HF_TOKEN, OPENAI_KEY, OPENROUTER_KEY
+    HF_TOKEN
+    return (HF_TOKEN,)
 
 
 @app.cell(hide_code=True)
@@ -181,7 +185,7 @@ def _(mo):
 
 
 @app.cell
-def _(HF_REPO, HF_TOKEN, MODEL, OPENAI_KEY, OPENROUTER_KEY, REPO, TAG, mo, os):
+def _(HF_REPO, HF_TOKEN, MODEL, REPO, TAG, mo, os):
     # cell 5
     import json as _json
     from pathlib import Path as _P
@@ -199,26 +203,10 @@ def _(HF_REPO, HF_TOKEN, MODEL, OPENAI_KEY, OPENROUTER_KEY, REPO, TAG, mo, os):
     # Gemma-2 soft-caps attention logits; sdpa and flash drop that. model.load reads this,
     # and unset means transformers' own default, so no Qwen artefact moves.
     os.environ["ATTN_IMPL"] = "eager"
-    # Set only when non-empty: an empty string reads as *present* downstream, so a blank
-    # box would arm a fallback that cannot authenticate.
-    for _var, _val in (("OPENAI_API_KEY", OPENAI_KEY.value),
-                       ("OPENROUTER_API_KEY", OPENROUTER_KEY.value)):
-        if _val:
-            os.environ[_var] = _val
-        else:
-            os.environ.pop(_var, None)
-    keys_ok = bool(OPENAI_KEY.value or OPENROUTER_KEY.value)
 
     AXES = ["story_v2_1k", "persona_v2", "harm_v2", "eval_v2"]
     ALPHAS = (0.25, 0.50, 0.75, 1.00)
     RULES = ("midpoint", "gap_mid")
-    # The judge's daily request cap, measured on gpt-4o-mini. Tier-dependent, and it only
-    # sizes the estimate printed before a judge pass -- the stop itself is the provider's
-    # own 429, since this process cannot know what the account already spent today.
-    JUDGE_RPD = 10_000
-    # Push the judge pass every this many cells: at ~4 min a cell that caps what a
-    # disconnection can cost at ~20 min of grading, for ~2 commits a push.
-    JUDGE_PUSH_EVERY = 5
 
     EX_SCOPE = {"experiment": "extraction", "tag": TAG}
     JB_SCOPE = {"experiment": "probe_jailbreak_detection", "tag": TAG}
@@ -264,11 +252,8 @@ def _(HF_REPO, HF_TOKEN, MODEL, OPENAI_KEY, OPENROUTER_KEY, REPO, TAG, mo, os):
 
     ckpt.setup(HF_REPO, token=HF_TOKEN.value)
     print(f"{MODEL}: L={N_LAYERS}, band {BAND[0]}-{BAND[-1]}, alphas {ALPHAS}")
-    print("judge keys:", ", ".join(k for k in ("OPENAI_API_KEY", "OPENROUTER_API_KEY")
-                                   if os.environ.get(k)) or "none")
     return (ALPHAS, AXES, BAND, CP_ROOT, CP_SCOPE, DONE, EX_ROOT, EX_SCOPE, JB_ROOT,
-            JB_SCOPE, JUDGE_PUSH_EVERY, JUDGE_RPD, N_LAYERS, RULES, ST_COMPLETE, ST_ROOT,
-            ST_SCOPE, cfg, ckpt, keys_ok)
+            JB_SCOPE, N_LAYERS, RULES, ST_COMPLETE, ST_ROOT, ST_SCOPE, ckpt)
 
 
 @app.cell
@@ -470,9 +455,16 @@ def _(AXES, DONE, HF_REPO, HF_TOKEN, JB_ROOT, JB_SCOPE, MODEL, RULES, TAG, ckpt,
 def _(BAND, TAG, mo):
     # cell 15 (markdown)
     mo.md(f"""
-    ## ▸ GATE 1 — one layer per direction
+    ## ▸ GATE 1 — the chosen layers (already filled in)
 
-    Everything above is on the Hub. Pull it locally and read, per direction:
+    **Decided, from `extraction/insights.md` §Gemma 9B:** `story_v2_1k` **L28 and L15**,
+    `persona_v2` L15, `harm_v2` L19, `eval_v2` L8. Story keeps both because its two criteria
+    disagree by 13 layers — L28 is the `cohens_dz_train` peak (3.62), L15 the
+    fiction − nonfiction `pct_reads` peak (+77.5 against L28's +15.5) — and with one layer a
+    null cell cannot be told apart from a wrong layer. `a=L1+L2` gives an axis two cells;
+    everything downstream runs each (axis, layer) as its own cell.
+
+    Edit the box only to revise that. What each criterion is, if you do:
 
     - `extraction/results/{TAG}/<model_slug>/csv/probe_select__<axis>.csv` —
       **`cohens_dz_train`**, confirmed against `cohens_dz_heldout` (200 pairs),
@@ -484,11 +476,13 @@ def _(BAND, TAG, mo):
       probe quality and steering effect. Read `ref_tpr` beside it — a low `pct_reads` at low
       `ref_tpr` is the threshold failing, not a reading.
 
-    The reporting band is **L{BAND[0]}–L{BAND[-1]}**. A layer outside it is allowed and gets
-    `--allow-out-of-band` automatically, recorded in every manifest that uses it.
+    The reporting band is **L{BAND[0]}–L{BAND[-1]}**, so **L15 and L8 are outside it** and
+    every cell that uses them carries `--allow-out-of-band`, recorded in its manifest.
 
-    Record the four in `extraction/insights.md` as well — experiments 2–5 read them from
-    there, not from any JSON.
+    One caveat on the `_chosen` tables below: `jb_metrics`, `cross_auroc` and `geometry` take
+    **one** layer per probe, so they run at each axis's **first** layer (story L28). Story's
+    L15 row is not lost — it is in the per-layer files those same runs write
+    (`jb_metrics__<rule>__all_rate.csv`, `cross_auroc_tensor.csv`, `geometry_cos.csv`).
     """)
     return
 
@@ -496,41 +490,65 @@ def _(BAND, TAG, mo):
 @app.cell
 def _(mo):
     # cell 16
+    # Prefilled with the decision, not blank: gate 1 is answered, and a blank box would stop
+    # the notebook on a question that has already been settled. `+` gives an axis two layers.
     CHOSEN_IN = mo.ui.text(
-        label="chosen layers (axis=layer, comma-separated)", full_width=True,
-        placeholder="story_v2_1k=23,persona_v2=15,harm_v2=21,eval_v2=9")
+        label="chosen layers (axis=layer, `+` for a second layer, comma-separated)",
+        full_width=True, value="story_v2_1k=28+15,persona_v2=15,harm_v2=19,eval_v2=8")
     CHOSEN_IN
     return (CHOSEN_IN,)
 
 
 @app.cell
-def _(AXES, BAND, CHOSEN_IN, N_LAYERS, cfg, jb_all, mo):
+def _(AXES, BAND, CHOSEN_IN, N_LAYERS, jb_all, mo):
     # cell 17
     assert jb_all
     mo.stop(not CHOSEN_IN.value.strip(),
-            mo.md("*Gate 1: read the tables above and enter one layer per direction. "
-                  "Nothing below this runs until then.*"))
-    CHOSEN = cfg.parse_axis_layers(CHOSEN_IN.value)
-    _missing, _bad = set(AXES) - set(CHOSEN), {a: l for a, l in CHOSEN.items()
-                                               if not 0 <= l <= N_LAYERS}
-    if _missing or _bad or set(CHOSEN) - set(AXES):
-        raise ValueError(f"name exactly {AXES} with 0 <= layer <= {N_LAYERS}; "
-                         f"missing {sorted(_missing)}, "
-                         f"unknown {sorted(set(CHOSEN) - set(AXES))}, out of range {_bad}")
-    OOB = {a: l for a, l in CHOSEN.items() if l not in BAND}
-    LAYER_ARG = ",".join(f"{a}={l}" for a, l in CHOSEN.items())
-    print(f"chosen: {LAYER_ARG}")
-    print(f"out of band (L{BAND[0]}-{BAND[-1]}), explicit opt-in: {OOB or 'none'}")
-    return CHOSEN, LAYER_ARG, OOB
+            mo.md("*Gate 1: enter the layers, `axis=L` or `axis=L1+L2`.*"))
+
+    # Not cfg.parse_axis_layers: that maps an axis to exactly one layer, and story has two.
+    # Order matters -- the first is the axis's primary, the one the single-layer tables use.
+    CHOSEN = {}
+    for _part in CHOSEN_IN.value.replace(" ", "").split(","):
+        if not _part:
+            continue
+        _ax, _sep, _ls = _part.partition("=")
+        if not _sep or _ax not in AXES:
+            raise ValueError(f"{_part!r}: expected axis=layer with axis in {AXES}")
+        _layers = [int(x) for x in _ls.split("+") if x]
+        if not _layers or any(not 0 <= l <= N_LAYERS for l in _layers):
+            raise ValueError(f"{_part!r}: layers must be 0..{N_LAYERS}")
+        CHOSEN.setdefault(_ax, [])
+        CHOSEN[_ax] += [l for l in _layers if l not in CHOSEN[_ax]]
+    if set(CHOSEN) != set(AXES):
+        raise ValueError(f"name exactly {AXES}; missing {sorted(set(AXES) - set(CHOSEN))}")
+
+    # The single-layer consumers (jb_metrics, cross_auroc, geometry) take one per probe.
+    PRIMARY = {a: ls[0] for a, ls in CHOSEN.items()}
+    # Layers, not axes: a no-op is per (set, layer), and story@15 and persona@15 share one.
+    OOB = {l for ls in CHOSEN.values() for l in ls if l not in BAND}
+    LAYER_ARG = ",".join(f"{a}={l}" for a, l in PRIMARY.items())
+    _cells = sum(len(ls) for ls in CHOSEN.values())
+    _distinct = sorted({l for ls in CHOSEN.values() for l in ls})
+    # Plain concatenation, not a nested f-string: PEP 701 is 3.12+ and this has to parse
+    # on whatever the instance ships.
+    print("chosen: " + ", ".join(a + "=L" + "+L".join(map(str, ls))
+                                 for a, ls in CHOSEN.items()))
+    print(f"{_cells} (axis, layer) pairs over {len(_distinct)} distinct layers {_distinct}; "
+          f"primary for the single-layer tables: {LAYER_ARG}")
+    print(f"out of band (L{BAND[0]}-{BAND[-1]}), explicit opt-in: "
+          f"{sorted(OOB) or 'none'}")
+    return CHOSEN, LAYER_ARG, OOB, PRIMARY
 
 
 @app.cell
-def _(AXES, CHOSEN, DONE, HF_REPO, HF_TOKEN, JB_ROOT, JB_SCOPE, LAYER_ARG, MODEL, RULES,
+def _(AXES, DONE, HF_REPO, HF_TOKEN, JB_ROOT, JB_SCOPE, LAYER_ARG, MODEL, PRIMARY, RULES,
       TAG, ckpt, sh):
     # cell 18
-    # The headline files: one row per probe x slice at that probe's own layer. Re-runs
-    # whenever the gate changes, because `probe_layers` is part of what DONE compares.
-    _todo = [r for r in RULES if not DONE(JB_ROOT, f"jb_metrics__{r}", probe_layers=CHOSEN)]
+    # The headline files: one row per probe x slice at that probe's own layer -- PRIMARY,
+    # since the script takes one layer per probe. Re-runs whenever the gate changes, because
+    # `probe_layers` is part of what DONE compares.
+    _todo = [r for r in RULES if not DONE(JB_ROOT, f"jb_metrics__{r}", probe_layers=PRIMARY)]
     for _rule in _todo:
         print(f"\n=== jb_metrics at {LAYER_ARG}, threshold {_rule} ===")
         sh("python", "experiments/probe_jailbreak_detection/jb_metrics.py", MODEL,
@@ -564,17 +582,17 @@ def _(mo):
 
 
 @app.cell
-def _(AXES, CHOSEN, CP_ROOT, CP_SCOPE, DONE, HF_REPO, HF_TOKEN, LAYER_ARG, MODEL, TAG,
+def _(AXES, CP_ROOT, CP_SCOPE, DONE, HF_REPO, HF_TOKEN, LAYER_ARG, MODEL, PRIMARY, TAG,
       ckpt, jb_chosen, sh):
     # cell 20
     assert jb_chosen
     _run = False
-    if not DONE(CP_ROOT, "cross_auroc", probe_layers=CHOSEN):
+    if not DONE(CP_ROOT, "cross_auroc", probe_layers=PRIMARY):
         print(f"\n=== cross_auroc at {LAYER_ARG} ===")
         sh("python", "experiments/cross_probe_detection/cross_auroc.py", MODEL, "--tag", TAG,
            "--axes", ",".join(AXES), "--layers", LAYER_ARG, "--diag", "heldout")
         _run = True
-    if not DONE(CP_ROOT, "geometry", chosen_layers=CHOSEN):
+    if not DONE(CP_ROOT, "geometry", chosen_layers=PRIMARY):
         print(f"\n=== geometry at {LAYER_ARG} ===")
         sh("python", "experiments/cross_probe_detection/geometry.py", MODEL, "--tag", TAG,
            "--axes", ",".join(AXES), "--layers", LAYER_ARG)
@@ -593,17 +611,26 @@ def _(AXES, CHOSEN, CP_ROOT, CP_SCOPE, DONE, HF_REPO, HF_TOKEN, LAYER_ARG, MODEL
 def _(mo):
     # cell 21 (markdown)
     mo.md(r"""
-    # 4 — steering_jailbreaks (H3)
+    # 4 — steering_jailbreaks (H3): generation only
 
-    Greedy over all 1,009 prompts for the baseline; judging it defines the two prompt sets
-    (§5.4 runs on the rows it complied with, §5.5 on the rows it refused, a degenerate row
-    falls in neither). Sizes are not known until it is judged.
+    Greedy over all 1,009 prompts for the baseline, then **`add` only, α ∈ 0.25 / 0.50 /
+    0.75 / 1.00** at each chosen (axis, layer), signed: restoring is `RESTORE_SIGN` (−1 for
+    the framing axes, +1 for the refusal ones) on the success set and its mirror on the
+    refusal set. `steer_single.resolve` refuses the half with no headroom, so a sign slip
+    fails before the model loads.
 
-    Then **`add` only, one chosen layer per direction, α ∈ 0.25 / 0.50 / 0.75 / 1.00**,
-    signed: restoring is `RESTORE_SIGN` (−1 for the framing axes, +1 for the refusal ones)
-    on the success set and its mirror on the refusal set. `steer_single.resolve` refuses the
-    half with no headroom, so a sign slip fails before the model loads. **32 target cells +
-    one no-op per (set, layer)**.
+    With story at two layers that is **5 (axis, layer) pairs × 4 α = 20 target cells per
+    set**, plus one no-op per (set, layer) — 4, since story@L15 and persona@L15 share
+    theirs — so **24 per set, 48 in total**, ≈22.6k generations.
+
+    **Judging does not happen here.** It is API-bound, ~19k calls over 3–5 h, and a rented
+    GPU idling through it is the most expensive thing in the run — so it is a local step, and
+    no API key is ever pasted into this instance. Two consequences:
+
+    - **`gen_baseline` judged is a hard dependency**, because the two prompt sets *are* its
+      3-way labels. The gate below stops the notebook until the judged file comes back from
+      the Hub, so the baseline and the sweep are two GPU sessions with a local pass between.
+    - the sweep cells end at generation; the hand-off cell prints exactly what to run locally.
 
     The baseline does not depend on gate 1, so it runs while you are still choosing layers.
     """)
@@ -611,38 +638,62 @@ def _(mo):
 
 
 @app.cell
-def _(BATCH, HF_REPO, HF_TOKEN, MODEL, ST_COMPLETE, ST_ROOT, ST_SCOPE, TAG, ckpt, jb_cached,
-      keys_ok, mo, sh):
+def _(BATCH, HF_REPO, HF_TOKEN, MODEL, ST_COMPLETE, ST_SCOPE, TAG, ckpt, jb_cached, sh):
     # cell 22
     assert jb_cached                      # that cell writes the view sets.py reads
-    mo.stop(not keys_ok,
-            mo.md("*Paste a judge key (OpenAI and/or OpenRouter). The baseline defines both "
-                  "prompt sets, and it does that only once it is graded.*"))
-    _jsonl = ST_ROOT / "meta" / "gen_baseline.jsonl"
-    if ST_COMPLETE("gen_baseline") and (ST_ROOT / "meta" / "gen_baseline_judged.jsonl").exists():
+    if ST_COMPLETE("gen_baseline"):
         # gen_baseline calls mdl.load() before it reads its own resume, so re-entering a
         # finished baseline still costs the weights.
-        print("baseline present and judged -- skipped, no model load")
+        print("gen_baseline complete -- skipped, no model load")
     else:
-        if not ST_COMPLETE("gen_baseline"):
-            _timer = ckpt.autopush(HF_REPO, every=3600, token=HF_TOKEN.value, **ST_SCOPE)
-            try:
-                print("=== gen_baseline: unsteered greedy over all 1,009 prompts ===")
-                sh("python", "experiments/steering_jailbreaks/gen_baseline.py", MODEL,
-                   "--tag", TAG, "--split", "all", "--decoding", "greedy", *BATCH)
-            finally:
-                _timer.set()
-        print("\n=== judging gen_baseline -- this is what defines the two prompt sets ===")
-        sh("python", "experiments/steering_jailbreaks/judge_strongreject.py",
-           str(_jsonl), "--concurrency", "6")
-        ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="gen_baseline", **ST_SCOPE)
+        _timer = ckpt.autopush(HF_REPO, every=3600, token=HF_TOKEN.value, **ST_SCOPE)
+        try:
+            print("=== gen_baseline: unsteered greedy over all 1,009 prompts ===")
+            sh("python", "experiments/steering_jailbreaks/gen_baseline.py", MODEL,
+               "--tag", TAG, "--split", "all", "--decoding", "greedy", *BATCH)
+        finally:
+            _timer.set()
+        # The guarantee before the gate below sends you to another machine: the rows have to
+        # be on the Hub for the local pass to grade them.
+        ckpt.push(HF_REPO, token=HF_TOKEN.value, msg="gen_baseline", **ST_SCOPE)
+    st_baseline = True
+    return (st_baseline,)
+
+
+@app.cell
+def _(HF_REPO, MODEL, ST_ROOT, TAG, mo, st_baseline):
+    # cell 23
+    assert st_baseline
+    # The two prompt sets ARE the baseline's 3-way labels, so nothing below can be built
+    # until it is graded -- and grading is a local step now. This is the hand-off: it stops
+    # here, you run the pass on your own machine, push, and re-run the notebook.
+    _judged = ST_ROOT / "meta" / "gen_baseline_judged.jsonl"
+    mo.stop(not _judged.exists(), mo.md(f"""
+    ### ▸ Judge the baseline locally, then re-run this notebook
+
+    `gen_baseline.jsonl` is on the Hub; `gen_baseline_judged.jsonl` is not here yet. On your
+    own machine, in the repo, with `OPENAI_API_KEY` (and ideally `OPENROUTER_API_KEY`) in
+    `.env`:
+
+    ```bash
+    M={MODEL}; export RUN_TAG={TAG}
+    python -c "from experiments.common import ckpt; ckpt.pull('{HF_REPO}', experiment='steering_jailbreaks', tag='{TAG}')"
+    python experiments/steering_jailbreaks/judge_strongreject.py \\
+        experiments/steering_jailbreaks/results/{TAG}/{MODEL.replace('/', '_')}/meta/gen_baseline.jsonl \\
+        --concurrency 6
+    python -c "from experiments.common import ckpt; ckpt.push('{HF_REPO}', experiment='steering_jailbreaks', tag='{TAG}', msg='baseline judged')"
+    ```
+
+    1,009 calls, ~10 min, well under the daily cap. Then re-run here: cell 6 pulls it back,
+    every finished GPU stage skips before its model load, and the sweep starts.
+    """))
     st_split = True
     return (st_split,)
 
 
 @app.cell
 def _(ALPHAS, CHOSEN, MODEL, N_LAYERS, OOB, ST_COMPLETE, TAG, mo, st_split):
-    # cell 23
+    # cell 24
     import argparse as _ap
     import json as _j
     import tempfile as _tf
@@ -653,23 +704,25 @@ def _(ALPHAS, CHOSEN, MODEL, N_LAYERS, OOB, ST_COMPLETE, TAG, mo, st_split):
     assert st_split
 
     def _oob(layer):
-        return ["--allow-out-of-band"] if layer in OOB.values() else []
+        return ["--allow-out-of-band"] if layer in OOB else []
 
     def _jobs(prompt_set):
-        """argv tails for one set: 4 axes x 4 alphas, plus a no-op per layer.
+        """argv tails for one set: one cell per (axis, layer, alpha), plus a no-op per layer.
 
         No `ablate`: it did not help in any config at the Qwen run, so suppression is
         `add` at -alpha. The sign is derived, never typed.
         """
         out, flip = [], 1.0 if prompt_set == "success" else -1.0
-        for axis, layer in CHOSEN.items():
-            for a in ALPHAS:
-                out.append(["--direction", axis, "--mode", "add", "--layers", str(layer),
-                            "--alpha", f"{_cell.RESTORE_SIGN[axis] * flip * a:g}",
-                            *_oob(layer)])
-        # One no-op per (set, layer) -- two directions sharing a layer share its no-op,
-        # since the pairing is on prompt_set x layers_spec, not on the direction.
-        for layer in sorted(set(CHOSEN.values())):
+        for axis, layers in CHOSEN.items():
+            for layer in layers:            # story runs at both L28 and L15
+                for a in ALPHAS:
+                    out.append(["--direction", axis, "--mode", "add",
+                                "--layers", str(layer),
+                                "--alpha", f"{_cell.RESTORE_SIGN[axis] * flip * a:g}",
+                                *_oob(layer)])
+        # One no-op per (set, layer), not per direction: the pairing is on
+        # prompt_set x layers_spec, so story@L15 and persona@L15 share the L15 no-op.
+        for layer in sorted({l for ls in CHOSEN.values() for l in ls}):
             out.append(["--arm", "noop", "--layers", str(layer), *_oob(layer)])
         return out
 
@@ -703,7 +756,7 @@ def _(ALPHAS, CHOSEN, MODEL, N_LAYERS, OOB, ST_COMPLETE, TAG, mo, st_split):
 
 @app.cell
 def _(BATCH, HF_REPO, HF_TOKEN, MODEL, ST_JOBS, ST_SCOPE, TAG, ckpt, sh):
-    # cell 24
+    # cell 25
     # One steer_batch process per set, so the model loads at most twice rather than 40
     # times, and only the *pending* jobs are handed to it -- a set with nothing left skips
     # the process entirely and pays no load. Resume is also per cell and per batch inside
@@ -728,7 +781,7 @@ def _(BATCH, HF_REPO, HF_TOKEN, MODEL, ST_JOBS, ST_SCOPE, TAG, ckpt, sh):
 
 @app.cell
 def _(BATCH, HF_REPO, HF_TOKEN, MODEL, ST_JOBS, ST_SCOPE, TAG, ckpt, sh, st_success):
-    # cell 25
+    # cell 26
     assert st_success
     _path, _n = ST_JOBS["refusal"]
     if _n:
@@ -746,232 +799,66 @@ def _(BATCH, HF_REPO, HF_TOKEN, MODEL, ST_JOBS, ST_SCOPE, TAG, ckpt, sh, st_succ
     return (st_steered,)
 
 
-@app.cell(hide_code=True)
-def _(mo):
-    # cell 26 (markdown)
-    mo.md(r"""
-    ## Judge — API, and two rate limits
-
-    One call per **ungraded** row. Two ceilings, needing different handling:
-
-    | limit | measured | response |
-    |---|---|---|
-    | tokens per minute | 200k TPM on `gpt-4o-mini`, ~1.2k tokens a call ≈ 165 calls/min | `--concurrency 6`; 8 workers sit on the ceiling and 429 |
-    | **requests per day** | **10,000 RPD** | not retryable — with an OpenRouter key the judge switches provider and continues on the *same* `gpt-4o-mini`; without one it exits **3** and the loop stops cleanly |
-
-    Nothing already graded is re-graded: the cache key and the per-row resume stamp are the
-    model, not the endpoint, so a row graded through either provider is a valid cache hit
-    for the other. A cell is skipped when its `csv/<stem>_summary.csv` says every row was
-    scored, so a cell killed midway re-enters and resumes per row.
-
-    Exit 3 breaks the loop; a single other failure is one bad cell and the loop carries on;
-    two in a row is a wall and also stops. Pushed every `JUDGE_PUSH_EVERY` cells.
-    """)
-    return
-
-
 @app.cell
-def _(HF_REPO, HF_TOKEN, JUDGE_PUSH_EVERY, JUDGE_RPD, ST_ROOT, ST_SCOPE, ckpt, sh):
+def _(HF_REPO, HF_TOKEN, MODEL, ST_ALL_STEMS, ST_ROOT, ST_SCOPE, TAG, ckpt, mo, st_steered):
     # cell 27
     import csv as _csv
-    import json as _js
-    import os as _os
 
-    _META, _CSV = ST_ROOT / "meta", ST_ROOT / "csv"
+    assert st_steered
+    # Everything generated is on the Hub before this prints: the two steer cells pushed, and
+    # a cell that is not up there cannot be graded anywhere else.
+    _ok = ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="sweep generated", **ST_SCOPE)
 
     def _graded(stem):
         """True when this cell's summary exists and every row in it was scored."""
-        p = _CSV / f"{stem}_summary.csv"
+        p = ST_ROOT / "csv" / f"{stem}_summary.csv"
         if not p.exists():
             return False
         with p.open(encoding="utf-8-sig", newline="") as f:
             r = next(_csv.DictReader(f), None)
         return bool(r) and r.get("n") not in (None, "") and r["n"] == r.get("n_judged")
 
-    def _ids(path):
-        """Distinct unit_ids in a jsonl, torn tail discarded (spec 0.11)."""
-        out = set()
-        if not path.exists():
-            return out
-        for line in path.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            try:
-                out.add(_js.loads(line)["unit_id"])
-            except (ValueError, KeyError):
-                break
-        return out
-
-    def JUDGE(label, mine):
-        """Grade every generated-but-ungraded cell. True when the pass finished.
-
-        A generations file is one with a sibling manifest -- exactly what
-        judge_strongreject loads first. meta/ also holds judge_cache.jsonl (the judge's own
-        response cache) and the _judged.jsonl outputs; neither has a manifest, and a
-        blocklist naming only those two picked up the cache and died on it. gen_baseline is
-        judged in its own cell.
-        """
-        mine = set(mine)
-        todo = sorted(p for p in _META.glob("*.jsonl")
-                      if not p.name.endswith("_judged.jsonl")
-                      and not p.name.startswith("gen_baseline")
-                      and (_META / f"{p.stem}_manifest.json").exists()
-                      and not _graded(p.stem))
-        left = {p.stem: len(_ids(p) - _ids(_META / f"{p.stem}_judged.jsonl")) for p in todo}
-        need = sum(left.values())
-        new = sum(p.stem in mine for p in todo)
-        print(f"[{label}] judging {len(todo)} cells, {new} of them this stage's "
-              f"({len(mine) - new}/{len(mine)} already graded)\n"
-              f"{need:,} rows still ungraded, against a {JUDGE_RPD:,}/day request cap "
-              f"-> {-(-need // JUDGE_RPD)} day(s)")
-        if need > JUDGE_RPD and not _os.environ.get("OPENROUTER_API_KEY"):
-            print(f"! this pass CANNOT finish today on the OpenAI key alone. It will grade "
-                  f"~{JUDGE_RPD:,} rows, stop on the daily cap, and resume here tomorrow -- "
-                  f"re-run the notebook, or paste an OpenRouter key to carry straight on.")
-
-        # allow_fail because judging is resumable per row, so one bad cell costs a retry of
-        # that cell rather than the rest of the pass. Exit 3 is the *daily* cap, which every
-        # remaining cell would hit in turn, so it breaks out. The belt to that brace: exit 3
-        # rests on a regex over the error string, so two consecutive failures of ANY kind
-        # also stop -- one bad cell is a bad cell, two in a row is a wall.
-        failed, capped, done_rows, streak, since = [], False, 0, 0, 0
-        for i, p in enumerate(todo, 1):
-            # One line per cell, and it is the only per-cell progress there is: the
-            # judge's own per-row counter is terminal-only (cfg.LIVE), so a 500-row cell
-            # prints this line and its summary, not 500 numbered lines.
-            print(f"\n=== [{i}/{len(todo)}] judging {p.stem}  "
-                  f"({left[p.stem]:,} rows ungraded) ===")
-            rc = sh("python", "experiments/steering_jailbreaks/judge_strongreject.py",
-                    str(p), "--concurrency", "6", allow_fail=True).returncode
-            # Before the break checks: a cell that hit the cap still graded rows on the way.
-            since += 1
-            if rc == 3:
-                capped = True
-                break
-            if rc:
-                failed.append(p.stem)
-                streak += 1
-                if streak == 2:
-                    print(f"\n! two cells failed back to back ({failed[-2:]}) -- stopping. "
-                          f"That is a wall, not a bad cell: check the last traceback for a "
-                          f"quota, key or network problem before re-running.")
-                    break
-            else:
-                done_rows += left[p.stem]
-                streak = 0
-            if since >= JUDGE_PUSH_EVERY:
-                ckpt.try_push(HF_REPO, token=HF_TOKEN.value, **ST_SCOPE,
-                              msg=f"{label} judged, {i}/{len(todo)} cells")
-                since = 0
-        # Whatever the last partial batch left, including the cells a break stopped after.
-        # Nothing to push when the loop never ran, so a verification re-run does not spend
-        # commits walking an unchanged tree.
-        if since:
-            ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg=f"{label} judged", **ST_SCOPE)
-        if failed:
-            print(f"! {len(failed)} cells did not judge, re-run this cell: {failed}")
-        if capped:
-            also = (" Both the OpenAI key and the OpenRouter fallback are spent."
-                    if _os.environ.get("OPENROUTER_API_KEY") else
-                    " Paste an OpenRouter key to carry on without waiting.")
-            print(f"\n! DAILY REQUEST CAP -- stopped cleanly after ~{done_rows:,} rows, "
-                  f"~{need - done_rows:,} to go.{also} Everything graded is on the Hub; "
-                  f"re-run the notebook and the GPU cells will all skip.")
-        return not capped and not failed
-    return (JUDGE,)
-
-
-@app.cell
-def _(JUDGE, ST_ALL_STEMS, st_steered):
-    # cell 28
-    assert st_steered
-    st_judged = JUDGE("steering", ST_ALL_STEMS)
-    return (st_judged,)
-
-
-@app.cell
-def _(HF_REPO, HF_TOKEN, MODEL, ST_SCOPE, TAG, ckpt, sh, st_judged):
-    # cell 29
-    # An aggregate over a half-graded run is a table that looks final and is not, so it is
-    # not written at all until every cell is scored.
-    if not st_judged:
-        print("judging did not finish -- aggregate SKIPPED. Re-run the notebook; every GPU "
-              "cell will skip and judging resumes.")
-    else:
-        print("=== aggregate over every cell at this tag ===")
-        sh("python", "experiments/steering_jailbreaks/aggregate.py", MODEL, "--tag", TAG)
-        ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="aggregate", **ST_SCOPE)
-    st_agg = True
-    return (st_agg,)
-
-
-@app.cell(hide_code=True)
-def _(TAG, mo):
-    # cell 30 (markdown)
+    _todo = [s for s in ST_ALL_STEMS if not _graded(s)]
+    _slug = MODEL.replace("/", "_")
     mo.md(f"""
-    ## Read the α sweep, then ▸ GATE 2
+    ## ▸ GPU work done — judge the sweep locally
 
-    `steering_jailbreaks/results/{TAG}/<model_slug>/csv/`: `aggregate_cells.csv` is every
-    cell, `aggregate_controls.csv` each target with `d_*_vs_noop`.
+    {len(ST_ALL_STEMS) - len(_todo)}/{len(ST_ALL_STEMS)} cells are already graded;
+    **{len(_todo)} are not**. {'Everything is on the Hub.' if _ok is not None else
+    '**The last push was rate-limited — re-run this cell before shutting the instance down.**'}
 
-    Read in this order, or the numbers mislead:
+    ~{len(_todo) * 470:,} calls at ~1.2k tokens each: `--concurrency 6` (200k TPM ≈ 165
+    calls/min; 8 workers sit on the ceiling and 429), and over 10k calls it crosses
+    `gpt-4o-mini`'s daily request cap, so an `OPENROUTER_API_KEY` in `.env` is what keeps it
+    a one-day job — same model, same cache key, so nothing already graded is re-graded.
 
-    1. **`pct_degenerate` before any effect.** A mostly-broken cell still has a ΔASR and it
-       means nothing. An out-of-band layer and the top of the α ladder are where this bites.
-    2. **`d_*_vs_noop`, matched on `prompt_set` × `layers_spec`** — never against the
-       baseline, whose batch composition differs.
-    3. **`|Δh|`, not α.** The push is `α·σ_l·û_l` and σ differs per layer and direction.
-    4. **`read_<axis>` for all four axes.** At the Qwen run no cell moved only its own axis.
+    On your own machine, in the repo:
 
-    **Gate 2** — the narrativity check is the manipulation check on the output side: is the
-    steered response the more narrative of the pair, judged against its own no-op on the
-    same row? Enter the `story_v2_1k` α **magnitudes** worth judging: the cells with a
-    readable effect and low `pct_degenerate`. Blank skips the section.
+    ```bash
+    M={MODEL}; export RUN_TAG={TAG}
+    python -c "from experiments.common import ckpt; ckpt.pull('{HF_REPO}', experiment='steering_jailbreaks', tag='{TAG}')"
+    for f in experiments/steering_jailbreaks/results/{TAG}/{_slug}/meta/steer_*.jsonl; do
+      [ -e "$f" ] || continue
+      case "$f" in *_judged.jsonl) continue;; esac
+      python experiments/steering_jailbreaks/judge_strongreject.py "$f" --concurrency 6
+    done
+    python experiments/steering_jailbreaks/aggregate.py $M --tag {TAG}
+    python -c "from experiments.common import ckpt; ckpt.push('{HF_REPO}', experiment='steering_jailbreaks', tag='{TAG}', msg='sweep judged')"
+    ```
+
+    Judging is resumable per row and skips a cell whose `_summary.csv` says every row was
+    scored, so re-running the loop after an interruption costs only what is left. Then read
+    `aggregate_controls.csv` and come back for gate 3 — the pairs need the α curve.
+
+    **The narrativity check (§5) is local too**, and needs no GPU at all: it runs off the
+    `_judged.jsonl` files, so run it there once you have picked the story α magnitudes.
     """)
     return
 
 
-@app.cell
-def _(mo):
-    # cell 31
-    NARR_ALPHAS = mo.ui.text(label="narrativity: story alpha magnitudes", full_width=True,
-                             placeholder="0.25,0.75")
-    NARR_ALPHAS
-    return (NARR_ALPHAS,)
-
-
-@app.cell
-def _(CHOSEN, DONE, HF_REPO, HF_TOKEN, MODEL, NARR_ALPHAS, ST_ROOT, ST_SCOPE, TAG, ckpt,
-      mo, os, sh, st_agg):
-    # cell 32
-    assert st_agg
-    mo.stop(not NARR_ALPHAS.value.strip(),
-            mo.md("*Gate 2: enter the story α magnitudes to judge, or leave blank to skip.*"))
-    _mags = [float(x) for x in NARR_ALPHAS.value.replace(" ", "").split(",") if x]
-    _layer = CHOSEN["story_v2_1k"]
-    _stem = f"judge_narrativity__story_v2_1k__L{_layer}"
-    # Forced onto OpenRouter when a key is there: the same model and the same cache key, so
-    # it is not a different judge -- it just keeps the OpenAI daily cap for the
-    # StrongREJECT pass, which is 20x larger.
-    _prov = ["--provider", "openrouter"] if os.environ.get("OPENROUTER_API_KEY") else []
-    if DONE(ST_ROOT, _stem, alpha_mags=_mags, prompt_sets=["success", "refusal"]):
-        print(f"narrativity at L{_layer} for alphas {_mags} complete -- skipped")
-    else:
-        # Runs off the existing _judged.jsonl -- no generation. Each steered cell against
-        # its own no-op at the same layer and set; pairs where either side is degenerate are
-        # excluded, because a repetition loop reads as more literary.
-        print(f"=== narrativity: story_v2_1k at L{_layer}, alphas {_mags}, both sets ===")
-        sh("python", "experiments/steering_jailbreaks/judge_narrativity.py", MODEL,
-           "--tag", TAG, "--direction", "story_v2_1k", "--layer", str(_layer),
-           "--alphas", ",".join(f"{m:g}" for m in _mags), "--concurrency", "8", *_prov)
-        ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="narrativity", **ST_SCOPE)
-    narr_done = True
-    return (narr_done,)
-
-
 @app.cell(hide_code=True)
 def _(TAG, mo):
-    # cell 33 (markdown)
+    # cell 28 (markdown)
     mo.md(f"""
     # 5 — projection pairs (§5.6) ▸ GATE 3
 
@@ -989,35 +876,40 @@ def _(TAG, mo):
     reference is free — which is why **α must be one of 0.25 / 0.50 / 0.75 / 1.00**.
     `perp_effect` is skipped: `α_eff = α/√(1−c²)` is under 5% for any cosine worth running.
 
-    One line per ordered pair, `a>b` then the α magnitude per set (omit a set to skip it):
+    One line per ordered pair, `a>b` then the α magnitude per set (omit a set to skip it).
+    The anchor has two layers where story does, so name one with `a@L`; without it the
+    anchor's primary layer is used, and `b` is always read at the same layer as `a`:
 
     ```
-    story_v2_1k>persona_v2 success=0.75 refusal=0.25
+    story_v2_1k@15>persona_v2 success=0.75 refusal=0.25
     persona_v2>eval_v2 success=0.5
     ```
 
-    Blank skips the section.
+    `story_v2_1k@15 × persona_v2` is the pair to expect: L15 is persona's own layer, so the
+    two vectors are compared where both are deployed. Blank skips the section.
     """)
     return
 
 
 @app.cell
 def _(mo):
-    # cell 34
+    # cell 29
     PAIRS_IN = mo.ui.text_area(
-        label="pairs: `a>b set=alpha ...`, one per line", full_width=True, rows=4,
-        placeholder="story_v2_1k>persona_v2 success=0.75 refusal=0.25")
+        label="pairs: `a[@layer]>b set=alpha ...`, one per line", full_width=True, rows=4,
+        placeholder="story_v2_1k@15>persona_v2 success=0.75 refusal=0.25")
     PAIRS_IN
     return (PAIRS_IN,)
 
 
 @app.cell
-def _(ALPHAS, AXES, CHOSEN, PAIRS_IN, ST_COMPLETE, mo, st_agg):
-    # cell 35
+def _(ALPHAS, AXES, CHOSEN, PAIRS_IN, ST_COMPLETE, mo, st_steered):
+    # cell 30
     from experiments.common import config as _cfg2, manifest as _mf
     from experiments.steering_jailbreaks import cell as _cell2, steer_pairs as _sp
 
-    assert st_agg
+    # Only the *generated* sweep is needed to build these stems; the α that picks each pair
+    # comes from the local aggregate, which is why gate 3 is a text box and not a rule.
+    assert st_steered
     mo.stop(not PAIRS_IN.value.strip(),
             mo.md("*Gate 3: enter the ordered pairs to run, or leave blank to skip.*"))
 
@@ -1026,8 +918,15 @@ def _(ALPHAS, AXES, CHOSEN, PAIRS_IN, ST_COMPLETE, mo, st_agg):
     def _parse(line):
         head, *rest = line.split()
         a, sep, b = head.partition(">")
+        # `a@L` picks which of the anchor's chosen layers to project at -- story has two,
+        # and the projection is same-layer, so this is not a free parameter.
+        a, at, want = a.partition("@")
         if not sep or a not in AXES or b not in AXES or a == b:
             raise ValueError(f"{line!r}: expected `a>b` with two different axes from {AXES}")
+        layer = int(want) if at else CHOSEN[a][0]
+        if layer not in CHOSEN[a]:
+            raise ValueError(f"{line!r}: {a} was steered at {CHOSEN[a]}, not L{layer} -- "
+                             f"there is no `unprojected` twin at that layer")
         mags = {}
         for tok in rest:
             k, s, v = tok.partition("=")
@@ -1040,7 +939,7 @@ def _(ALPHAS, AXES, CHOSEN, PAIRS_IN, ST_COMPLETE, mo, st_agg):
                 raise ValueError(f"{line!r}: alpha {v} has no twin; use one of {ALPHAS}")
         if not mags:
             raise ValueError(f"{line!r}: name at least one set")
-        return a, b, mags
+        return a, b, layer, mags
 
     PAIRS = [_parse(l.strip()) for l in PAIRS_IN.value.splitlines() if l.strip()]
 
@@ -1049,8 +948,7 @@ def _(ALPHAS, AXES, CHOSEN, PAIRS_IN, ST_COMPLETE, mo, st_agg):
         return _cell2.RESTORE_SIGN[a] * _sp.SET_SIGN[pset] * mag
 
     PAIR_JOBS, PAIR_STEMS, _rows, _warn = {"success": [], "refusal": []}, [], [], []
-    for _a, _b, _mags in PAIRS:
-        _layer = CHOSEN[_a]
+    for _a, _b, _layer, _mags in PAIRS:
         for _pset, _mag in _mags.items():
             _al = _alpha(_pset, _a, _mag)
             _stems = [_mf.stem("steer_pairs", f"{_a}-perp-{_b}",
@@ -1083,7 +981,7 @@ def _(ALPHAS, AXES, CHOSEN, PAIRS_IN, ST_COMPLETE, mo, st_agg):
 
 @app.cell
 def _(BATCH, HF_REPO, HF_TOKEN, MODEL, OOB, PAIR_JOBS, ST_SCOPE, TAG, ckpt, sh):
-    # cell 36
+    # cell 31
     # There is no steer_batch driver for steer_pairs, so the model loads once per pair --
     # ~1 min against ~20 min of generation per pair. Pairs whose arms are both complete are
     # dropped before that, so a resumed session pays only for what is left. Inside an
@@ -1095,7 +993,7 @@ def _(BATCH, HF_REPO, HF_TOKEN, MODEL, OOB, PAIR_JOBS, ST_SCOPE, TAG, ckpt, sh):
         sh("python", "experiments/steering_jailbreaks/steer_pairs.py", MODEL, "--tag", TAG,
            "--prompt-set", "success", "--pair", f"{_a},{_b}", "--layers", str(_layer),
            "--alpha", f"{_mag:g}", "--arms", "perp_alpha,par_component",
-           *(["--allow-out-of-band"] if _layer in OOB.values() else []), *BATCH)
+           *(["--allow-out-of-band"] if _layer in OOB else []), *BATCH)
     if _jobs:
         ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="pairs success", **ST_SCOPE)
     else:
@@ -1107,7 +1005,7 @@ def _(BATCH, HF_REPO, HF_TOKEN, MODEL, OOB, PAIR_JOBS, ST_SCOPE, TAG, ckpt, sh):
 @app.cell
 def _(BATCH, HF_REPO, HF_TOKEN, MODEL, OOB, PAIR_JOBS, ST_SCOPE, TAG, ckpt, pairs_success,
       sh):
-    # cell 37
+    # cell 32
     assert pairs_success
     _jobs = PAIR_JOBS["refusal"]
     for _i, (_a, _b, _layer, _mag) in enumerate(_jobs, 1):
@@ -1116,7 +1014,7 @@ def _(BATCH, HF_REPO, HF_TOKEN, MODEL, OOB, PAIR_JOBS, ST_SCOPE, TAG, ckpt, pair
         sh("python", "experiments/steering_jailbreaks/steer_pairs.py", MODEL, "--tag", TAG,
            "--prompt-set", "refusal", "--pair", f"{_a},{_b}", "--layers", str(_layer),
            "--alpha", f"{_mag:g}", "--arms", "perp_alpha,par_component",
-           *(["--allow-out-of-band"] if _layer in OOB.values() else []), *BATCH)
+           *(["--allow-out-of-band"] if _layer in OOB else []), *BATCH)
     if _jobs:
         ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="pairs refusal", **ST_SCOPE)
     else:
@@ -1126,29 +1024,44 @@ def _(BATCH, HF_REPO, HF_TOKEN, MODEL, OOB, PAIR_JOBS, ST_SCOPE, TAG, ckpt, pair
 
 
 @app.cell
-def _(HF_REPO, HF_TOKEN, JUDGE, MODEL, PAIR_STEMS, ST_SCOPE, TAG, ckpt, pairs_steered, sh):
-    # cell 38
+def _(HF_REPO, HF_TOKEN, MODEL, PAIR_STEMS, ST_SCOPE, TAG, ckpt, mo, pairs_steered):
+    # cell 33
     assert pairs_steered
-    _ok = JUDGE("pairs", PAIR_STEMS)
-    if not _ok:
-        print("judging did not finish -- aggregate SKIPPED. Re-run the notebook.")
-    else:
-        # aggregate.py spans the tag, so this re-reports the alpha sweep alongside the pairs.
-        print("=== aggregate: the alpha sweep and the pairs together ===")
-        sh("python", "experiments/steering_jailbreaks/aggregate.py", MODEL, "--tag", TAG)
-        ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="pairs aggregate", **ST_SCOPE)
-        # check_stale spans the whole tag, so it also reports the jailbreak activations that
-        # --view-only deliberately leaves uncomputed. Never fatal for that reason.
-        sh("python", "-m", "experiments.common.check_stale", MODEL, TAG, allow_fail=True)
-    pairs_done = _ok
-    return (pairs_done,)
+    _ok = ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="pairs generated", **ST_SCOPE)
+    _slug = MODEL.replace("/", "_")
+    mo.md(f"""
+    ## ▸ GPU work done — judge the pairs locally
+
+    {len(PAIR_STEMS)} arm cells generated.
+    {'On the Hub.' if _ok is not None else
+     '**The push was rate-limited — re-run this cell before shutting the instance down.**'}
+    ~{len(PAIR_STEMS) * 470:,} calls, well under a day's cap.
+
+    ```bash
+    M={MODEL}; export RUN_TAG={TAG}
+    python -c "from experiments.common import ckpt; ckpt.pull('{HF_REPO}', experiment='steering_jailbreaks', tag='{TAG}')"
+    for f in experiments/steering_jailbreaks/results/{TAG}/{_slug}/meta/steer_pairs__*.jsonl; do
+      [ -e "$f" ] || continue
+      case "$f" in *_judged.jsonl) continue;; esac
+      python experiments/steering_jailbreaks/judge_strongreject.py "$f" --concurrency 6
+    done
+    python experiments/steering_jailbreaks/aggregate.py $M --tag {TAG}
+    python -m experiments.common.check_stale $M {TAG}
+    python -c "from experiments.common import ckpt; ckpt.push('{HF_REPO}', experiment='steering_jailbreaks', tag='{TAG}', msg='pairs judged')"
+    ```
+
+    `aggregate.py` spans the tag, so it re-reports the α sweep alongside the pairs.
+    `check_stale` will flag the jailbreak activations `--view-only` deliberately left
+    uncomputed — expected, not a finding.
+    """)
+    return
 
 
 @app.cell(hide_code=True)
-def _(mo, pairs_done):
-    # cell 39 (markdown)
-    mo.md(f"""
-    ## Read the pairs — {'complete' if pairs_done else 'not finished'}
+def _(mo):
+    # cell 34 (markdown)
+    mo.md(r"""
+    ## Read the pairs
 
     1. **`pct_degenerate` first**, especially on `par_component`: it pushes an axis at a
        magnitude the anchor's own α ladder never tested.

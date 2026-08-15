@@ -1,0 +1,51 @@
+{
+  "config": {
+    "append_task": false,
+    "batch_size": 8,
+    "dataset": "persona_v2",
+    "dtype": "float16",
+    "poles": [
+      "pos",
+      "neg"
+    ],
+    "position": "last_token",
+    "seed": 20260731,
+    "split": "train",
+    "subsample": null
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/cache_activations.py",
+      "google/gemma-2-9b-it",
+      "--tag",
+      "1K_per_direction",
+      "--dataset",
+      "story_v2_1k,persona_v2,harm_v2,eval_v2",
+      "--split",
+      "train,heldout"
+    ],
+    "git_diff_sha": "ec17189588d784ce042b37d15cf750fd181e8dd37f5011bec1c5846937758547",
+    "git_dirty": true,
+    "git_sha": "51a17beaec42ae9051394f6a3dc1f8650a384568",
+    "host": "5fefe2b1-e0e1-41d4-b792-535583e1be46-n8zsf",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.11",
+    "resumed_from": 0,
+    "timestamp": "2026-08-15T01:02:08",
+    "wall_s": 8.89
+  },
+  "inputs": {
+    "chat_template_sha": "ecd6ae513fe103f0",
+    "source_files": [
+      {
+        "path": "data/role_play_v2/pairs.jsonl",
+        "sha256": "eedadeb84ec6481b732d33d702c0407d46ad2f962e757a1924eba8d20d098f56"
+      }
+    ],
+    "view_key": "f36e4d97bc18f02cf9c3e42eab2be3ba7ad61e4f69b6c90bbdd554e682ca0ccd"
+  },
+  "notes": [],
+  "run_key": "0489ea7e950485a3d78b34bb1f1c9ad86b0e689e81497a9392c5d5d78b2986c0",
+  "status": "complete",
+  "stem": "cache_activations__persona_v2__train"
+}

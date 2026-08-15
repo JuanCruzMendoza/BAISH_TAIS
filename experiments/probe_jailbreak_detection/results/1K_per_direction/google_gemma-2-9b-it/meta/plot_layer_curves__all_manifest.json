@@ -1,0 +1,42 @@
+{
+  "config": {
+    "chosen_layers": null,
+    "layer_scope": "all",
+    "per_family": [
+      "story_v2_1k",
+      "persona_v2"
+    ],
+    "probes": [
+      "story_v2_1k",
+      "persona_v2",
+      "harm_v2",
+      "eval_v2"
+    ],
+    "threshold_rule": "midpoint"
+  },
+  "env": {
+    "argv": [
+      "experiments/probe_jailbreak_detection/plot_layer_curves.py",
+      "google/gemma-2-9b-it",
+      "--tag",
+      "1K_per_direction",
+      "--all-layers"
+    ],
+    "git_diff_sha": null,
+    "git_dirty": false,
+    "git_sha": "51a17beaec42ae9051394f6a3dc1f8650a384568",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-15T10:25:11",
+    "wall_s": 2.27
+  },
+  "inputs": {
+    "jb_metrics_run_key": "b4d6405a492e1ae668109126cfbb458bd6211d14ea7c428190032eb47c6d8160"
+  },
+  "notes": [],
+  "run_key": "91509ef122b322749c9ad63da308f3a0763d7fda6a1aa89933973f41c23f1448",
+  "status": "complete",
+  "stem": "plot_layer_curves__all"
+}

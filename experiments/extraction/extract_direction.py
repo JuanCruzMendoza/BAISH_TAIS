@@ -40,8 +40,12 @@ def subsample_curve(pos, neg, band, step=CURVE_STEP, seeds=CURVE_SEEDS):
     inband = [l for l in range(Lp1) if l in set(band)]
     out = {}
     for k in range(step, n, step):
-        cos_sk = np.array([[met.cos(met.diff_in_means(pos[o[:k]], neg[o[:k]])[l], d_full[l])
-                            for l in range(Lp1)] for o in orders])     # [seeds, L+1]
+        # d_k once per seed, not once per (seed, layer). It does not depend on `l`, and
+        # each call copies 2*k*(L+1)*d floats to mean over them -- inside the layer loop
+        # that is (L+1)x the work, 65 min against 90 s per axis at 43 layers.
+        d_k = [met.diff_in_means(pos[o[:k]], neg[o[:k]]) for o in orders]
+        cos_sk = np.array([[met.cos(dk[l], d_full[l])
+                            for l in range(Lp1)] for dk in d_k])       # [seeds, L+1]
         out[str(k)] = {
             "band_mean_cos": float(cos_sk[:, inband].mean()),
             "band_mean_cos_sd": float(cos_sk[:, inband].mean(axis=1).std(ddof=1)),

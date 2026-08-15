@@ -5,10 +5,21 @@ so nothing collides with the Qwen run. Only the model changes — and every abso
 it.
 
 Run end to end by `notebooks/notebook_1K_gemma.py` (gemma-2-9b-it): every stage is guarded on its
-artefacts, and the three manual decisions below are the three points it stops at.
+artefacts, and the manual decisions below are the points it stops at.
+
+**Generation runs on the GPU box, judging does not.** The judge is API-bound — ~19k calls, 3–5 h —
+and a rented GPU idling through it is the most expensive hour in the run, so every judge pass is a
+local step and no API key reaches the instance. The two sides hand off through the Hub; §J lists the
+local commands in order.
 
 **Dropped vs the Qwen run:** `ablate` (no config where it helped), `cap`, the `length` foil,
-`compare_crossed` / §1.2a, the `random` arm, the §5.1 decoding comparison (greedy is reused), and the 2_run second-layer pass — one chosen layer per direction, one steering pass.
+`compare_crossed` / §1.2a, the `random` arm, and the §5.1 decoding comparison (greedy is reused).
+
+**Chosen layers (gemma-2-9b-it, L=42, band 17–38):** `story_v2_1k` **L28 + L15**, `persona_v2` L15,
+`harm_v2` L19, `eval_v2` L8. Story keeps two because its criteria disagree by 13 layers — L28 is the
+`cohens_dz_train` peak, L15 the fiction − nonfiction `pct_reads` peak — and with one layer a null
+cell cannot be told apart from a wrong layer. L15 and L8 are outside the band, so their cells carry
+`--allow-out-of-band`.
 
 **α default everywhere: 0.25, 0.50, 0.75, 1.00**, signed by `cell.RESTORE_SIGN`.
 
@@ -20,8 +31,8 @@ artefacts, and the three manual decisions below are the three points it stops at
   `eval_v2`, `harm_v2` (`pairs.jsonl` + `pairs_heldout.jsonl`), `jailbreaks/jailbreaks.jsonl`.
 - `$BLOB_STORE`: leave unset, or point at a **per-model** path. Blobs are keyed by token ids only, so
   a store shared with a same-tokenizer model (Qwen2.5-7B vs -14B) would silently mix activations.
-- `.env` with `OPENAI_API_KEY` **and** `OPENROUTER_API_KEY` — the judge pass exceeds 10k RPD on one
-  key.
+- `.env` **on the judging machine** with `OPENAI_API_KEY` and `OPENROUTER_API_KEY` — the sweep
+  exceeds 10k RPD on one key. The GPU box needs only `HF_TOKEN`.
 - `$ATTN_IMPL` where the architecture needs a specific attention kernel: gemma-2 soft-caps its
   attention logits and sdpa drops that, so it runs at `eager` — a different activation and a
   different generation, not a speed knob.
@@ -66,10 +77,10 @@ python plot_layer_curves.py $M --all-layers
 beside it (a low `pct_reads` at low `ref_tpr` is the threshold failing, not a reading), and the
 per-family curves for the two framing axes.
 
-### ▸ MANUAL GATE — one layer per direction
+### ▸ MANUAL GATE — the layer(s) per direction
 
-Pick `L_axis` for each of the four, then record them in `extraction/insights.md` (experiments 3–5
-read them from there, never from a JSON):
+Pick `L_axis` for each of the four — more than one where the criteria disagree — then record them in
+`extraction/insights.md` (experiments 3–5 read them from there, never from a JSON):
 
 - default criterion: max `cohens_dz_train`, smallest train↔held-out gap;
 - for `story_v2_1k` prefer the **fiction − nonfiction `pct_reads` gap** from §2 where it disagrees —
@@ -108,7 +119,9 @@ band-mean `cos` per pair — §6 selects pairs off it.
 
 ## 4. steering_jailbreaks — baseline + the α sweep
 
-**Needs.** GPU, the bulk of the run. `--poles pos` is enough (no `cap`). Judge keys.
+**Needs.** GPU, the bulk of the run. `--poles pos` is enough (no `cap`). **Two GPU sessions**, with a
+local judge pass between them: the two prompt sets *are* the baseline's 3-way labels, so the sweep
+cannot be built until the baseline is graded (§J.1).
 
 **Configs.** Greedy, `max_new_tokens=512`, batch size and `--max-batch-tokens` **pinned and identical
 for the baseline and every cell** (Qwen 32 / 65536; gemma-2-9b 16 / 24576, its KV cache being ~6×
@@ -122,22 +135,30 @@ Single-layer steering, mode `add` only, one primary sign per (set, direction):
 | **success** (`steer_single`) | restore refusal | `add` at −α | `add` at +α |
 | **refusal** (`steer_induce`) | induce compliance | `add` at +α | `add` at −α |
 
-α ∈ {0.25, 0.50, 0.75, 1.00} → **16 target cells per set**, plus one `noop` per (set, chosen layer)
-→ 4 if the four layers are distinct. **≈40 cells + 1 baseline**; ≈20 × n_rows generations per set
-(Qwen: 508 successes / 433 refusals → ≈18.8k generations, ≈3 h) and one judge call per row.
+α ∈ {0.25, 0.50, 0.75, 1.00} at **each chosen (axis, layer)** → 5 pairs × 4 α = **20 target cells per
+set**, plus one `noop` per (set, layer) — 4, since story@L15 and persona@L15 share theirs. **48 cells
++ 1 baseline**, ≈24 × n_rows generations per set (≈22.6k at Qwen's 508/433 split) and one judge call
+per row.
 
 ```bash
+# GPU session A
 python gen_baseline.py $M --split all --decoding greedy --batch-size 32 --max-batch-tokens 65536
-python judge_strongreject.py <results>/meta/gen_baseline.jsonl        # defines both sets
+#            -> push, then §J.1 locally: judging it defines both prompt sets
+# GPU session B, after §J.1 is back on the Hub
 python steer_batch.py $M --script steer_single --jobs jobs_success.json
 python steer_batch.py $M --script steer_induce --jobs jobs_refusal.json
-python judge_strongreject.py <results>/meta/<cell>.jsonl              # per cell, --concurrency 6
-python aggregate.py $M
+#            -> push, then §J.2 locally (judge every cell + aggregate)
 ```
 
 `jobs_*.json` is one argv tail per cell: `["--direction", "<axis>", "--layers", "<l>", "--alpha",
 "<±α>"]`, plus `["--arm", "noop", "--layers", "<l>"]` per layer, and `--allow-out-of-band` where the
-chosen layer needs it.
+chosen layer needs it. An axis with two layers emits one cell per layer; the stems differ by `L<l>`,
+so they never collide.
+
+**§2 and §3 take one layer per probe** (`jb_metrics`, `cross_auroc`, `geometry` all do), so their
+`_chosen` tables run at each axis's **first** layer — story L28. Story's L15 row is not lost: it is
+in the per-layer files those runs also write (`jb_metrics__<rule>__all_rate.csv`,
+`cross_auroc_tensor.csv`, `geometry_cos.csv`).
 
 **Read.** `aggregate_controls.csv` (`d_*_vs_noop`), the α curve per direction, and `pct_degenerate`
 **before** any ΔASR — a mostly-broken cell has a ΔASR and it means nothing. Also `hit_cap_rate` on
@@ -145,12 +166,13 @@ the baseline. Report `|Δh|` beside α: α is not comparable across directions o
 
 Smoke test first: `harm_v2 × add × its layer × α=0.50` on the success set.
 
-## 5. Narrativity check (`judge_narrativity.py`)
+## 5. Narrativity check (`judge_narrativity.py`) — local, no GPU
 
 ### ▸ MANUAL GATE — which story cells
 
 Pick the α magnitudes worth judging from §4 (the cells with a readable effect and `pct_degenerate`
-low), at `story_v2_1k`'s chosen layer. No generation, judge only.
+low), at `story_v2_1k`'s chosen layer. Judge only: it runs off the existing `_judged.jsonl`, so it
+never touches the GPU box (§J.3).
 
 **Configs.** Forced A/B against each cell's **own no-op** on the same row; both sets (sign resolved
 per set); pairs where either side is degenerate excluded; both texts cut to 2,000 chars; `gpt-4o-mini`
@@ -169,9 +191,12 @@ steered side wins on the refusal set (α > 0), loses on the success set (α < 0)
 
 ### ▸ MANUAL GATE — which pairs
 
-Ordered pair `(a, b)` qualifies only if, at **a's own chosen layer**, `cos(û_a, û_b)` clears the
-±3/√d null band (§3's geometry) **and** `a` has a §4 effect to decompose. Expect ≤2 pairs; anything
-inside the null band makes `perp` the same experiment as `unprojected` and the script says so.
+Ordered pair `(a, b)` qualifies only if, at **the anchor's steered layer**, `cos(û_a, û_b)` clears
+the ±3/√d null band (§3's geometry) **and** `a` has a §4 effect there to decompose. Expect ≤2 pairs;
+anything inside the null band makes `perp` the same experiment as `unprojected` and the script says
+so. An anchor with two layers names one (`a@L`) — the projection is same-layer, so it is not a free
+parameter, and `story_v2_1k@15 × persona_v2` is the pair to expect: L15 is persona's own layer, so
+both vectors are compared where both are deployed.
 
 **Configs.** Two generated arms — `perp_alpha` (necessity) and `par_component`, not normalised
 (sufficiency) — at a's chosen layer. `unprojected` is **not generated**: `single_twin` resolves it to
@@ -180,10 +205,10 @@ the §4 cell at the same direction, layer, α and set, so α must be one of the 
 2 arms × n_rows generations per (pair, set).
 
 ```bash
+# GPU, one invocation per (pair, set)
 python steer_pairs.py $M --pair <a>,<b> --layers <l_a> --alpha <α> --prompt-set <success|refusal> \
     --arms perp_alpha,par_component --decoding greedy --batch-size 16 --max-batch-tokens 24576
-python judge_strongreject.py <results>/meta/<cell>.jsonl
-python aggregate.py $M
+#            -> push, then §J.4 locally (judge the arms + aggregate)
 ```
 
 `--allow-out-of-band` where a's chosen layer is outside the band; batch parameters must be §4's, or
@@ -193,6 +218,79 @@ python aggregate.py $M
 `par_component` vs `unprojected` (sufficiency: does the b-content in the push carry the effect on its
 own).
 
+## J. Judging — off the GPU box
+
+Everything here is API + CPU. Run it in the repo on a machine with `.env` holding
+`OPENAI_API_KEY` and `OPENROUTER_API_KEY`; the notebook prints the same commands with the paths
+filled in. Common preamble, and `$D` is the results dir:
+
+```bash
+M=google/gemma-2-9b-it; T=1K_per_direction; export RUN_TAG=$T
+D=experiments/steering_jailbreaks/results/$T/${M//\//_}
+pull() { python -c "from experiments.common import ckpt; ckpt.pull('JuanCruzMendoza/BAISH_TAIS', experiment='steering_jailbreaks', tag='$T')"; }
+push() { python -c "from experiments.common import ckpt; ckpt.push('JuanCruzMendoza/BAISH_TAIS', experiment='steering_jailbreaks', tag='$T', msg='$1')"; }
+```
+
+**J.1 — the baseline (blocks the sweep).** 1,009 calls, ~10 min.
+
+```bash
+pull
+python experiments/steering_jailbreaks/judge_strongreject.py $D/meta/gen_baseline.jsonl --concurrency 6
+push "baseline judged"
+```
+
+Read the split it prints (`pct_complied` / `pct_refused` / `pct_degenerate`) and `hit_cap_rate`
+before anything else. Then re-run the notebook: it pulls this back and the sweep starts.
+
+**J.2 — the sweep.** 40 cells, ~19k calls, 3–5 h, ≈$5.6. Over the 10k/day cap, so the OpenRouter
+key is what keeps it one day.
+
+```bash
+pull
+for f in $D/meta/steer_*.jsonl; do
+  [ -e "$f" ] || continue                       # nullglob is off: an unmatched glob is literal
+  case "$f" in *_judged.jsonl) continue;; esac
+  python experiments/steering_jailbreaks/judge_strongreject.py "$f" --concurrency 6
+done
+python experiments/steering_jailbreaks/aggregate.py $M --tag $T
+push "sweep judged"
+```
+
+`--concurrency 6`, not 8: the binding limit is 200k TPM ≈ 165 calls/min and 8 workers sit on it.
+A cell whose `csv/<stem>_summary.csv` says every row was scored is skipped, and grading resumes per
+row, so re-running the loop after an interruption costs only the remainder. Exit **3** is the daily
+cap with no fallback left — stop and resume tomorrow rather than marching the rest into it.
+
+**J.3 — narrativity (§5), after picking the α magnitudes off `aggregate_controls.csv`.**
+
+```bash
+for L in 28 15; do            # one invocation per story layer: the stem carries the layer
+  python experiments/steering_jailbreaks/judge_narrativity.py $M --tag $T \
+      --direction story_v2_1k --layer $L --alphas <a1>,<a2> --provider openrouter --concurrency 8
+done
+push "narrativity"
+```
+
+`--provider openrouter` deliberately: same model and same cache key, so it is not a different judge —
+it just leaves the OpenAI day for the 20×-larger StrongREJECT pass.
+
+**J.4 — the pairs (§6).** ~8 cells, well under a day's cap.
+
+```bash
+pull
+for f in $D/meta/steer_pairs__*.jsonl; do
+  [ -e "$f" ] || continue                       # nullglob is off: an unmatched glob is literal
+  case "$f" in *_judged.jsonl) continue;; esac
+  python experiments/steering_jailbreaks/judge_strongreject.py "$f" --concurrency 6
+done
+python experiments/steering_jailbreaks/aggregate.py $M --tag $T   # spans the tag: sweep + pairs
+python -m experiments.common.check_stale $M $T
+push "pairs judged"
+```
+
+`check_stale` flags the jailbreak activations `--view-only` leaves uncomputed — expected, not a
+finding.
+
 ## Open / carried over
 
 - The threshold in §2 is calibrated off-distribution and there is **no `length` foil** at this tag, so
@@ -200,4 +298,8 @@ own).
 - No `random` arm anywhere: nothing in §4–6 is a specificity claim.
 - The two prompt sets are defined by the baseline's batch composition and steered at another, so some
   success rows do not comply at steer time. The no-op is the denominator, never the baseline.
-- With one layer per direction, a null cell cannot be told apart from a wrong layer.
+- With one layer per direction a null cell cannot be told apart from a wrong layer, which is why
+  story runs at two. The other three still carry that ambiguity.
+- **Story's two layers confound layer with criterion, deliberately.** If L15 beats L28 that is
+  consistent with "steer where the probe discriminates", but with two layers on one direction it is
+  not yet evidence for a rule.

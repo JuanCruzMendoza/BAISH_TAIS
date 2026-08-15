@@ -1,0 +1,51 @@
+{
+  "config": {
+    "append_task": false,
+    "batch_size": 8,
+    "dataset": "eval_v2",
+    "dtype": "float16",
+    "poles": [
+      "pos",
+      "neg"
+    ],
+    "position": "last_token",
+    "seed": 20260731,
+    "split": "train",
+    "subsample": null
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/cache_activations.py",
+      "google/gemma-2-9b-it",
+      "--tag",
+      "1K_per_direction",
+      "--dataset",
+      "story_v2_1k,persona_v2,harm_v2,eval_v2",
+      "--split",
+      "train,heldout"
+    ],
+    "git_diff_sha": "ec17189588d784ce042b37d15cf750fd181e8dd37f5011bec1c5846937758547",
+    "git_dirty": true,
+    "git_sha": "51a17beaec42ae9051394f6a3dc1f8650a384568",
+    "host": "5fefe2b1-e0e1-41d4-b792-535583e1be46-n8zsf",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.11",
+    "resumed_from": 0,
+    "timestamp": "2026-08-15T01:02:33",
+    "wall_s": 8.75
+  },
+  "inputs": {
+    "chat_template_sha": "ecd6ae513fe103f0",
+    "source_files": [
+      {
+        "path": "data/eval_v2/pairs.jsonl",
+        "sha256": "7bf6499280b8fee6b77a4b2b3212a499a693b1d62a2ceee378d748371b9a1528"
+      }
+    ],
+    "view_key": "0bfc5146e68fcca83f1d37ec341491d35be34490a4de77de07918adf9ce7430f"
+  },
+  "notes": [],
+  "run_key": "d101b8247106a68eb7cb2db4975b7274fc1e59d888944e94afcc77842752adc8",
+  "status": "complete",
+  "stem": "cache_activations__eval_v2__train"
+}

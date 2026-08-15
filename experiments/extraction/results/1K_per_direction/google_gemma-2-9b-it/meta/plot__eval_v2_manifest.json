@@ -1,0 +1,44 @@
+{
+  "config": {
+    "direction": "eval_v2",
+    "layers": [
+      0,
+      5,
+      9,
+      14,
+      19,
+      23,
+      28,
+      33,
+      37,
+      42
+    ],
+    "with_heldout": true
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/plot_figures.py",
+      "google/gemma-2-9b-it",
+      "--tag",
+      "1K_per_direction",
+      "--with-heldout"
+    ],
+    "git_diff_sha": null,
+    "git_dirty": false,
+    "git_sha": "51a17beaec42ae9051394f6a3dc1f8650a384568",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-15T10:24:56",
+    "wall_s": 1.38
+  },
+  "inputs": {
+    "directions_run_key": "9adc11e4cc5da0be96347d9024ca8f9fac378465d430078502f830f78afbb744",
+    "probe_select_run_key": "6a800e2af506808f4c7c91db4712cbd4d5fd2917f9d92f1b91c57c00ed3b0b73"
+  },
+  "notes": [],
+  "run_key": "f3b83b8349a0a9c91efa784bcb3406b327be63fb4604ca4450b401d4fa5ae195",
+  "status": "complete",
+  "stem": "plot__eval_v2"
+}
