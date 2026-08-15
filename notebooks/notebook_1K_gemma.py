@@ -92,9 +92,9 @@ def _(MODEL, TAG, mo):
     mo.md(f"""
     # {TAG} on `{MODEL}`
 
-    Spec: `research/spec-whole-rerun.md`. The whole pipeline for a second model, one
-    notebook: extraction → probe_jailbreak_detection → cross_probe_detection → steering
-    (baseline + α sweep) → narrativity → projection pairs.
+    Spec: `research/spec-whole-rerun.md`. The GPU half of the pipeline for a second model:
+    extraction → probe_jailbreak_detection → steering (baseline + α sweep) → projection
+    pairs. Cross-probe, every judge pass and the narrativity check run locally.
 
     **Same tag, different model slug**, so nothing here can collide with the Qwen run.
     Dropped from it: `ablate`, `cap`, the `length` foil, the `random` arm, the decoding
@@ -107,10 +107,14 @@ def _(MODEL, TAG, mo):
     skipped **before** the model load, so re-running the notebook after a kill is the way to
     resume.
 
-    **This notebook only generates.** Every judge pass runs on your own machine — ~23k API
-    calls over 3–5 h, during which a rented GPU would be idle and billed, and no API key
-    needs to reach the instance. It hands off through the Hub: it pushes, prints the exact
-    commands, and stops.
+    **This notebook only does what needs the GPU.** Two kinds of work run on your own
+    machine instead, and it hands off through the Hub — pushes, prints the commands, stops:
+
+    - **the judge passes**, ~23k API calls over 3–5 h, during which a rented GPU would be
+      idle and billed, and no API key needs to reach the instance;
+    - **cross_probe_detection (§3)**, which is CPU-only *and* is the last stage that reads
+      the 2.5 GB pole cache. Moving it means that cache never comes down here again — it was
+      also the download that kept hitting the Xet read-token 429.
 
     Five points stop and wait for you:
 
@@ -123,9 +127,9 @@ def _(MODEL, TAG, mo):
     | **judge the pairs** | — | run it locally + `aggregate.py` |
 
     The baseline stop is a real dependency, not a convenience: the two prompt sets *are* the
-    baseline's 3-way labels, so the sweep cannot be built until it is graded. The narrativity
-    check (§5) is judge-only and never appears here — it runs locally off the `_judged.jsonl`
-    files. `research/spec-whole-rerun.md` §J lists every local command.
+    baseline's 3-way labels, so the sweep cannot be built until it is graded. Cross-probe and
+    the narrativity check block nothing — do them while the GPU works.
+    `research/spec-whole-rerun.md` §J lists every local command in order.
 
     ## Gemma-2 specifics
 
@@ -164,8 +168,10 @@ def _(mo):
     |---|---|---|
     | `extraction` | **yes** (`acts/blobs.tar`) | inside the extraction stage only |
     | `probe_jailbreak_detection` | no | after the readout, after the metrics |
-    | `cross_probe_detection` | no | once, ~10 small files |
-    | `steering_jailbreaks` | no | per generation stage, then **every 5 cells** while judging |
+    | `steering_jailbreaks` | no | after each generation stage |
+
+    `cross_probe_detection` is absent on purpose: it is written locally, so this box never
+    pulls or pushes it.
 
     **The extraction scope is never pushed after the jailbreak activations are cached.**
     Those 1,009 blobs land in *extraction's* tree, and a packed push would re-tar them into
@@ -173,9 +179,7 @@ def _(mo):
 
     The hourly timer is armed **only around a stage that is actually generating** and
     stopped when it returns, so an idle session does not spend commits re-uploading an
-    unchanged tree. The judge pass does not use it: it pushes every `JUDGE_PUSH_EVERY`
-    cells instead, because graded rows cost real money and daily quota and should not sit
-    on local disk for an hour.
+    unchanged tree.
 
     The push is staged — the scoped tree is mirrored (hard links) and the append-only
     `.jsonl` files snapshotted and trimmed to their last complete row — so no file is
@@ -210,15 +214,16 @@ def _(HF_REPO, HF_TOKEN, MODEL, REPO, TAG, mo, os):
 
     EX_SCOPE = {"experiment": "extraction", "tag": TAG}
     JB_SCOPE = {"experiment": "probe_jailbreak_detection", "tag": TAG}
-    CP_SCOPE = {"experiment": "cross_probe_detection", "tag": TAG}
     ST_SCOPE = {"experiment": "steering_jailbreaks", "tag": TAG}
 
     def _root(experiment):
         return _P(REPO, "experiments", experiment, "results", TAG,
                   MODEL.replace("/", "_"))
 
-    EX_ROOT, JB_ROOT = _root("extraction"), _root("probe_jailbreak_detection")
-    CP_ROOT, ST_ROOT = _root("cross_probe_detection"), _root("steering_jailbreaks")
+    # No cross_probe_detection layout: it runs locally (CPU, and it is the other reader of
+    # the 2.5 GB pole cache), so this box neither writes nor pulls it.
+    EX_ROOT, JB_ROOT, ST_ROOT = (_root("extraction"), _root("probe_jailbreak_detection"),
+                                 _root("steering_jailbreaks"))
 
     # A small JSON, not the weights -- but a gated one, hence $HF_TOKEN above.
     N_LAYERS = _AC.from_pretrained(MODEL).num_hidden_layers
@@ -252,39 +257,37 @@ def _(HF_REPO, HF_TOKEN, MODEL, REPO, TAG, mo, os):
 
     ckpt.setup(HF_REPO, token=HF_TOKEN.value)
     print(f"{MODEL}: L={N_LAYERS}, band {BAND[0]}-{BAND[-1]}, alphas {ALPHAS}")
-    return (ALPHAS, AXES, BAND, CP_ROOT, CP_SCOPE, DONE, EX_ROOT, EX_SCOPE, JB_ROOT,
-            JB_SCOPE, N_LAYERS, RULES, ST_COMPLETE, ST_ROOT, ST_SCOPE, ckpt)
+    return (ALPHAS, AXES, BAND, DONE, EX_ROOT, EX_SCOPE, JB_ROOT, JB_SCOPE, N_LAYERS,
+            RULES, ST_COMPLETE, ST_ROOT, ST_SCOPE, ckpt)
 
 
 @app.cell
-def _(AXES, CP_ROOT, CP_SCOPE, DONE, EX_ROOT, EX_SCOPE, HF_REPO, HF_TOKEN, JB_ROOT,
-      JB_SCOPE, RULES, ST_SCOPE, ckpt):
+def _(AXES, DONE, EX_ROOT, EX_SCOPE, HF_REPO, HF_TOKEN, JB_ROOT, JB_SCOPE, ST_SCOPE, ckpt):
     # cell 6
     # Small trees first, so the pending checks below can be made without the pole cache.
-    # `subpaths` is glob-relative to <model_slug>'s parent.
+    # `subpaths` is glob-relative to <model_slug>'s parent. cross_probe_detection is not
+    # pulled at all: it runs locally, so nothing here reads or writes it.
     print("extraction (small):",
           ckpt.pull(HF_REPO, token=HF_TOKEN.value, **EX_SCOPE,
                     subpaths=["*/vectors/**", "*/meta/**", "*/csv/**", "*/figures/**"]))
     print("probe_jailbreak_detection:", ckpt.pull(HF_REPO, token=HF_TOKEN.value, **JB_SCOPE))
-    print("cross_probe_detection:", ckpt.pull(HF_REPO, token=HF_TOKEN.value, **CP_SCOPE))
     print("steering_jailbreaks:", ckpt.pull(HF_REPO, token=HF_TOKEN.value, **ST_SCOPE))
 
-    # Who actually reads activations: extraction itself (to finish caching), jb_readout (it
-    # re-projects onto all 8,000 pole prompts), and cross_auroc / geometry (pooled AUROC is
-    # computed on the cached activations, not on the vectors). A steering- or judge-only
-    # session reads none of them, and skipping the 2.5 GB is most of its startup.
+    # Only two things here read activations: extraction itself, to finish caching, and
+    # jb_readout, which re-projects onto all 8,000 pole prompts. `jb_metrics` reads the
+    # readout `.pt`, steering reads `vectors/` and the jailbreak view, and cross_auroc /
+    # geometry -- the other pole-cache consumer -- now run locally. So once those two are
+    # done the 2.5 GB never comes down again, which also removes the Xet read-token 429
+    # that a packed pull of it kept hitting.
     EX_CACHED = all(DONE(EX_ROOT, f"cache_activations__{_d}__{_s}")
                     for _d in AXES for _s in ("train", "heldout"))
-    _jb_done = (DONE(JB_ROOT, "jb_readout")
-                and all(DONE(JB_ROOT, f"jb_metrics__{_r}__all") for _r in RULES))
-    if not (EX_CACHED and _jb_done
-            and DONE(CP_ROOT, "cross_auroc") and DONE(CP_ROOT, "geometry")):
+    if not (EX_CACHED and DONE(JB_ROOT, "jb_readout")):
         # pack=True unpacks acts/blobs.tar into acts/blobs/, so the scripts see the same
         # tree either way and run_key resume still cache-hits. A no-op with no tar there.
         print("extraction acts:", ckpt.pull(HF_REPO, token=HF_TOKEN.value, **EX_SCOPE,
                                             subpaths=["*/acts/**"], pack=True))
     else:
-        print("extraction acts: not needed by anything still pending -- skipped (2.5 GB)")
+        print("extraction acts: nothing on this box reads them -- skipped (2.5 GB)")
     pulled = True
     return EX_CACHED, pulled
 
@@ -566,47 +569,35 @@ def _(AXES, DONE, HF_REPO, HF_TOKEN, JB_ROOT, JB_SCOPE, LAYER_ARG, MODEL, PRIMAR
 
 
 @app.cell(hide_code=True)
-def _(mo):
+def _(HF_REPO, LAYER_ARG, MODEL, TAG, jb_chosen, mo):
     # cell 19 (markdown)
-    mo.md(r"""
-    # 3 — cross_probe_detection (H1)
+    assert jb_chosen
+    mo.md(f"""
+    # 3 — cross_probe_detection (H1) — **runs locally, not here**
 
-    4×4 at the chosen layers, no GPU. `--diag heldout`: the deployed vector on the 200
-    held-out pairs, since at 800 train pairs LOPO moves `d_z` by ~0.005. `cohens_dz` is
-    emitted because AUROC saturates at n=1,000 and cannot rank cells.
+    4×4 at the chosen layers: no GPU, and its `--diag heldout` AUROC is computed on the
+    **cached pole activations**, not on the vectors. That makes it the only stage left that
+    reads `acts/`, so keeping it here would drag the 2.5 GB `blobs.tar` onto every fresh
+    instance — the download whose per-chunk read tokens hit the Xet 429. Run it once on your
+    own machine, where the cache stays put:
 
-    No positive control exists at this tag — `story_v1` is a 50-pair arm — so a matrix of
-    nulls is not self-validating here.
+    ```bash
+    M={MODEL}; T={TAG}; export RUN_TAG=$T
+    python -c "from experiments.common import ckpt; ckpt.pull('{HF_REPO}', experiment='extraction', tag='$T', subpaths=['*/vectors/**', '*/meta/**', '*/acts/**'], pack=True)"
+    A=story_v2_1k,persona_v2,harm_v2,eval_v2; L={LAYER_ARG}
+    python experiments/cross_probe_detection/cross_auroc.py $M --tag $T --axes $A --layers $L --diag heldout
+    python experiments/cross_probe_detection/geometry.py    $M --tag $T --axes $A --layers $L
+    python experiments/cross_probe_detection/plot_matrices.py $M --tag $T
+    python -c "from experiments.common import ckpt; ckpt.push('{HF_REPO}', experiment='cross_probe_detection', tag='$T', msg='cross-probe')"
+    ```
+
+    `--layers` is each axis's **primary** layer (story L28): the scripts take one layer per
+    probe. Story@L15 is in `cross_auroc_tensor.csv` and `geometry_cos.csv`, which span every
+    band layer — and `geometry_cos.csv` is where gate 3 reads `cos(story@15, persona@15)`.
+
+    Nothing below depends on it, so the sweep runs while you do this.
     """)
     return
-
-
-@app.cell
-def _(AXES, CP_ROOT, CP_SCOPE, DONE, HF_REPO, HF_TOKEN, LAYER_ARG, MODEL, PRIMARY, TAG,
-      ckpt, jb_chosen, sh):
-    # cell 20
-    assert jb_chosen
-    _run = False
-    if not DONE(CP_ROOT, "cross_auroc", probe_layers=PRIMARY):
-        print(f"\n=== cross_auroc at {LAYER_ARG} ===")
-        sh("python", "experiments/cross_probe_detection/cross_auroc.py", MODEL, "--tag", TAG,
-           "--axes", ",".join(AXES), "--layers", LAYER_ARG, "--diag", "heldout")
-        _run = True
-    if not DONE(CP_ROOT, "geometry", chosen_layers=PRIMARY):
-        print(f"\n=== geometry at {LAYER_ARG} ===")
-        sh("python", "experiments/cross_probe_detection/geometry.py", MODEL, "--tag", TAG,
-           "--axes", ",".join(AXES), "--layers", LAYER_ARG)
-        _run = True
-    if _run:
-        print("\n=== plot_matrices ===")
-        sh("python", "experiments/cross_probe_detection/plot_matrices.py", MODEL, "--tag", TAG)
-        ckpt.try_push(HF_REPO, token=HF_TOKEN.value, msg="cross_probe_detection", **CP_SCOPE)
-    else:
-        print("cross_auroc and geometry current for these layers -- skipped")
-    cp_done = True
-    return (cp_done,)
-
-
 @app.cell(hide_code=True)
 def _(mo):
     # cell 21 (markdown)

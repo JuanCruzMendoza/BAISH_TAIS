@@ -7,10 +7,15 @@ it.
 Run end to end by `notebooks/notebook_1K_gemma.py` (gemma-2-9b-it): every stage is guarded on its
 artefacts, and the manual decisions below are the points it stops at.
 
-**Generation runs on the GPU box, judging does not.** The judge is API-bound — ~19k calls, 3–5 h —
-and a rented GPU idling through it is the most expensive hour in the run, so every judge pass is a
-local step and no API key reaches the instance. The two sides hand off through the Hub; §J lists the
-local commands in order.
+**Only what needs the GPU runs on the GPU box.** Two things move off it, and §J has the commands:
+
+- **every judge pass** — API-bound, ~23k calls over 3–5 h, and a rented GPU idling through it is the
+  most expensive hour in the run. No API key reaches the instance.
+- **cross_probe_detection (§3)** — CPU-only, and the last stage that reads the 2.5 GB pole cache.
+  Local, that cache is downloaded once and kept; on the GPU box it came down on every fresh
+  instance, and its per-chunk read tokens are what exhausted the Xet quota and 429'd the pull.
+
+The two sides hand off through the Hub, so each pushes its own scope and neither pulls the other's.
 
 **Dropped vs the Qwen run:** `ablate` (no config where it helped), `cap`, the `length` foil,
 `compare_crossed` / §1.2a, the `random` arm, and the §5.1 decoding comparison (greedy is reused).
@@ -98,20 +103,21 @@ python plot_layer_curves.py $M
 
 → `jb_metrics__<rule>_chosen.csv`, one row per probe × slice at that probe's own layer.
 
-## 3. cross_probe_detection
+## 3. cross_probe_detection — **local, not on the GPU box** (§J.0)
 
-**Needs.** No GPU; extraction's vectors + cached views.
+**Needs.** No GPU, but it *does* need extraction's `acts/` — the off-diagonal AUROC is computed on
+the cached pole activations, not on the vectors — plus the vectors themselves. That 2.5 GB is the
+whole reason it moved: locally it is one download that stays, and nothing on the GPU box reads
+`acts/` once extraction and `jb_readout` are done.
 
 **Configs.** 4×4 at the chosen layers, `--diag heldout` (the deployed vector on the 200 held-out
 pairs; at n=800 LOPO moves `d_z` by ~0.005). `cohens_dz` emitted — AUROC saturates at n=1,000.
 `_matched.csv` at depth 0.65 stays as the common-depth control. No `story_v1` positive control exists
 at this tag.
 
-```bash
-python cross_auroc.py   $M --axes $A --layers $L --diag heldout
-python geometry.py      $M --axes $A --layers $L
-python plot_matrices.py $M
-```
+`--layers` takes **one layer per probe**, so it runs at each axis's primary (story L28). Story@L15 is
+in `cross_auroc_tensor.csv` and `geometry_cos.csv`, which span every band layer — and the latter is
+where §6 reads `cos(story@15, persona@15)`.
 
 **Read.** `cross_auroc_chosen.csv` (`excess_over_null`, `cohens_dz_folded`, `delta_excluded`),
 `geometry_cos_chosen.csv` (both conventions), `geometry_selfsplit.csv` as the cosine floor. Keep the
@@ -218,18 +224,35 @@ python steer_pairs.py $M --pair <a>,<b> --layers <l_a> --alpha <α> --prompt-set
 `par_component` vs `unprojected` (sufficiency: does the b-content in the push carry the effect on its
 own).
 
-## J. Judging — off the GPU box
+## J. Off the GPU box — cross-probe, and every judge pass
 
-Everything here is API + CPU. Run it in the repo on a machine with `.env` holding
-`OPENAI_API_KEY` and `OPENROUTER_API_KEY`; the notebook prints the same commands with the paths
-filled in. Common preamble, and `$D` is the results dir:
+All CPU + API. Run in the repo on a machine with `.env` holding `OPENAI_API_KEY` and
+`OPENROUTER_API_KEY`; the notebook prints the same commands with the paths filled in. Common
+preamble, and `$D` is the steering results dir:
 
 ```bash
 M=google/gemma-2-9b-it; T=1K_per_direction; export RUN_TAG=$T
+R=JuanCruzMendoza/BAISH_TAIS
 D=experiments/steering_jailbreaks/results/$T/${M//\//_}
-pull() { python -c "from experiments.common import ckpt; ckpt.pull('JuanCruzMendoza/BAISH_TAIS', experiment='steering_jailbreaks', tag='$T')"; }
-push() { python -c "from experiments.common import ckpt; ckpt.push('JuanCruzMendoza/BAISH_TAIS', experiment='steering_jailbreaks', tag='$T', msg='$1')"; }
+pull() { python -c "from experiments.common import ckpt; ckpt.pull('$R', experiment='steering_jailbreaks', tag='$T')"; }
+push() { python -c "from experiments.common import ckpt; ckpt.push('$R', experiment='steering_jailbreaks', tag='$T', msg='$1')"; }
 ```
+
+**J.0 — cross_probe_detection (§3).** Once, after gate 1. No GPU, no judge, ~2 min of compute; the
+2.5 GB is the pull, and only the first time.
+
+```bash
+python -c "from experiments.common import ckpt; ckpt.pull('$R', experiment='extraction', tag='$T', subpaths=['*/vectors/**', '*/meta/**', '*/acts/**'], pack=True)"
+A=story_v2_1k,persona_v2,harm_v2,eval_v2
+L=story_v2_1k=28,persona_v2=15,harm_v2=19,eval_v2=8      # primaries: one layer per probe
+python experiments/cross_probe_detection/cross_auroc.py   $M --tag $T --axes $A --layers $L --diag heldout
+python experiments/cross_probe_detection/geometry.py      $M --tag $T --axes $A --layers $L
+python experiments/cross_probe_detection/plot_matrices.py $M --tag $T
+python -c "from experiments.common import ckpt; ckpt.push('$R', experiment='cross_probe_detection', tag='$T', msg='cross-probe')"
+```
+
+Nothing in §4 waits on this — run it while the GPU sweeps. §6's gate reads its
+`geometry_cos.csv`, so it has to be done before the pairs are chosen, not before they are steered.
 
 **J.1 — the baseline (blocks the sweep).** 1,009 calls, ~10 min.
 
@@ -242,7 +265,7 @@ push "baseline judged"
 Read the split it prints (`pct_complied` / `pct_refused` / `pct_degenerate`) and `hit_cap_rate`
 before anything else. Then re-run the notebook: it pulls this back and the sweep starts.
 
-**J.2 — the sweep.** 40 cells, ~19k calls, 3–5 h, ≈$5.6. Over the 10k/day cap, so the OpenRouter
+**J.2 — the sweep.** 48 cells, ~23k calls, 3–5 h, ≈$6.8. Over the 10k/day cap, so the OpenRouter
 key is what keeps it one day.
 
 ```bash

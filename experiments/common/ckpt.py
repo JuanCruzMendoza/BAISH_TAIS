@@ -257,6 +257,31 @@ def _is_rate_limit(e):
     return "429" in str(e) or "too many requests" in str(e).lower()
 
 
+def _is_xet(e):
+    """A 429 from the Xet read-token endpoint rather than from the Hub's API.
+
+    They are separate quotas, so which one refused decides what to do about it: backing
+    off the Xet one asks the same endpoint for the same chunks again, while the plain CDN
+    path is a different quota entirely and simply works.
+    """
+    return "xet" in str(e).lower()
+
+
+def _set_xet(enabled):
+    """Toggle the Xet download path at runtime; returns the prior setting.
+
+    `is_xet_available()` reads `constants.HF_HUB_DISABLE_XET` **per file, at call time**
+    (measured on hub 1.7.1), so flipping the constant switches an in-flight pull. The
+    *environment variable* is what cannot be set late -- it is read into the constant at
+    import -- which is why notebook_1K's `os.environ` never took effect.
+    """
+    from huggingface_hub import constants as hf_constants
+
+    prior = hf_constants.HF_HUB_DISABLE_XET
+    hf_constants.HF_HUB_DISABLE_XET = not enabled
+    return prior
+
+
 def _is_size_mismatch(e):
     """A download that came out the wrong length. Xet's wording and the plain path's.
 
@@ -342,7 +367,16 @@ def pull(repo_id, root=None, token=None, experiment=None, tag=None, pack=False,
     root = Path(root or cfg.REPO / "experiments")
     root.mkdir(parents=True, exist_ok=True)
     patterns, ignore = scope(experiment, tag, subpaths), [".gitattributes"]
-    repaired = False
+    repaired, xet_off, xet_prior = False, False, _set_xet(True)
+    try:
+        return _pull_attempts(repo_id, root, token, patterns, ignore, attempts,
+                              max_workers, repaired, xet_off, pack, experiment, tag)
+    finally:
+        _set_xet(not xet_prior)
+
+
+def _pull_attempts(repo_id, root, token, patterns, ignore, attempts, max_workers,
+                   repaired, xet_off, pack, experiment, tag):
     for i in range(attempts):
         try:
             snapshot_download(repo_id, repo_type="dataset", local_dir=str(root),
@@ -362,8 +396,10 @@ def pull(repo_id, root=None, token=None, experiment=None, tag=None, pack=False,
                 # path raised "Consistency check failed", because it compares against the
                 # size the HEAD reports. Xet is lenient on some versions and strict on
                 # others, so turning it off can only lose a download that would have
-                # worked. (The variable is also read into constants at import, so setting
-                # os.environ from a notebook cell never took effect anyway.)
+                # worked. (`_set_xet` *can* switch it here -- the constant is read per file
+                # at call time -- which is exactly why the rule has to be stated rather than
+                # enforced by the flag being unreachable. The 429 branch below is the one
+                # case where dropping Xet is right.)
                 if not repaired and i < attempts - 1:
                     repaired = True
                     n = _clear_incomplete(root)
@@ -381,7 +417,20 @@ def pull(repo_id, root=None, token=None, experiment=None, tag=None, pack=False,
                       "subprocess was appending to it, so each is the resume partial of a "
                       "cell that never finished. Those cells regenerate.")
                 break
-            if not _is_rate_limit(e) or i == attempts - 1:
+            if not _is_rate_limit(e):
+                raise
+            # Two different 429s. The Xet read-token endpoint has its own quota and it is
+            # the one a packed pull exhausts -- a 2.5 GB tar is thousands of chunk fetches,
+            # each needing a token. Sleeping does not help there: the next attempt asks the
+            # same endpoint for the same chunks. The plain CDN path is a separate quota, so
+            # dropping to it *is* the retry, and it costs only the chunk dedup.
+            if _is_xet(e) and not xet_off:
+                xet_off = True
+                _set_xet(False)
+                print(f"! Xet read-token 429 ({i + 1}/{attempts}) -- retrying on the plain "
+                      f"path, no wait. Slower (no chunk dedup), different quota.")
+                continue
+            if i == attempts - 1:
                 raise
             wait = min(300, 30 * 2 ** i)
             print(f"! rate-limited ({i + 1}/{attempts}), resuming in {wait}s: "
