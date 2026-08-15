@@ -191,7 +191,9 @@ left to average (`—`).
 | α = ±1.00 | −89.9 | 47.0 ⚠ | +2.8 | 82.2 ⚠ |
 | α = ±1.25 | — | 100.0 ⚠ | −2.4 | 98.6 ⚠ |
 
-**eval_v2 (L9)** — the only direction still climbing cleanly at the top of the ladder
+**eval_v2 (L9)** — α ≥ 1.50 from 3_run. Induce peaks at α=1.25 and **turns over while still
+coherent**: 17.1% degenerate at α=2.00 on 359 surviving rows, so the fall is the direction ceasing
+to work, not the model breaking. Every other direction's collapse was breakage.
 
 | method | restore ASR | deg | induce ASR | deg |
 |---|---|---|---|---|
@@ -201,6 +203,8 @@ left to average (`—`).
 | α = ±0.75 | −10.7 | 2.4 | +34.7 | 6.0 |
 | α = ±1.00 | −10.3 | 1.2 | +43.7 | 8.3 |
 | α = ±1.25 | −10.1 | 3.5 | **+45.1** | 9.9 |
+| α = ±1.50 | −11.4 | 27.4 | +31.5 | 11.3 |
+| α = ±2.00 | −75.6 | 80.9 ⚠ | +4.1 | 17.1 |
 
 **story_v2_1k (L23)**
 
@@ -290,6 +294,11 @@ suppresses the disclaimer habit. Testable directly — make disclaimer presence 
 
 
 ### Which §5.6 pairs are worth running
+
+> **Superseded in two places by 4_run.** This section argued that `persona × harm` was already
+> answered by 2_run's L4 sign result and that same-layer projection could not reach the leakage.
+> Both are wrong: at L15 `perp_alpha` cuts `read_harm` from +117 to +42 and costs 39% of the effect.
+> The pair it ranked top (`story × persona`) was the right call. Read 4_run for what happened.
 
 A pair `(a, b)` is a real manipulation only if `cos(û_a, û_b)` **at a's own chosen layer** clears the
 ±0.050 null band — projection is same-layer — and only if `a` has an effect there to decompose.
@@ -464,6 +473,63 @@ position bias, not an effect.
 - Distrust **L23 refusal α=+0.25**: 54% `neither`, so its rate rests on a selected 46% of pairs, and
   its 57% `picked A` is the second-worst position bias in the set. Bias runs 45–59% and is worst
   exactly where `neither` is highest — the judge falling back on position when it cannot tell.
+
+---
+
+## 4_run — projection (§5.6)
+
+16 cells, four ordered pairs at **L15** on both sets. `perp_alpha` removes 100% of `b` from the push
+and keeps `√(1−cos²)` of `a`; `par_component` pushes only `b`'s share of the reference, `cos·α`.
+`unprojected` is runs 1–2's cell at the same direction, layer, α and set. ASR on non-degenerate rows, against each set's L15 no-op (96.2 success, 2.4 refusal).
+
+**restore** (508 successes, target ↓) — **induce** (433 refusals, target ↑)
+
+| a → b | cos | ref | `perp` | `par` | | ref | `perp` | `par` |
+|---|---|---|---|---|---|---|---|---|
+| `story_v2_1k` → `persona_v2` | +0.137 | −13.9 | −10.3 | **−35.3** | | +9.1 | +5.3 | **+10.4** |
+| `persona_v2` → `story_v2_1k` | +0.137 | −94.6 | −95.2 | −4.4 | | +62.8 | +64.8 | +3.8 |
+| `persona_v2` → `eval_v2` | +0.296 | −94.6 | −90.2 | −22.0 | | +62.8 | +58.0 | +12.5 |
+| `persona_v2` → `harm_v2` | −0.240 | −94.6 | **−57.4** | **−88.6** | | +62.8 | +52.5 | +26.5 |
+
+Degeneracy is ≤5.3% everywhere on restore and ≤14.1% on induce, so no cell is read through breakage.
+
+### `persona_v2`'s effect *is* substantially its harm component 
+
+Both arms agree and the manipulation check confirms the route. Removing harm costs 39% of the restore effect (−57.4 against −94.6); harm's share **alone**, at 24% of the push, recovers 94% of it (−88.6). `read_harm` says the same thing: the reference moves it **+117**, `perp_alpha` only **+42**, and
+`par_component` alone **+155**.
+
+So the +117 harm displacement is largely *geometric* after all. This section previously argued the
+opposite — that `cos(persona@L15, harm@L21) = −0.051` made the leakage downstream and unreachable by same-layer projection, and that 2_run's persona@L4 sign result had already settled it. **That argument does not survive.** L4 has `cos = +0.126` and L15 has −0.240; the L4 cell ruled out the same-layer
+route *at L4*, and it does not generalise. The one cell that could test L15 directly was the one not
+run.
+
+### `story_v2_1k` at L15 is persona contamination — H1's positive result does not survive
+
+On induce the persona sliver alone (`push_frac` 0.137) beats the full story push: **+10.4 against
++9.1**, while `perp_alpha` keeps only +5.3. On restore `par_component` reaches **−35.3, 2.5× the
+reference's −13.9**. A 14% persona component does more than the whole story vector in three of the
+four comparisons.
+
+2_run read story@L15's −13.9 as "the detection-best layer rescues a null". It is better read as
+persona reached through a 14% overlap: story@L15 sits at persona's own chosen layer, and persona is
+the most potent axis in the study there. `perp_alpha` retaining −10.3 of −13.9 keeps a *story* effect
+alive on restore, but it is the smallest number in the table and the induce side does not support it.
+
+### The arms are strongly sub-additive, so "share of the effect" is not a meaningful quantity
+
+`story → persona` restore: `perp` −10.3 and `par` −35.3 against a reference of −13.9 — each part
+exceeds the whole. Necessity and sufficiency have to be read as separate yes/no questions, never
+added or treated as percentages of the reference. The persona dose–response is near-vertical between α=0 and −0.25 (0 → −86.1), which is enough to produce this on its own.
+
+### Two controls, one clean and one failed
+
+- **`persona → story` behaved exactly as predicted**: `perp` −95.2 ≈ ref −94.6, `par` −4.4 ≈ null.
+  Story is neither necessary nor sufficient for persona's effect, as the arithmetic said.
+- **The `eval` sign control failed.** The prediction was that `par` should move ASR *up*, since
+  restoring persona pushes eval at −0.148, eval's *inducing* sign. It restored **−22.0** instead, at
+  2.4% degeneracy. `RESTORE_SIGN` for `eval_v2` was calibrated at L9 and does not hold at L15 — so the sign convention is layer-dependent, and any argument resting on it (including 4_run's own L4 reasoning above) is only valid at the layer it was measured on.
+
+
 
 ---
 
