@@ -7,8 +7,8 @@ other probe gets the `all` slice alone. `ref_tpr` rides along as a dashed grey l
 also a percentage of a set clearing the same tau, so it shares the axis, and where it
 collapses the curve above it is not a claim about jailbreaks.
 
-`--all-layers` reads the `jb_metrics__<rule>__all` run and shades the reporting band, so
-the layers outside it are visibly outside it.
+`--all-layers` reads the `jb_metrics__<rule>__all` run, so every layer is drawn and not
+only the reporting band.
 """
 import argparse
 import csv
@@ -59,11 +59,9 @@ def curves(rows, probe, per_family):
     return out, tpr
 
 
-def plot(rows, probe, layer, per_family, rule, band, path, show_band=False):
+def plot(rows, probe, layer, per_family, rule, band, path):
     cs, tpr = curves(rows, probe, per_family)
     fig, ax = plt.subplots(figsize=(7.2, 4.4))
-    if show_band:
-        ax.axvspan(band[0], band[1], color="0.85", alpha=0.45, lw=0, zorder=0)
     for x, y, label, colour, lw in cs:
         ax.plot(x, y, marker="o", ms=3.2, lw=lw, color=colour, label=label)
     if tpr:
@@ -76,9 +74,7 @@ def plot(rows, probe, layer, per_family, rule, band, path, show_band=False):
         # runs into the title.
         ax.annotate(f" chosen L{layer}", (layer, 99), fontsize=8, color="0.25",
                     ha="left", va="top", rotation=90)
-    # In the label, not an annotation: at y=0 it collides with the curves that sit there.
-    ax.set_xlabel(f"layer   (shaded = reporting band L{band[0]}-{band[1]})"
-                  if show_band else "layer")
+    ax.set_xlabel("layer")
     ax.set_ylabel(f"% of jailbreaks clearing $\\tau$  ({rule})")
     ax.set_title(f"{probe} — `pct_reads` vs layer", fontsize=11)
     ax.set_ylim(-3, 103)
@@ -98,7 +94,7 @@ def main():
     ap.add_argument("--per-family", default="story_v2_1k,persona_v2",
                     help="probes drawn as one curve per family; the rest get `all`")
     ap.add_argument("--all-layers", action="store_true",
-                    help="read the __all metrics run and shade the band")
+                    help="read the __all metrics run (every layer, not only the band)")
     args = ap.parse_args()
 
     lay = cfg.Layout("probe_jailbreak_detection", args.model, args.tag, acts_cache=False)
@@ -123,8 +119,7 @@ def main():
     with mf.Run(lay, stem, config, inputs) as run:
         for p in probes:
             path = run.artefact(f"_{p}.png")
-            plot(rows, p, chosen.get(p), p in fam, args.threshold, band, path,
-                 show_band=args.all_layers)
+            plot(rows, p, chosen.get(p), p in fam, args.threshold, band, path)
             print(f"  {Path(path).relative_to(lay.root).as_posix()}"
                   f"   {'4 families' if p in fam else 'all families'}")
 

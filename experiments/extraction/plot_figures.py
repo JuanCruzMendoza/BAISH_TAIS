@@ -63,11 +63,9 @@ def plot_cos_curve(curve, axis, layers, path):
     plt.close(fig)
 
 
-def plot_cohens(rows, axis, band, path, with_heldout=False):
+def plot_cohens(rows, axis, path, with_heldout=False):
     xs = [int(r["layer"]) for r in rows]
     fig, ax = plt.subplots(figsize=(7.0, 4.0))
-    ax.axvspan(band[0], band[-1], color="0.85", zorder=0,
-               label=f"band {band[0]}–{band[-1]}")
     ax.plot(xs, [num(r, "cohens_dz_train") for r in rows], marker="o", ms=3.5, lw=1.6,
             color="#1f4e79", label="cohens_dz_train")
     if with_heldout and "cohens_dz_heldout" in rows[0]:
@@ -83,14 +81,12 @@ def plot_cohens(rows, axis, band, path, with_heldout=False):
     plt.close(fig)
 
 
-def plot_cos_vs_anchor(u, axis, anchor, band, null, path):
+def plot_cos_vs_anchor(u, axis, anchor, null, path):
     """cos(d_anchor, d_l) across depth: is the axis one direction or several?"""
     L = u.shape[0] - 1
     ys = [met.cos(u[anchor], u[l]) for l in range(L + 1)]
     fig, ax = plt.subplots(figsize=(7.0, 4.0))
     ax.axhspan(-null, null, color="0.88", zorder=0, label=f"null ±{null:.3f}")
-    ax.axvspan(band[0], band[-1], color="#e8eef5", zorder=0,
-               label=f"band {band[0]}–{band[-1]}")
     ax.axhline(0, lw=0.6, color="0.4")
     ax.plot(range(L + 1), ys, marker="o", ms=3.5, lw=1.6, color="#1f4e79")
     ax.axvline(anchor, ls=":", lw=1.2, color="#c0504d")
@@ -124,7 +120,7 @@ def anchor_figure(lay, axis, anchor):
         lay.meta / f"{mf.stem('directions', axis)}_manifest.json")["run_key"]}
     with mf.Run(lay, stem, {"direction": axis, "anchor": anchor}, inputs) as run:
         p = run.artefact(f"_cos_vs_L{anchor}.png")
-        ys = plot_cos_vs_anchor(u, axis, anchor, band, null, p)
+        ys = plot_cos_vs_anchor(u, axis, anchor, null, p)
     inband = [ys[l] for l in band]
     print(f"  {Path(p).relative_to(lay.root).as_posix()}")
     print(f"    band-mean cos {np.mean(inband):+.3f}   min in band "
@@ -139,9 +135,6 @@ def figures_for(lay, axis, args):
         return None
     rows = sorted(read_rows(table), key=lambda r: int(r["layer"]))
     L = int(rows[-1]["layer"])
-    summary = json.loads(
-        (lay.csv / f"{mf.stem('probe_select', axis)}_summary.json").read_text(encoding="utf-8"))
-    band = summary["band"]
 
     curve_path = lay.csv / f"{mf.stem('directions', axis)}_curve.json"
     curve = json.loads(curve_path.read_text(encoding="utf-8")) if curve_path.exists() else None
@@ -163,7 +156,7 @@ def figures_for(lay, axis, args):
     made = []
     with mf.Run(lay, stem, config, inputs) as run:
         p = run.artefact("_cohens_dz_train.png")
-        plot_cohens(rows, axis, band, p, with_heldout=args.with_heldout)
+        plot_cohens(rows, axis, p, with_heldout=args.with_heldout)
         made.append(p)
         if curve is None:
             run.notes.append("no _curve.json: cosine figure skipped")
