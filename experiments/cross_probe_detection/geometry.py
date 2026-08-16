@@ -2,7 +2,7 @@
 
     python geometry.py <model>
     python geometry.py <model> --tag 1K_per_direction \
-        --layers story_v2_1k=23,persona_v2=15,harm_v2=21,eval_v2=9
+        --layers story_v2_1k=23+15,persona_v2=15,harm_v2=21,eval_v2=9
 
 Geometry is the primary H1 evidence (spec 2.1): the axes' datasets are disjoint and
 their prompt lengths differ by an order of magnitude, so an off-diagonal AUROC null
@@ -86,25 +86,29 @@ def cos_rows(halves, probes, Lp1):
 def cos_chosen_rows(probes, chosen, rel):
     """The chosen-layer cosine matrix under both conventions.
 
+    `chosen` is a list of (axis, layer): a probe is a (vector, layer) pair, so an axis
+    with two chosen layers is two probes.
+
     `own_layer`: each vector at its own chosen layer, cos(d_row[L_row], d_col[L_col]).
-    Two different bases, so it is the *deployed* comparison, not a geometric one.
+    Two different bases, so it is the *deployed* comparison, not a geometric one. Probe
+    x probe, so a second layer is both a row and a column.
     `matched_to_col`: cos(d_row[L_col], d_col[L_col]) -- both at the column's layer,
-    the only convention in which the cosine has its usual meaning.
+    the only convention in which the cosine has its usual meaning. The row's own layer
+    is never used, so its rows are the *axes*, not the probes: a second chosen layer
+    would repeat a row verbatim, while as a column it is a new comparison.
     """
-    rows = []
-    for a in chosen:                                     # row = probe
-        da = probes[a]["d"].numpy()
-        for b in chosen:                                 # column = axis at its layer
-            db, lb = probes[b]["d"].numpy(), chosen[b]
-            for conv, la in (("own_layer", chosen[a]), ("matched_to_col", lb)):
-                c = met.cos(da[la], db[lb])
-                ra, rb = rel[a][la], rel[b][lb]
-                den = np.sqrt(ra * rb) if ra > 0 and rb > 0 else float("nan")
-                rows.append({"axis_row": a, "axis_col": b, "convention": conv,
-                             "layer_row": la, "layer_col": lb, "cos": c,
-                             "reliability_row": ra, "reliability_col": rb,
-                             "cos_disattenuated": float(c / den) if den == den
-                                                  else float("nan")})
+    def row(a, la, b, lb, conv):
+        c = met.cos(probes[a]["d"].numpy()[la], probes[b]["d"].numpy()[lb])
+        ra, rb = rel[a][la], rel[b][lb]
+        den = np.sqrt(ra * rb) if ra > 0 and rb > 0 else float("nan")
+        return {"axis_row": a, "axis_col": b, "convention": conv,
+                "layer_row": la, "layer_col": lb, "cos": c,
+                "reliability_row": ra, "reliability_col": rb,
+                "cos_disattenuated": float(c / den) if den == den else float("nan")}
+
+    rows = [row(a, la, b, lb, "own_layer") for a, la in chosen for b, lb in chosen]
+    rows += [row(a, lb, b, lb, "matched_to_col")
+             for a in dict.fromkeys(x for x, _ in chosen) for b, lb in chosen]
     return rows
 
 
@@ -157,8 +161,8 @@ def main():
     ap.add_argument("--tag", default=None)
     ap.add_argument("--axes", default=",".join(views.DIRECTIONS))
     ap.add_argument("--layers", default=None,
-                    help="axis=layer,... one chosen layer per direction (extraction "
-                         "insights.md); adds _cos_chosen.csv")
+                    help="axis=layer[+layer],... the chosen layers per direction "
+                         "(extraction insights.md); adds _cos_chosen.csv")
     args = ap.parse_args()
 
     src = cfg.acts_layout(args.model, args.tag)
@@ -181,11 +185,11 @@ def main():
     band = cfg.band(L)
     anchor = next((s for s in STORY if s in probes), None)
 
-    chosen = cfg.parse_axis_layers(args.layers) if args.layers else None
+    chosen = cfg.parse_axis_probes(args.layers) if args.layers else None
     if chosen is not None:
-        bad = [f"{a}=L{l}" for a, l in chosen.items() if not 0 <= l <= L]
-        unknown = [a for a in chosen if a not in probes]
-        missing = [a for a in probes if a not in chosen]
+        bad = [f"{a}=L{l}" for a, l in chosen if not 0 <= l <= L]
+        unknown = [a for a, _ in chosen if a not in probes]
+        missing = [a for a in probes if a not in {x for x, _ in chosen}]
         if bad or unknown or missing:
             raise SystemExit(f"--layers: outside 0..{L} {bad}, unknown {unknown}, "
                              f"missing {missing}")
@@ -197,9 +201,14 @@ def main():
                 if chosen is not None else None)
 
     stem = mf.stem("geometry")
+    chosen_layers = None
+    if chosen is not None:
+        chosen_layers = {}
+        for a, l in chosen:
+            chosen_layers.setdefault(a, []).append(l)
     config = {"axes": list(probes), "floor": "split_half_cos", "seed": cfg.SEED,
               "disattenuation": "spearman_brown", "band": [band[0], band[-1]],
-              "residual_anchor": anchor, "chosen_layers": chosen,
+              "residual_anchor": anchor, "chosen_layers": chosen_layers,
               "cos_null_band": met.random_cos_band(d_model)}
     inputs = {"view_keys": view_keys,
               "direction_run_keys": {a: probes[a].get("run_key") for a in probes}}
@@ -238,15 +247,24 @@ def main():
 
         if chosen_r is not None:
             print("\nchosen-layer cosine, "
-                  + " ".join(f"{a}=L{chosen[a]}" for a in chosen))
+                  + " ".join(f"{a}=L" + "+L".join(map(str, ls))
+                             for a, ls in chosen_layers.items()))
             for conv in ("own_layer", "matched_to_col"):
-                print(f"  [{conv}]  " + "".join(a[:9].rjust(10) for a in chosen))
-                for a in chosen:
+                # own_layer is probe x probe; matched_to_col ignores the row's layer,
+                # so its rows are the axes and only its columns carry one.
+                rows_ = chosen if conv == "own_layer" else [
+                    (a, None) for a in dict.fromkeys(x for x, _ in chosen)]
+                print(f"  [{conv}]  " + "".join(f"{b[:8]}/{lb}".rjust(12)
+                                                for b, lb in chosen))
+                for a, la in rows_:
                     cells = [next(r["cos"] for r in chosen_r
                                   if r["axis_row"] == a and r["axis_col"] == b
-                                  and r["convention"] == conv) for b in chosen]
-                    print("  " + a[:14].ljust(14)
-                          + "".join(f"{c:+.3f}".rjust(10) for c in cells))
+                                  and r["layer_col"] == lb and r["convention"] == conv
+                                  and (la is None or r["layer_row"] == la))
+                             for b, lb in chosen]
+                    lab = a[:12] + ("" if la is None else f"/{la}")
+                    print("  " + lab[:16].ljust(16)
+                          + "".join(f"{c:+.3f}".rjust(12) for c in cells))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,4 @@
+timestamp,script,stem,run_key,git_sha,git_dirty,outcome,resumed_from,wall_s,argv
+2026-08-16T11:33:12,cross_auroc.py,cross_auroc,54258529fcf89499,ae475bd7c808,True,written,0,1.4,"google/gemma-2-9b-it --tag 1K_per_direction --axes story_v2_1k,persona_v2,harm_v2,eval_v2 --layers story_v2_1k=28+15,persona_v2=15,harm_v2=19,eval_v2=8 --diag heldout"
+2026-08-16T11:33:29,geometry.py,geometry,49cf087e3d248fe9,ae475bd7c808,True,written,0,1.4,"google/gemma-2-9b-it --tag 1K_per_direction --axes story_v2_1k,persona_v2,harm_v2,eval_v2 --layers story_v2_1k=28+15,persona_v2=15,harm_v2=19,eval_v2=8"
+2026-08-16T11:33:35,plot_matrices.py,plot_matrices,9a31a72bf625d52e,ae475bd7c808,True,written,0,4.0,"google/gemma-2-9b-it --tag 1K_per_direction"

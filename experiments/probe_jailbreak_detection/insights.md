@@ -341,3 +341,66 @@ evaluation set; the honest framing is a second config to compare, not a replacem
 - Effective *n* is far below 1,009 under §0.7 clustering: 424 wrappers, and 300 `jailbreak_mimicry`
   rows share 2 of them.
 - `eval_v2`'s L9 is outside the band, so its row has no band context at the layer its cells are read.
+
+## 1K_per_direction - Gemma 9B
+
+`google/gemma-2-9b-it`, **all 1,009** jailbreak prompts, `midpoint` unless stated. Band L17–38.
+`ref_tpr` is per probe × layer: near 1.0 the bar is passable and a low `pct_reads` is a real finding;
+a low `ref_tpr` means τ is too strict to conclude anything.
+
+### Each probe at its own chosen layer
+
+| probe | L | fiction (472) | roleplay (306) | hybrid (153) | nonfiction (78) | **all** | ref_tpr |
+|---|---|---|---|---|---|---|---|
+| `story_v2_1k` | **28** | 15.5 | 6.5 | 15.0 | **0.0** | 11.5 | 1.00 |
+| `story_v2_1k` | **15** | **83.9** | 33.7 | 59.5 | 6.4 | 59.0 | 1.00 |
+| `persona_v2` | 15 | 95.6 | 52.9 | 57.5 | 75.6 | 75.3 | 0.98 |
+| `harm_v2` | 19 | 11.9 | 66.3 | 62.7 | 59.0 | 39.7 | **0.64** |
+| `eval_v2` | 8 | 24.4 | 36.6 | 41.2 | 12.8 | 29.7 | **0.79** |
+
+**As on Qwen, `story_v2_1k` is the only probe that orders the families as intended** — fiction above
+roleplay and hybrid, nonfiction near zero — and the only one with a passable bar at both its layers.
+`persona_v2` again never becomes a persona detector: it reads fiction (95.6) *above* roleplay (52.9),
+the same inversion Qwen showed. `harm_v2` and `eval_v2` sit below a `ref_tpr` that makes their rows
+uninterpretable, exactly as their Qwen counterparts did at L21/L9.
+
+### story: the fiction − nonfiction margin disagrees with d_z
+
+| layer | fiction | roleplay | hybrid | nonfiction | **margin** | margin (`gap_mid`) | all | ref_tpr |
+|---|---|---|---|---|---|---|---|---|
+| L2 | 72.9 | 41.2 | 70.6 | 10.3 | **+62.6** | +62.2 | 58.1 | 0.93 |
+| L7 | 72.2 | 23.5 | 56.9 | 7.7 | **+64.6** | +62.2 | 50.1 | 0.95 |
+| L9 | 68.9 | 17.3 | 28.8 | 5.1 | **+63.7** | +56.1 | 42.2 | 0.99 |
+| **L15** | 83.9 | 33.7 | 59.5 | 6.4 | **+77.5** | **+71.4** | 59.0 | 1.00 |
+| L16 | 71.2 | 36.3 | 69.3 | 3.8 | **+67.3** | +59.3 | 55.1 | 1.00 |
+| L18 | 99.2 | 96.7 | 100.0 | 59.0 | **+40.2** | +62.7 | 95.4 | 1.00 |
+| **L28** (d_z peak) | 15.5 | 6.5 | 15.0 | 0.0 | **+15.5** | +1.9 | 11.5 | 1.00 |
+
+**L15 is the margin peak under both threshold rules**, and it is also `persona_v2`'s chosen layer —
+the same coincidence Qwen showed, where story's detection-best layer was persona's too.
+
+**The two criteria pick layers 13 apart and the gap is large**: at L28 the probe reads 15.5% of
+fiction jailbreaks against 83.9% at L15, with `ref_tpr` = 1.00 at both, so this is the probe
+genuinely not reading jailbreaks as story that deep. Past L19 every curve collapses (band-mean margin
++14.5), which is most of the reporting band.
+
+**L18 is a saturation layer, not a discriminating one**: 95.4% of *all* jailbreaks clear τ there,
+including 59% of `nonfiction_other`. Its high fiction number is not separation.
+
+![story_v2_1k](results/1K_per_direction/google_gemma-2-9b-it/figures/plot_layer_curves__all_story_v2_1k.png)
+![persona_v2](results/1K_per_direction/google_gemma-2-9b-it/figures/plot_layer_curves__all_persona_v2.png)
+![harm_v2](results/1K_per_direction/google_gemma-2-9b-it/figures/plot_layer_curves__all_harm_v2.png)
+![eval_v2](results/1K_per_direction/google_gemma-2-9b-it/figures/plot_layer_curves__all_eval_v2.png)
+
+### Findings
+
+- **The Qwen conclusion replicates: the `cohens_dz` layer is the wrong layer for this task.** Story's
+  d_z peak (L28) reads 11.5% of jailbreaks where its margin peak (L15) reads 59.0%, and on Qwen the
+  same comparison was L23 vs L15/L17. Two models, same direction of error.
+- **The threshold still does not matter and the layer still does.** `midpoint` → `gap_mid` moves
+  story's margin by ≤6 points at every layer shown; changing layer moves it from +15.5 to +77.5.
+- **`story_v2_1k` keeps the expected family ranking on both models**; no other axis does on either.
+- Unlike Qwen, story here has **no dead mid-band region** — the margin is broadly positive from L2 to
+  L18 and then collapses, rather than alternating selective and dead bands.
+- **This is a criterion finding, not a layer to adopt.** Picking a layer off these curves would be
+  selecting on the test set; §4 is where L28 vs L15 is actually adjudicated.

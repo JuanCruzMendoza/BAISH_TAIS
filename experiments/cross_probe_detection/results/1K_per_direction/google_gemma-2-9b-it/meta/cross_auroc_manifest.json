@@ -1,0 +1,104 @@
+{
+  "config": {
+    "axes": [
+      "story_v2_1k",
+      "persona_v2",
+      "harm_v2",
+      "eval_v2"
+    ],
+    "band": [
+      17,
+      38
+    ],
+    "deltas": [
+      0.6,
+      0.65,
+      0.7,
+      0.75
+    ],
+    "diag": [
+      "heldout"
+    ],
+    "interval": "clopper_pearson",
+    "layer_rule": "explicit",
+    "matched_depth": 0.65,
+    "matched_layer": 27,
+    "n_null_draws": 20,
+    "offdiag_pool": "train+heldout",
+    "probe_layers": {
+      "eval_v2": [
+        8
+      ],
+      "harm_v2": [
+        19
+      ],
+      "persona_v2": [
+        15
+      ],
+      "story_v2_1k": [
+        28,
+        15
+      ]
+    },
+    "probes": [
+      "eval_v2",
+      "harm_v2",
+      "persona_v2",
+      "story_v2_1k"
+    ],
+    "seed": 20260731
+  },
+  "env": {
+    "argv": [
+      "experiments/cross_probe_detection/cross_auroc.py",
+      "google/gemma-2-9b-it",
+      "--tag",
+      "1K_per_direction",
+      "--axes",
+      "story_v2_1k,persona_v2,harm_v2,eval_v2",
+      "--layers",
+      "story_v2_1k=28+15,persona_v2=15,harm_v2=19,eval_v2=8",
+      "--diag",
+      "heldout"
+    ],
+    "git_diff_sha": "6080e5740bfad3c862c1ff5fe889d7a83d95019ff865c2cc35ac0688bf175b23",
+    "git_dirty": true,
+    "git_sha": "ae475bd7c8082ae404b97835a9f4bb52f405665d",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-16T11:33:12",
+    "wall_s": 0.89
+  },
+  "inputs": {
+    "direction_run_keys": {
+      "eval_v2": "9adc11e4cc5da0be96347d9024ca8f9fac378465d430078502f830f78afbb744",
+      "harm_v2": "eed04aa92e3e5fa23583ccd6c7e242dac66776cc3a5b4b63d2095813ab16ab2c",
+      "persona_v2": "09d4c1522196bf7081303c96419a0c8fef5f3f0857f714c8f46288be0867f0d5",
+      "story_v2_1k": "1bf9fee4e4af34a7b9bb0127888695b786e3bc516d772aa220ea52283981d4f6"
+    },
+    "view_keys": {
+      "eval_v2": {
+        "heldout": "fa0fa7abc4d94299834baab1b6a8d065f118dfd1b098b52d921123a3874da91a",
+        "train": "0bfc5146e68fcca83f1d37ec341491d35be34490a4de77de07918adf9ce7430f"
+      },
+      "harm_v2": {
+        "heldout": "9f7bdafd48cd915c1bcd2791c5162cec24691d5e381ad20776aba646bb645129",
+        "train": "a3747f3a4a974f1e96862479639ea3c86397d3ab248bdc8a555af3e467c48f23"
+      },
+      "persona_v2": {
+        "heldout": "1d1abc1d5b2a0537967362c1e95d3a6341079814e8ba658e96b9a2beda1f03bc",
+        "train": "f36e4d97bc18f02cf9c3e42eab2be3ba7ad61e4f69b6c90bbdd554e682ca0ccd"
+      },
+      "story_v2_1k": {
+        "heldout": "c358826ce7929b1bea0e4f357e02295ea6167b90e40d444028ac727a4bf9aa24",
+        "train": "43961a9680df00a99d4c853fdb6e0079dd629c3f606bb9734be03baa290272f8"
+      }
+    }
+  },
+  "notes": [],
+  "run_key": "54258529fcf894996fc977d1eec7f297a7edfd999baeacb58461779f4668f85f",
+  "status": "complete",
+  "stem": "cross_auroc"
+}

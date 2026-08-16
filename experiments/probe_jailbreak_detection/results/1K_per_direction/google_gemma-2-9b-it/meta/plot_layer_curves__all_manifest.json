@@ -22,15 +22,15 @@
       "1K_per_direction",
       "--all-layers"
     ],
-    "git_diff_sha": null,
-    "git_dirty": false,
+    "git_diff_sha": "ec17189588d784ce042b37d15cf750fd181e8dd37f5011bec1c5846937758547",
+    "git_dirty": true,
     "git_sha": "51a17beaec42ae9051394f6a3dc1f8650a384568",
-    "host": "LAPTOP-11LEDOPR",
-    "platform": "Windows-10-10.0.19045-SP0",
-    "python": "3.12.2",
+    "host": "5fefe2b1-e0e1-41d4-b792-535583e1be46-n8zsf",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.11",
     "resumed_from": 0,
-    "timestamp": "2026-08-15T10:25:11",
-    "wall_s": 2.27
+    "timestamp": "2026-08-15T02:24:00",
+    "wall_s": 1.28
   },
   "inputs": {
     "jb_metrics_run_key": "b4d6405a492e1ae668109126cfbb458bd6211d14ea7c428190032eb47c6d8160"

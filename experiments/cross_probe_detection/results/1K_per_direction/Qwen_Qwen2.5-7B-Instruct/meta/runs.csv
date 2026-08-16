@@ -7,3 +7,6 @@ timestamp,script,stem,run_key,git_sha,git_dirty,outcome,resumed_from,wall_s,argv
 2026-08-10T10:37:59,plot_matrices.py,plot_matrices,61a11d66bf3793d3,2707957f355c,True,written,0,3.8,"Qwen/Qwen2.5-7B-Instruct --tag 1K_per_direction"
 2026-08-10T10:43:03,plot_matrices.py,plot_matrices,61a11d66bf3793d3,2707957f355c,True,written,0,3.2,"Qwen/Qwen2.5-7B-Instruct --tag 1K_per_direction"
 2026-08-10T10:43:54,plot_matrices.py,plot_matrices,61a11d66bf3793d3,2707957f355c,True,written,0,3.0,"Qwen/Qwen2.5-7B-Instruct --tag 1K_per_direction"
+2026-08-15T17:32:25,cross_auroc.py,cross_auroc,bf38514f74fb7336,ae475bd7c808,True,written,0,1.0,"Qwen/Qwen2.5-7B-Instruct --tag 1K_per_direction --axes story_v2_1k,persona_v2,harm_v2,eval_v2 --layers story_v2_1k=23+15,persona_v2=15,harm_v2=21,eval_v2=9 --diag heldout"
+2026-08-15T17:32:44,geometry.py,geometry,795823149ab1e7f3,ae475bd7c808,True,written,0,1.0,"Qwen/Qwen2.5-7B-Instruct --tag 1K_per_direction --axes story_v2_1k,persona_v2,harm_v2,eval_v2 --layers story_v2_1k=23+15,persona_v2=15,harm_v2=21,eval_v2=9"
+2026-08-15T17:32:57,plot_matrices.py,plot_matrices,9677f6c4d348f74c,ae475bd7c808,True,written,0,4.0,"Qwen/Qwen2.5-7B-Instruct --tag 1K_per_direction"

@@ -3,4 +3,3 @@ timestamp,script,stem,run_key,git_sha,git_dirty,outcome,resumed_from,wall_s,argv
 2026-08-15T02:23:54,jb_metrics.py,jb_metrics__midpoint__all,b4d6405a492e1ae6,51a17beaec42,True,written,0,0.2,"google/gemma-2-9b-it --tag 1K_per_direction --axes story_v2_1k,persona_v2,harm_v2,eval_v2 --threshold midpoint --all-layers"
 2026-08-15T02:23:57,jb_metrics.py,jb_metrics__gap_mid__all,8cbf112c9b5d87a8,51a17beaec42,True,written,0,0.2,"google/gemma-2-9b-it --tag 1K_per_direction --axes story_v2_1k,persona_v2,harm_v2,eval_v2 --threshold gap_mid --all-layers"
 2026-08-15T02:24:00,plot_layer_curves.py,plot_layer_curves__all,91509ef122b32274,51a17beaec42,True,written,0,1.3,"google/gemma-2-9b-it --tag 1K_per_direction --all-layers"
-2026-08-15T10:25:11,plot_layer_curves.py,plot_layer_curves__all,91509ef122b32274,51a17beaec42,False,written,0,2.5,"google/gemma-2-9b-it --tag 1K_per_direction --all-layers"

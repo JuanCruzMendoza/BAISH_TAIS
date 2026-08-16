@@ -19,7 +19,3 @@ timestamp,script,stem,run_key,git_sha,git_dirty,outcome,resumed_from,wall_s,argv
 2026-08-15T02:21:44,plot_figures.py,plot__story_v2_1k,01eede54ccc26007,51a17beaec42,True,written,0,0.5,"google/gemma-2-9b-it --tag 1K_per_direction --with-heldout"
 2026-08-15T02:21:44,plot_figures.py,plot__persona_v2,19992c354a11cdd6,51a17beaec42,True,written,0,0.5,"google/gemma-2-9b-it --tag 1K_per_direction --with-heldout"
 2026-08-15T02:21:45,plot_figures.py,plot__eval_v2,f3b83b8349a0a9c9,51a17beaec42,True,written,0,0.5,"google/gemma-2-9b-it --tag 1K_per_direction --with-heldout"
-2026-08-15T10:24:52,plot_figures.py,plot__harm_v2,36c53006882042d4,51a17beaec42,False,written,0,1.6,"google/gemma-2-9b-it --tag 1K_per_direction --with-heldout"
-2026-08-15T10:24:53,plot_figures.py,plot__story_v2_1k,01eede54ccc26007,51a17beaec42,False,written,0,1.4,"google/gemma-2-9b-it --tag 1K_per_direction --with-heldout"
-2026-08-15T10:24:55,plot_figures.py,plot__persona_v2,19992c354a11cdd6,51a17beaec42,False,written,0,1.7,"google/gemma-2-9b-it --tag 1K_per_direction --with-heldout"
-2026-08-15T10:24:57,plot_figures.py,plot__eval_v2,f3b83b8349a0a9c9,51a17beaec42,False,written,0,1.7,"google/gemma-2-9b-it --tag 1K_per_direction --with-heldout"

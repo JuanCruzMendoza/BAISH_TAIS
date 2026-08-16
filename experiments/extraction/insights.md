@@ -290,62 +290,86 @@ credits contrast consistency, not the fitted direction — geometry still has to
 # 1K_per_direction - Gemma 9B
 
 `google/gemma-2-9b-it` (L=42, d=3584), **800 train / 200 held-out** pairs per direction, last token,
-`eager` attention. Band = **L17–38**. Same four axes and datasets as the Qwen run; no length foil.
+`eager` attention (gemma-2 soft-caps its attention logits; sdpa drops that). Band = **L17–38**. Same
+four axes, datasets and criteria as the Qwen run — only the model changes, so every layer index is
+re-derived.
 
-# Extraction
-### Where to read each axis
+## Do the axes exist, and how many pairs do they need?
 
-`cohens_dz_train` selects, `cohens_dz_heldout` (200 unseen pairs) confirms; `plateau` is every layer
-within 1 SE of the argmax, SE ≈ √((1+d_z²/2)/n), so it is what the column can resolve.
+Band-mean L17–38. `c` is `mean_paired_cos`; `n@.99` is where the subsample curve reaches
+`cos(d_n, d_800) = 0.99`. `cos(tr,ho)` fits the 800 and the 200 separately.
 
-| direction | **d_z train argmax** | plateau | d_z held-out argmax | gap tr−ho | peak mpc | depth |
-|---|---|---|---|---|---|---|
-| `story_v2_1k` | **L28** (3.62) | L27–28, 30 | L28 (3.81) | −0.20 | L21 (0.670) | 0.67 |
-| `persona_v2` | **L15** (2.83) ⚠ | L14–17 | L18 (2.62) | +0.29 | L4 (0.586) | 0.36 |
-| `harm_v2` | **L19** (1.32) | L18–21 | L21 (1.21) | +0.13 | L28 (0.432) | 0.45 |
-| `eval_v2` | **L8** (2.16) ⚠ | L7–8 | L7 (2.28) | −0.11 | L7 (0.355) | 0.19 |
-
-⚠ outside the band, so those cells need `--allow-out-of-band`.
-
-
-## Probe jailbreak detection
-
-## story: the fiction − nonfiction margin disagrees with d_z
-
-`pct_reads` per jailbreak family at each layer (`probe_jailbreak_detection`, all 1,009 rows; n = 472
-fiction / 306 roleplay / 153 hybrid / 78 nonfiction). The margin is fiction − nonfiction: how far the
-probe separates the jailbreaks it should read from the ones it should not.
-
-| layer | fiction | roleplay | hybrid | nonfiction | **margin** | margin (`gap_mid`) | all | ref_tpr |
+| direction | lopo AUROC | held-out | ‖d‖/σ_act | c | **n@.95** | **n@.99** | **cos(tr,ho)** | Qwen n@.99 |
 |---|---|---|---|---|---|---|---|---|
-| L2 | 72.9 | 41.2 | 70.6 | 10.3 | **+62.6** | +62.2 | 58.1 | 0.93 |
-| L7 | 72.2 | 23.5 | 56.9 | 7.7 | **+64.6** | +62.2 | 50.1 | 0.95 |
-| L9 | 68.9 | 17.3 | 28.8 | 5.1 | **+63.7** | +56.1 | 42.2 | 0.99 |
-| **L15** | 83.9 | 33.7 | 59.5 | 6.4 | **+77.5** | **+71.4** | 59.0 | 1.00 |
-| L16 | 71.2 | 36.3 | 69.3 | 3.8 | **+67.3** | +59.3 | 55.1 | 1.00 |
-| L18 | 99.2 | 96.7 | 100.0 | 59.0 | **+40.2** | +62.7 | 95.4 | 1.00 |
-| L28 (d_z peak) | 15.5 | 6.5 | 15.0 | 0.0 | **+15.5** | +1.9 | 11.5 | 1.00 |
+| `story_v2_1k` | 0.999 | 1.000 | 0.30 | 0.57 | 50 | **100** | **+0.993** | 100 |
+| `persona_v2` | 0.993 | 0.998 | 0.23 | 0.46 | 50 | **150** | +0.947 | 150 |
+| `harm_v2` | 0.956 | 0.922 | 0.22 | 0.41 | 50 | **150** | +0.934 | 200 |
+| `eval_v2` | 0.979 | 0.982 | **0.06** | 0.30 | 100 | **350** | **+0.812** | 350 |
 
-**L15 is the margin peak under both threshold rules**, and it is the same layer `persona_v2`'s d_z
-picks — as at the Qwen tag, where story's detection-best layer was also persona's chosen one.
+**Nearly identical to Qwen.** `n@.99` matches within one step on every axis, the ranking is the same,
+and `eval_v2` is again the outlier — norm 5× smaller than the others, slowest to converge. Its halves
+agree better here than on Qwen (+0.812 vs +0.734), so the weak axis is slightly less weak, not fixed.
 
-**The two criteria pick layers 13 apart, and the gap is large.** At L28 the probe reads 15.5% of
-fiction jailbreaks against 83.9% at L15, with `ref_tpr` = 1.00 at both — the bar is passable, so this
-is the probe genuinely not reading jailbreaks as story that deep. Past L19 every curve collapses
-(band-mean margin +14.5, best deep layer +18.2), which is most of the reporting band.
+![story_v2_1k saturation](results/1K_per_direction/google_gemma-2-9b-it/figures/plot__story_v2_1k_cos_curve.png)
+![eval_v2 saturation](results/1K_per_direction/google_gemma-2-9b-it/figures/plot__eval_v2_cos_curve.png)
 
-**L18 is a saturation layer, not a discriminating one**: 95.4% of all jailbreaks clear τ there,
-including 59% of `nonfiction_other`. Its high fiction number is not separation.
+## Where to read each axis
 
+`cohens_dz_train` selects, `cohens_dz_heldout` (200 unseen pairs) confirms; `plateau` is every band
+layer within 1 SE of the argmax.
 
-![story_v2_1k pct_reads by family](../probe_jailbreak_detection/results/1K_per_direction/google_gemma-2-9b-it/figures/plot_layer_curves__all_story_v2_1k.png)
+| direction | **d_z train argmax** | plateau | d_z held-out argmax | gap tr−ho | peak mpc | depth | Qwen depth |
+|---|---|---|---|---|---|---|---|
+| `story_v2_1k` | **L28** (3.62) | L27–28, 30 | L28 (3.81) | −0.20 | L21 (0.670) | 0.67 | 0.82 |
+| `persona_v2` | **L15** (2.83) ⚠ | L14–17 | L18 (2.62) | +0.29 | L4 (0.586) | 0.36 | 0.54 |
+| `harm_v2` | **L19** (1.32) | L18–21 | L21 (1.21) | +0.13 | L28 (0.432) | 0.45 | 0.82 |
+| `eval_v2` | **L8** (2.16) ⚠ | L7–8 | L7 (2.28) | −0.11 | L7 (0.355) | 0.19 | 0.32 |
+
+⚠ outside the band, so those cells carry `--allow-out-of-band`.
+
 ![story_v2_1k effect size](results/1K_per_direction/google_gemma-2-9b-it/figures/plot__story_v2_1k_cohens_dz_train.png)
 
+**Every axis reads shallower than on Qwen** in fractional depth (0.19–0.67 vs 0.32–0.82), and two now
+fall outside the band entirely — an artefact of the band being a fixed fraction while the axes sit at
+roughly fixed *absolute* early-to-mid depth. `harm_v2` moves most (0.82 → 0.45).
 
+**The d_z / `mean_paired_cos` disagreement reproduces**, and is larger: 7 layers on Qwen story
+(L23 vs L16), **11 layers here** (L28 vs L21), and `persona_v2` splits by 11 (L15 vs L4). So it is a
+property of the axes, not of one model — and §2 shows which criterion transfers.
 
-## Chosen layers per direction
+### Chosen layers
 
-- Persona: L15
-- Story: L28 and L15
-- Eval: L8
-- Harm: L19
+| direction | chosen | why |
+|---|---|---|
+| `story_v2_1k` | **L28 + L15** | L28 is the d_z peak; L15 is the fiction − nonfiction margin peak (§2), and they disagree by 13 layers |
+| `persona_v2` | **L15** | train plateau L14–17, held-out argmax L18 |
+| `harm_v2` | **L19** | argmax, plateau L18–21 |
+| `eval_v2` | **L8** | train plateau L7–8, held-out argmax L7 |
+
+## Is the saturated AUROC real?
+
+Band-mean.
+
+| direction | shuffled (want 0.5) | rand± | margin min / med | Qwen rand± |
+|---|---|---|---|---|
+| `story_v2_1k` | 0.501 | 0.693 | −0.09 / +1.90 | 0.706 |
+| `persona_v2` | 0.502 | 0.663 | −0.30 / +1.29 | 0.661 |
+| `harm_v2` | 0.501 | 0.640 | −0.21 / +1.06 | 0.675 |
+| `eval_v2` | 0.502 | 0.603 | −0.45 / +0.93 | 0.602 |
+
+**Same picture as Qwen, cell for cell.** No label leakage; `rand±` 0.60–0.69 against Qwen's
+0.60–0.71, so paired AUROC again credits contrast consistency rather than the fitted direction, and
+geometry still has to carry H1 (§3).
+
+## Findings
+
+- **The extraction stage replicates on a second architecture.** Sample-size requirements, axis
+  ranking, `eval_v2`'s weakness, the shuffled/random nulls and the margin distributions all land
+  within noise of the Qwen run.
+- **`harm_v2` is the one axis that materially weakened**: held-out AUROC 0.922 (Qwen 0.974) and d_z
+  1.32 (Qwen 1.48), the lowest of the four here.
+- **Two chosen layers fall outside a band defined as a depth fraction**, which on a 42-layer model no
+  longer contains where these axes live. The band is a reporting convention, not a finding, but at
+  L=42 it is doing less work than it did at L=28.
+- **Story's two criteria disagree by 13 layers**, which is why it is carried at both L28 and L15
+  downstream — with one layer a null steering cell cannot be told apart from a wrong layer.

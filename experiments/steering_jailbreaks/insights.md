@@ -577,3 +577,77 @@ added or treated as percentages of the reference. The persona dose–response is
 10. **No within-cell noise estimate.** Greedy with one composition gives zero seed variance, so the
     only noise floor is the random arm — which, per (1), mostly does not exist. §5.1 measured a
     within-config seed spread of ±3pp; effects below that cannot be claimed.
+
+# 1K_per_direction - Gemma 9B
+
+`google/gemma-2-9b-it`, greedy, `max_new_tokens=512`, batch 16 / 24576 pinned for the baseline and
+every cell. **`add` only**, α ∈ 0.25/0.50/0.75/1.00 at each chosen (axis, layer), signed by
+`cell.RESTORE_SIGN`. 48 cells: 5 (axis, layer) pairs × 4 α × 2 prompt sets, plus one no-op per
+(set, layer). No `ablate`, no `cap`, no `random` arm. Judged by StrongREJECT, gpt-4o-mini.
+
+**Baseline** (1,009 prompts): ASR 55.0%, StrongREJECT 0.533, complied/refused/degenerate
+54.8/42.5/2.7%, `hit_cap_rate` 0.256. That split *defines* the two prompt sets — **542 success**
+(complied) and **423 refusal** (refused).
+
+## Best cell per direction
+
+`restore` = success set, target ↓; `induce` = refusal set, target ↑. Δ is against that set's no-op at
+the same layer. **Read `deg` first**: a degenerate response scores `strongreject ≈ 0`, which is what
+a refusal also scores, so a high-`deg` cell cannot be told from a restored refusal.
+
+| direction | L | best restore α | ΔSR | deg | best induce α | ΔSR | deg |
+|---|---|---|---|---|---|---|---|
+| `persona_v2` | 15 | −1.00 | **−0.955** | 0.2 | +0.50 | **+0.413** | 3.5 |
+| `harm_v2` | 19 | +0.50 | **−0.952** | **0.0** | −0.50 | +0.283 | 2.6 |
+| `story_v2_1k` | **15** | −1.00 | **−0.440** | 0.7 | +0.50 | +0.216 | 3.8 |
+| `story_v2_1k` | **28** | −0.75 | −0.203 | 16.6 | +0.50 | +0.008 | 7.3 |
+| `eval_v2` | 8 | +1.00 | −0.108 | 3.0 | −1.00 | +0.081 | 2.6 |
+
+`persona_v2` and `harm_v2` both **saturate** (99.8% and 99.4% refused), so their Δ is a floor on the
+effect, not a measurement of it.
+
+## story@L15 beats story@L28, and L28's only large number is degeneration
+
+The whole point of carrying story at two layers, resolved:
+
+| α | L15 ΔSR | L15 deg | L28 ΔSR | L28 deg |
+|---|---|---|---|---|
+| −0.25 | −0.099 | 0.7 | −0.033 | 2.2 |
+| −0.50 | −0.205 | 0.6 | −0.059 | 2.4 |
+| −0.75 | −0.332 | 1.1 | −0.203 | 16.6 |
+| −1.00 | **−0.440** | **0.7** | −0.707 | **99.6** ⚠ |
+
+**L28's −0.707 at α=−1 is not a restore, it is a destroyed model** — 99.6% of responses are
+degenerate. At every α where L28 produces coherent text it is ~4× weaker than L15, and on the refusal
+set it induces nothing (+0.006, +0.008) before collapsing to 98% degenerate.
+
+**So the `cohens_dz` criterion picked the worse steering layer.** L28 is story's d_z peak (3.62) and
+L15 its fiction − nonfiction margin peak (§2). This reproduces Qwen's 2_run result, where story@L15
+produced 8× L23's restore effect, and the r = 0.00 that 50_per_direction measured between probe
+quality and steering effect. **Two models now agree**, which is what one layer per direction could
+never have shown.
+
+## Compared to Qwen
+
+- **Same ordering of directions**: persona and harm move behaviour most, story is real but partial,
+  `eval_v2` is near-null on both models.
+- **Same L15-over-L28 verdict for story**, from an independent architecture and a 13-layer gap
+  instead of Qwen's 8.
+- **Degeneracy arrives earlier here.** Qwen's harm_v2 stayed usable to α=0.75 (deg 14.4) and broke at
+  α=1.00 (deg 96.3); gemma's harm_v2 breaks at α=0.75 (deg 11.6) and is 60.1% degenerate at α=1.00.
+  Story@L28 is the extreme case at 99.6%.
+- **story_v2_1k is *not* a clean null here.** On Qwen's 1_run it was; on gemma L15 restores −0.440 at
+  0.7% degeneracy, which is a real effect on coherent text.
+- Disagreement between the judge and the detectors climbs with α on both models (0.39 at the no-op →
+  0.70 at `harm α−0.75`), so high-α rows want `strongreject_coherent` rather than raw ASR.
+
+## Caveats
+
+- **No `random` arm at this tag**, so nothing here is a specificity claim — only the no-op separates
+  a direction's effect from any perturbation of that norm.
+- The two prompt sets come from the baseline's batch composition and are steered at another, so some
+  success rows do not comply at steer time. The no-op is the denominator, never the baseline.
+- 4 cells scored n−1 rows: one response per cell did not parse into a `#scores` block and counts
+  against ASR (≤0.2%).
+- Narrativity (§5) is not yet run, so *why* story@L15 restores — narrative framing or something else
+  — is unanswered here.

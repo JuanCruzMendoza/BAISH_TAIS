@@ -2,7 +2,7 @@
 
     python cross_auroc.py <model>
     python cross_auroc.py <model> --tag 1K_per_direction \
-        --layers story_v2_1k=23,persona_v2=15,harm_v2=21,eval_v2=9
+        --layers story_v2_1k=23+15,persona_v2=15,harm_v2=21,eval_v2=9
 
 Off-diagonal cells pool the target axis's train + held-out pairs (spec 0.7.3): the probe
 was never fitted on any of that axis's data, so its train pairs are as out-of-sample as
@@ -10,9 +10,9 @@ its held-out ones. The diagonal is never the in-sample pooled number -- `--diag 
 scores the deployed vector on the held-out split alone, `--diag lopo` adds the LOPO row
 that small n needs.
 
-`--layers` fixes one layer per direction instead of the mean_paired_cos peak. Axes are
-loaded and released one at a time: 1,000 pooled pairs x 29 layers x 3584 dims is ~0.8 GB
-per axis.
+`--layers` fixes the layer per direction instead of the mean_paired_cos peak; `a=L1+L2`
+gives an axis a second probe row, the same vector read at another layer. Axes are loaded
+and released one at a time: 1,000 pooled pairs x 29 layers x 3584 dims is ~0.8 GB per axis.
 """
 import argparse
 import csv
@@ -184,38 +184,45 @@ def null_rows(aname, ax, R, Lp1, mpc_a):
 
 # ------------------------------------------------------------------- matrices
 
-def matrix_rows(tensor, layer_of, band):
-    """One row per probe x axis x cell_type at the chosen layer, + band summaries."""
+def matrix_rows(tensor, entries, band, fallback):
+    """One row per (probe, layer) x axis x cell_type, + band summaries.
+
+    `entries` is a list of (probe, layer): a probe is a (vector, layer) pair, so an axis
+    listed twice contributes two rows of the same vector read at two layers. A probe with
+    no entry -- the random null -- is taken at `fallback`.
+    """
+    per = {}
+    for p, l in entries:
+        per.setdefault(p, []).append(l)
     by_key = {}
     for r in tensor:
         by_key.setdefault((r["probe"], r["axis"], r["cell_type"]), []).append(r)
     out = []
     for (p, a, kind), rs in by_key.items():
-        l = layer_of(p)
-        pick = next((r for r in rs if r["layer"] == l), None)
-        if pick is None:
-            continue
         inband = [r for r in rs if r["layer"] in band]
-        out.append({**pick,
-                    "band_mean_auroc": float(np.mean([r["auroc"] for r in inband])),
-                    "band_max_folded": float(np.max([r["auroc_folded"] for r in inband])),
-                    "band_mean_cohens_dz": float(np.mean([r["cohens_dz"] for r in inband])),
-                    "band_mean_excess": float(np.mean([r.get("excess_over_null", float("nan"))
-                                                       for r in inband]))})
-    return sorted(out, key=lambda r: (r["probe"], r["axis"], r["cell_type"]))
+        for l in per.get(p, [fallback]):
+            pick = next((r for r in rs if r["layer"] == l), None)
+            if pick is None:
+                continue
+            out.append({**pick,
+                        "band_mean_auroc": float(np.mean([r["auroc"] for r in inband])),
+                        "band_max_folded": float(np.max([r["auroc_folded"] for r in inband])),
+                        "band_mean_cohens_dz": float(np.mean([r["cohens_dz"] for r in inband])),
+                        "band_mean_excess": float(np.mean([r.get("excess_over_null", float("nan"))
+                                                           for r in inband]))})
+    return sorted(out, key=lambda r: (r["probe"], r["layer"], r["axis"], r["cell_type"]))
 
 
 def print_matrix(rows, axes, title, diag_kind, key="auroc", fmt="{:.3f}"):
-    kinds = {(r["probe"], r["axis"]): r for r in rows
+    kinds = {(r["probe"], r["layer"], r["axis"]): r for r in rows
              if not r["cell_type"].startswith("diag") or r["cell_type"] == diag_kind}
-    probes = list(dict.fromkeys(r["probe"] for r in rows))
+    probes = list(dict.fromkeys((r["probe"], r["layer"]) for r in rows))
     print(f"\n{title}")
     print("  " + "probe".ljust(14) + "L".rjust(4) + "".join(a[:9].rjust(10) for a in axes))
-    for p in probes:
-        l = next((r["layer"] for r in rows if r["probe"] == p), "")
+    for p, l in probes:
         cells = []
         for a in axes:
-            r = kinds.get((p, a))
+            r = kinds.get((p, l, a))
             cells.append("-".rjust(10) if r is None else
                          (fmt.format(r[key]) + ("*" if p == a else " ")).rjust(10))
         print("  " + p[:14].ljust(14) + str(l).rjust(4) + "".join(cells))
@@ -240,8 +247,9 @@ def main():
     ap.add_argument("--matched-depth", type=float, default=MATCHED_DEPTH)
     ap.add_argument("--axes", default=",".join(views.DIRECTIONS))
     ap.add_argument("--layers", default=None,
-                    help="axis=layer,... one chosen layer per direction (extraction "
-                         "insights.md); default is the mean_paired_cos peak in band")
+                    help="axis=layer[+layer],... the chosen layers per direction "
+                         "(extraction insights.md); default is the mean_paired_cos peak "
+                         "in band")
     ap.add_argument("--diag", choices=["lopo", "heldout"], default="lopo",
                     help="diagonal cell: LOPO on train + the held-out split, or the "
                          "deployed vector on the held-out split alone")
@@ -272,11 +280,11 @@ def main():
     band = cfg.band(L)
     matched_l = round(args.matched_depth * L)
 
-    chosen = cfg.parse_axis_layers(args.layers) if args.layers else None
+    chosen = cfg.parse_axis_probes(args.layers) if args.layers else None
     if chosen is not None:
-        bad = [f"{a}=L{l}" for a, l in chosen.items() if not 0 <= l <= L]
-        unknown = [a for a in chosen if a not in probes]
-        missing = [a for a in names if a not in chosen]
+        bad = [f"{a}=L{l}" for a, l in chosen if not 0 <= l <= L]
+        unknown = [a for a, _ in chosen if a not in probes]
+        missing = [a for a in names if a not in {x for x, _ in chosen}]
         if bad or unknown or missing:
             raise SystemExit(f"--layers: outside 0..{L} {bad}, unknown {unknown}, "
                              f"missing {missing}")
@@ -297,8 +305,13 @@ def main():
     tensor = sorted(body, key=lambda r: (r["probe"], r["axis"], r["layer"],
                                          r["cell_type"])) + nulls
 
-    peak = {a: max(band, key=lambda l: mpc[a][l]) for a in probes}
-    probe_layers = chosen if chosen is not None else peak
+    peak = [(a, max(band, key=lambda l: mpc[a][l])) for a in probes]
+    entries = chosen if chosen is not None else peak
+    # {axis: [layers]}, not {axis: layer}: an axis with a second chosen layer is a second
+    # probe row, and the manifest has to carry both for plot_matrices to draw them.
+    probe_layers = {}
+    for a, l in entries:
+        probe_layers.setdefault(a, []).append(l)
 
     stem = mf.stem("cross_auroc")
     config = {"axes": names, "probes": sorted(probes), "matched_depth": args.matched_depth,
@@ -314,8 +327,8 @@ def main():
 
     with mf.Run(lay, stem, config, inputs) as run:
         write_csv(run.artefact("_tensor.csv"), tensor)
-        m_matched = matrix_rows(tensor, lambda p: matched_l, band)
-        m_probe = matrix_rows(tensor, lambda p: probe_layers.get(p, matched_l), band)
+        m_matched = matrix_rows(tensor, [], band, matched_l)
+        m_probe = matrix_rows(tensor, entries, band, matched_l)
         write_csv(run.artefact("_matched.csv"), m_matched)
         write_csv(run.artefact("_chosen.csv" if chosen is not None else "_ownbest.csv"),
                   m_probe)
@@ -328,7 +341,8 @@ def main():
                                       f"(depth {matched_l / L:.3f})", dk)
         rule = ("chosen layer (extraction insights.md): " if chosen is not None else
                 "own-best layer = peak mean_paired_cos in band: ")
-        head = rule + " ".join(f"{a}=L{probe_layers[a]}" for a in names)
+        head = rule + " ".join(f"{a}=L" + "+L".join(str(l) for l in probe_layers[a])
+                               for a in names)
         print_matrix(m_probe, names, "(b) AUROC, " + head, dk)
         print_matrix(m_probe, names, "(c) Cohen's d_z, " + head, dk,
                      key="cohens_dz", fmt="{:+.2f}")

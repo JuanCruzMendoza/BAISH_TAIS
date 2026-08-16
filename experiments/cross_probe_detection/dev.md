@@ -120,7 +120,12 @@ explicit `--layers`, not from any JSON:
 
 | `story_v2_1k` | `persona_v2` | `harm_v2` | `eval_v2` |
 |---|---|---|---|
-| **L23** | **L15** | **L21** | **L9** |
+| **L23 + L15** | **L15** | **L21** | **L9** |
+
+`story_v2_1k` has a second layer, `a=L1+L2`. **L15** is its detection-best layer
+(`probe_jailbreak_detection/insights.md`: largest fiction-vs-rest margin, +57.3 against L23's +28.3)
+and the layer `persona_v2` is chosen at, so the two claims it settles are whether story's leakage
+survives the change of read position and whether story@L15 is persona.
 
 ## Design
 
@@ -133,6 +138,11 @@ The diagonal is on 200 pairs and the off-diagonal on 1,000, which is the price o
 **Layer convention.** A probe is a (vector, layer) pair, so row *i* is read at **its own** chosen
 layer L_i — the vector is deployed exactly as chosen, and the layer is constant across the row.
 `_matched.csv` (all probes at depth 0.65 → L18) is still emitted as the common-depth control.
+
+An axis with two layers is therefore **two probes, one axis**, and which side of a matrix it lands on
+follows from what the cell reads: a column of the AUROC matrices is a *dataset*, so the second layer
+is a row only; `cos_own` is probe × probe, so it is both; `cos_matched` never uses the row's layer,
+so it is a column only. The matrices stop being square.
 
 **No positive control.** `story_v1` does not exist at this tag, so no off-diagonal cell is *supposed*
 to read high. A matrix of nulls is therefore not self-validating here; the 50-pair tag's
@@ -160,15 +170,17 @@ explicit` in the manifest). **`geometry_cos_chosen.csv`** carries `axis_row`, `a
 
 ## Figures
 
-`plot_matrices.py`, four 4×4 heatmaps from `csv/` alone:
+`plot_matrices.py`, five heatmaps from `csv/` alone (5 probes over 4 axes):
 
-| figure | cell |
-|---|---|
-| `plot_matrices_auroc.png` | AUROC, probe row at L_row |
-| `plot_matrices_excess_over_null.png` | the same AUROC folded and net of the random-direction null — the only one of the three that can be read on its own |
-| `plot_matrices_cohens_dz.png` | `cohens_dz`, same cells |
-| `plot_matrices_cos_own.png` | cos between the chosen vectors, each at its own layer |
-| `plot_matrices_cos_matched.png` | cos with the row vector re-read at the column's layer |
+| figure | shape | cell |
+|---|---|---|
+| `plot_matrices_auroc.png` | 5×4 | AUROC, probe row at L_row |
+| `plot_matrices_excess_over_null.png` | 5×4 | the same AUROC folded and net of the random-direction null — the only one of the three that can be read on its own |
+| `plot_matrices_cohens_dz.png` | 5×4 | `cohens_dz`, same cells |
+| `plot_matrices_cos_own.png` | 5×5 | cos between the chosen vectors, each at its own layer |
+| `plot_matrices_cos_matched.png` | 4×5 | cos with the row vector re-read at the column's layer |
+
+The boxed cells are the self-cells (same axis both sides), not the literal diagonal.
 
 ## Run order
 
@@ -176,7 +188,7 @@ No GPU. Reads `extraction/results/1K_per_direction/<model>/`.
 
 ```bash
 M=Qwen/Qwen2.5-7B-Instruct; A=story_v2_1k,persona_v2,harm_v2,eval_v2
-L=story_v2_1k=23,persona_v2=15,harm_v2=21,eval_v2=9
+L=story_v2_1k=23+15,persona_v2=15,harm_v2=21,eval_v2=9
 python cross_auroc.py   $M --tag 1K_per_direction --axes $A --layers $L --diag heldout
 python geometry.py      $M --tag 1K_per_direction --axes $A --layers $L
 python plot_matrices.py $M --tag 1K_per_direction

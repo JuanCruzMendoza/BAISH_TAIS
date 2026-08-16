@@ -26,10 +26,19 @@
     "n_null_draws": 20,
     "offdiag_pool": "train+heldout",
     "probe_layers": {
-      "eval_v2": 9,
-      "harm_v2": 21,
-      "persona_v2": 15,
-      "story_v2_1k": 23
+      "eval_v2": [
+        9
+      ],
+      "harm_v2": [
+        21
+      ],
+      "persona_v2": [
+        15
+      ],
+      "story_v2_1k": [
+        23,
+        15
+      ]
     },
     "probes": [
       "eval_v2",
@@ -48,19 +57,19 @@
       "--axes",
       "story_v2_1k,persona_v2,harm_v2,eval_v2",
       "--layers",
-      "story_v2_1k=23,persona_v2=15,harm_v2=21,eval_v2=9",
+      "story_v2_1k=23+15,persona_v2=15,harm_v2=21,eval_v2=9",
       "--diag",
       "heldout"
     ],
-    "git_diff_sha": "67af61a1e665d5c4a16728dec05ee8d0cdddf406821b69f9efb173ae2ba94c16",
+    "git_diff_sha": "311966785f29fd28e7081bace2746f01c4646b84575a45753823a7fc3100d2a1",
     "git_dirty": true,
-    "git_sha": "2707957f355c459991e5ca2d4ed4a6b3f264fe83",
+    "git_sha": "ae475bd7c8082ae404b97835a9f4bb52f405665d",
     "host": "LAPTOP-11LEDOPR",
     "platform": "Windows-10-10.0.19045-SP0",
     "python": "3.12.2",
     "resumed_from": 0,
-    "timestamp": "2026-08-10T10:23:18",
-    "wall_s": 0.66
+    "timestamp": "2026-08-15T17:32:25",
+    "wall_s": 0.69
   },
   "inputs": {
     "direction_run_keys": {
@@ -89,9 +98,9 @@
     }
   },
   "notes": [
-    "archived prior run 0554734e"
+    "archived prior run d51f2577"
   ],
-  "run_key": "d51f257788bf82436ed0003b16b9d7e760f7e0d1c24ab25927c9eb101d7d35ee",
+  "run_key": "bf38514f74fb73361bcd679b7cd6a731f9c8359d7503736153227a40e405d195",
   "status": "complete",
   "stem": "cross_auroc"
 }

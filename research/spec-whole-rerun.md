@@ -7,15 +7,29 @@ it.
 Run end to end by `notebooks/notebook_1K_gemma.py` (gemma-2-9b-it): every stage is guarded on its
 artefacts, and the manual decisions below are the points it stops at.
 
-**Only what needs the GPU runs on the GPU box.** Two things move off it, and §J has the commands:
+**Only what needs the GPU runs on the GPU box** — plus whatever is free there because the data is
+already resident. §J has the local commands:
 
-- **every judge pass** — API-bound, ~23k calls over 3–5 h, and a rented GPU idling through it is the
-  most expensive hour in the run. No API key reaches the instance.
-- **cross_probe_detection (§3)** — CPU-only, and the last stage that reads the 2.5 GB pole cache.
-  Local, that cache is downloaded once and kept; on the GPU box it came down on every fresh
-  instance, and its per-chunk read tokens are what exhausted the Xet quota and 429'd the pull.
+- **every judge pass, always local** — API-bound, ~23k calls over 3–5 h, and a rented GPU idling
+  through it is the most expensive hour in the run. No API key reaches the instance.
+- **cross_probe_detection (§3), whichever side already holds the pole cache.** CPU-only and ~2 min,
+  but it reads the 2.2 GiB pole cache. So it is not pinned to a machine: it runs wherever that cache
+  already is, and downloads it nowhere.
 
-The two sides hand off through the Hub, so each pushes its own scope and neither pulls the other's.
+The two sides hand off through the Hub, each pushing its own scope.
+
+**The pole cache moves as `acts/blobs.tar`, never as loose blobs.** Both directions of this are load-
+bearing and both were wrong during the gemma run:
+
+- *Pull* `['*/acts/blobs.tar', '*/acts/views/**']`, not `'*/acts/**'`. One request instead of 7,732.
+  The request count is what exhausts the Xet read-token quota and 429s, and it is **the same 7,731 at
+  a 32B as at a 7B** — only the bytes scale. `pack=True` unpacks the tar, so the tree the scripts
+  read is identical either way.
+- *Push* holds `*/acts/blobs/*` back unconditionally (`ckpt.push`), so the tar is the only stored
+  form. It used to hold them back only under `pack=True`, and the extraction scope is also pushed
+  unpacked for vectors and figures — so `msg="figures"` uploaded all 7,731 loose `.npy` beside the
+  tar and the cache was stored **twice**: 4.46 GiB on the Hub where 2.23 GiB does, with every
+  `'*/acts/**'` pull paying for both.
 
 **Dropped vs the Qwen run:** `ablate` (no config where it helped), `cap`, the `length` foil,
 `compare_crossed` / §1.2a, the `random` arm, and the §5.1 decoding comparison (greedy is reused).
@@ -103,21 +117,39 @@ python plot_layer_curves.py $M
 
 → `jb_metrics__<rule>_chosen.csv`, one row per probe × slice at that probe's own layer.
 
-## 3. cross_probe_detection — **local, not on the GPU box** (§J.0)
+## 3. cross_probe_detection — **wherever the pole cache already is**
 
-**Needs.** No GPU, but it *does* need extraction's `acts/` — the off-diagonal AUROC is computed on
-the cached pole activations, not on the vectors — plus the vectors themselves. That 2.5 GB is the
-whole reason it moved: locally it is one download that stays, and nothing on the GPU box reads
-`acts/` once extraction and `jb_readout` are done.
+**Needs.** No GPU, ~2 min of CPU, but it *does* need extraction's `acts/` — the off-diagonal AUROC
+is computed on the cached pole activations, not on the vectors — plus the vectors themselves. That
+cache is **2.23 GiB here, 4.8 GiB at a 32B** (one `blobs.tar`; the 7,731-blob file count does not
+change with the model). Its size is what decides where this runs, and the rule is that it never
+causes the download:
+
+- **On the GPU box, at gate 1, if extraction ran in that same session.** The cache is on local disk,
+  so this is free, and it follows the layers just entered. Best case — take it when you can.
+- **Locally (§J.0) otherwise.** A fresh instance resuming from complete extraction manifests never
+  pulls `acts/`, so the notebook cell skips rather than dragging it back.
+
+The notebook implements exactly that: it checks `acts/views` and `acts/blobs` and does nothing if
+either is empty. Both sides pull the (small) `cross_probe_detection` scope so each can tell
+"computed at these layers" from "not computed here"; only the side that computes it pushes.
+
+One host-RAM caveat for the GPU-box branch: axes load one at a time at ~0.8 GB each on a 7B, but
+**~2.7 GB per axis at a 32B** (1,000 pairs × 65 layers × 5120 dims, fp32) — no longer free alongside
+a resident 65 GB model.
 
 **Configs.** 4×4 at the chosen layers, `--diag heldout` (the deployed vector on the 200 held-out
 pairs; at n=800 LOPO moves `d_z` by ~0.005). `cohens_dz` emitted — AUROC saturates at n=1,000.
 `_matched.csv` at depth 0.65 stays as the common-depth control. No `story_v1` positive control exists
 at this tag.
 
-`--layers` takes **one layer per probe**, so it runs at each axis's primary (story L28). Story@L15 is
-in `cross_auroc_tensor.csv` and `geometry_cos.csv`, which span every band layer — and the latter is
-where §6 reads `cos(story@15, persona@15)`.
+`--layers` takes `axis=layer[+layer]`, and a `+` adds a **second probe row** for that axis, not a
+second axis. Story gets both of its steering layers (`story_v2_1k=28+15`), as at 4_run: the two are
+*different read positions*, not two readings of one vector (cos +0.206 on Qwen, +0.219 here), so
+each needs its own row before a steering cell at either can be interpreted. This is also what
+answers "is story@L15 just persona?" — at 4_run the answer was **no** (cos +0.137, and the shared
+behaviour was a steering result, not a direction). §6 reads `cos(story@15, persona@15)` from
+`geometry_cos.csv`, which spans every band layer either way.
 
 **Read.** `cross_auroc_chosen.csv` (`excess_over_null`, `cohens_dz_folded`, `delta_excluded`),
 `geometry_cos_chosen.csv` (both conventions), `geometry_selfsplit.csv` as the cosine floor. Keep the
@@ -224,7 +256,7 @@ python steer_pairs.py $M --pair <a>,<b> --layers <l_a> --alpha <α> --prompt-set
 `par_component` vs `unprojected` (sufficiency: does the b-content in the push carry the effect on its
 own).
 
-## J. Off the GPU box — cross-probe, and every judge pass
+## J. Off the GPU box — every judge pass, and cross-probe when the box skipped it
 
 All CPU + API. Run in the repo on a machine with `.env` holding `OPENAI_API_KEY` and
 `OPENROUTER_API_KEY`; the notebook prints the same commands with the paths filled in. Common
@@ -238,13 +270,14 @@ pull() { python -c "from experiments.common import ckpt; ckpt.pull('$R', experim
 push() { python -c "from experiments.common import ckpt; ckpt.push('$R', experiment='steering_jailbreaks', tag='$T', msg='$1')"; }
 ```
 
-**J.0 — cross_probe_detection (§3).** Once, after gate 1. No GPU, no judge, ~2 min of compute; the
-2.5 GB is the pull, and only the first time.
+**J.0 — cross_probe_detection (§3), only if the GPU box skipped it.** Its gate-1 cell prints which
+branch it took. Once, after gate 1; no GPU, no judge, ~2 min of compute — the 2.23 GiB `blobs.tar` is
+the pull, and only the first time. Skip this whole block if the notebook already ran it.
 
 ```bash
-python -c "from experiments.common import ckpt; ckpt.pull('$R', experiment='extraction', tag='$T', subpaths=['*/vectors/**', '*/meta/**', '*/acts/**'], pack=True)"
+python -c "from experiments.common import ckpt; ckpt.pull('$R', experiment='extraction', tag='$T', subpaths=['*/vectors/**', '*/meta/**', '*/acts/blobs.tar', '*/acts/views/**'], pack=True)"
 A=story_v2_1k,persona_v2,harm_v2,eval_v2
-L=story_v2_1k=28,persona_v2=15,harm_v2=19,eval_v2=8      # primaries: one layer per probe
+L=story_v2_1k=28+15,persona_v2=15,harm_v2=19,eval_v2=8   # `+` gives story a second probe row
 python experiments/cross_probe_detection/cross_auroc.py   $M --tag $T --axes $A --layers $L --diag heldout
 python experiments/cross_probe_detection/geometry.py      $M --tag $T --axes $A --layers $L
 python experiments/cross_probe_detection/plot_matrices.py $M --tag $T

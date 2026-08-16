@@ -1,0 +1,73 @@
+{
+  "config": {
+    "axes": [
+      "story_v2_1k",
+      "persona_v2",
+      "harm_v2",
+      "eval_v2"
+    ],
+    "band": [
+      17,
+      38
+    ],
+    "chosen_layers": {
+      "eval_v2": [
+        8
+      ],
+      "harm_v2": [
+        19
+      ],
+      "persona_v2": [
+        15
+      ],
+      "story_v2_1k": [
+        28,
+        15
+      ]
+    },
+    "cos_null_band": 0.050111482858579574,
+    "disattenuation": "spearman_brown",
+    "floor": "split_half_cos",
+    "residual_anchor": "story_v2_1k",
+    "seed": 20260731
+  },
+  "env": {
+    "argv": [
+      "experiments/cross_probe_detection/geometry.py",
+      "google/gemma-2-9b-it",
+      "--tag",
+      "1K_per_direction",
+      "--axes",
+      "story_v2_1k,persona_v2,harm_v2,eval_v2",
+      "--layers",
+      "story_v2_1k=28+15,persona_v2=15,harm_v2=19,eval_v2=8"
+    ],
+    "git_diff_sha": "6080e5740bfad3c862c1ff5fe889d7a83d95019ff865c2cc35ac0688bf175b23",
+    "git_dirty": true,
+    "git_sha": "ae475bd7c8082ae404b97835a9f4bb52f405665d",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-16T11:33:29",
+    "wall_s": 0.93
+  },
+  "inputs": {
+    "direction_run_keys": {
+      "eval_v2": "9adc11e4cc5da0be96347d9024ca8f9fac378465d430078502f830f78afbb744",
+      "harm_v2": "eed04aa92e3e5fa23583ccd6c7e242dac66776cc3a5b4b63d2095813ab16ab2c",
+      "persona_v2": "09d4c1522196bf7081303c96419a0c8fef5f3f0857f714c8f46288be0867f0d5",
+      "story_v2_1k": "1bf9fee4e4af34a7b9bb0127888695b786e3bc516d772aa220ea52283981d4f6"
+    },
+    "view_keys": {
+      "eval_v2": "0bfc5146e68fcca83f1d37ec341491d35be34490a4de77de07918adf9ce7430f",
+      "harm_v2": "a3747f3a4a974f1e96862479639ea3c86397d3ab248bdc8a555af3e467c48f23",
+      "persona_v2": "f36e4d97bc18f02cf9c3e42eab2be3ba7ad61e4f69b6c90bbdd554e682ca0ccd",
+      "story_v2_1k": "43961a9680df00a99d4c853fdb6e0079dd629c3f606bb9734be03baa290272f8"
+    }
+  },
+  "notes": [],
+  "run_key": "49cf087e3d248fe993f48fd68bead4c0db95d775faf0d29491954c1377498a6b",
+  "status": "complete",
+  "stem": "geometry"
+}

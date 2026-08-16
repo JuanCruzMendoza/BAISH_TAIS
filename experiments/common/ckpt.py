@@ -200,17 +200,25 @@ def push(repo_id, root=None, token=None, msg="ckpt", experiment=None, tag=None,
     root = Path(root or cfg.REPO / "experiments")
     api = HfApi(token=_token(token))
     ignore = list(IGNORE)
+    # Loose blobs NEVER go up, packed or not -- blobs.tar is the only way the cache is
+    # stored. This is unconditional because it used to sit inside `if pack:`, and any
+    # unpacked push in the same scope then walked acts/blobs/ and uploaded all 7,731 .npy
+    # beside the tar: the gemma run stored the cache twice, 4.46 GiB where 2.23 GiB does,
+    # and every pull of `*/acts/**` paid for both. `msg="figures"` was enough to do it.
+    #
+    # The cost is that pushing blobs at all now requires pack=True. That is the intended
+    # shape -- one file instead of 7,731 requests is the whole reason pack exists, and the
+    # request count, not the bytes, is what exhausts the Xet read-token quota.
+    ignore.append("*/acts/blobs/*")
     with _lock:
         if pack:
-            # The tar goes up on its own (IGNORE already drops *.tar from the folder
-            # walk), and the loose blobs are held back so the two never diverge.
+            # The tar goes up on its own; IGNORE already drops *.tar from the folder walk.
             for tar, n in pack_blobs(root, experiment, tag):
                 api.upload_file(path_or_fileobj=str(tar),
                                 path_in_repo=tar.relative_to(root).as_posix(),
                                 repo_id=repo_id, repo_type="dataset",
                                 commit_message=f"{msg}: {BLOB_TAR} ({n} blobs)")
                 tar.unlink()
-            ignore.append("*/acts/blobs/*")
         patterns = scope(experiment, tag)
         # Beside root, not in /tmp: os.link needs one filesystem, and falling back to
         # copy2 for every blob would turn a free mirror into a 1.6 GB one. Dot-prefixed

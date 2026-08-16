@@ -8,16 +8,16 @@
     ],
     "chosen_layers": {
       "eval_v2": [
-        9
+        8
       ],
       "harm_v2": [
-        21
+        19
       ],
       "persona_v2": [
         15
       ],
       "story_v2_1k": [
-        23,
+        28,
         15
       ]
     }
@@ -25,28 +25,26 @@
   "env": {
     "argv": [
       "experiments/cross_probe_detection/plot_matrices.py",
-      "Qwen/Qwen2.5-7B-Instruct",
+      "google/gemma-2-9b-it",
       "--tag",
       "1K_per_direction"
     ],
-    "git_diff_sha": "18b122692fc124888a0aa0368230fc85a4c3ef2be0d313415f77fe5a869df400",
+    "git_diff_sha": "6080e5740bfad3c862c1ff5fe889d7a83d95019ff865c2cc35ac0688bf175b23",
     "git_dirty": true,
     "git_sha": "ae475bd7c8082ae404b97835a9f4bb52f405665d",
     "host": "LAPTOP-11LEDOPR",
     "platform": "Windows-10-10.0.19045-SP0",
     "python": "3.12.2",
     "resumed_from": 0,
-    "timestamp": "2026-08-15T17:32:57",
-    "wall_s": 3.67
+    "timestamp": "2026-08-16T11:33:34",
+    "wall_s": 3.6
   },
   "inputs": {
-    "cross_auroc_run_key": "bf38514f74fb73361bcd679b7cd6a731f9c8359d7503736153227a40e405d195",
-    "geometry_run_key": "795823149ab1e7f3f9370ea1bc9de8404509875dbb179d681d0a4f0d51ab6c7b"
+    "cross_auroc_run_key": "54258529fcf894996fc977d1eec7f297a7edfd999baeacb58461779f4668f85f",
+    "geometry_run_key": "49cf087e3d248fe993f48fd68bead4c0db95d775faf0d29491954c1377498a6b"
   },
-  "notes": [
-    "archived prior run 61a11d66"
-  ],
-  "run_key": "9677f6c4d348f74c78d5825593c4ac753b8e3c7e54fe058d6b5fecd0115ac49f",
+  "notes": [],
+  "run_key": "9a31a72bf625d52e8f7315ae892b8b040ac5076a241f84b529431fb1003d5e42",
   "status": "complete",
   "stem": "plot_matrices"
 }

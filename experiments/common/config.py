@@ -130,6 +130,28 @@ def parse_axis_layers(spec):
     return out
 
 
+def parse_axis_probes(spec):
+    """'story_v2_1k=23+15,persona_v2=15' -> [(axis, layer), ...], order kept.
+
+    A probe is a (vector, layer) pair, so `+` gives an axis a *second probe*, not a
+    second axis: one more row in every probe-keyed table, reading the same vector at
+    another layer. The first layer listed is the axis's primary, the one the
+    single-layer tables use.
+    """
+    out = []
+    for part in str(spec).split(","):
+        if not part.strip():
+            continue
+        axis, sep, layers = part.partition("=")
+        if not sep:
+            raise ValueError(f"--layers: expected axis=layer[+layer], got {part!r}")
+        for l in layers.split("+"):
+            e = (axis.strip(), int(l))
+            if e not in out:
+                out.append(e)
+    return out
+
+
 def layer_stem(spec):
     """The unresolved spec, as it appears in a stem (spec 0.1)."""
     s = str(spec).strip()
