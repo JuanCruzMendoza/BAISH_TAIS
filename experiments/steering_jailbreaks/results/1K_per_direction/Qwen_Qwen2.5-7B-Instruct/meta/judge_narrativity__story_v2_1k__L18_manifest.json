@@ -1,0 +1,67 @@
+{
+  "config": {
+    "alpha_mags": [
+      0.25,
+      0.75
+    ],
+    "alpha_mags_by_set": {
+      "refusal": [
+        0.25
+      ],
+      "success": [
+        0.75
+      ]
+    },
+    "direction": "story_v2_1k",
+    "exclude_degenerate": true,
+    "judge_model": "gpt-4o-mini",
+    "layers_spec": "18",
+    "limit": null,
+    "max_chars": 2000,
+    "prompt_sets": [
+      "success",
+      "refusal"
+    ],
+    "tag": "1K_per_direction",
+    "template_sha": "bb6f93e9e4491fcf"
+  },
+  "env": {
+    "argv": [
+      "experiments/steering_jailbreaks/judge_narrativity.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "1K_per_direction",
+      "--direction",
+      "story_v2_1k",
+      "--layer",
+      "18",
+      "--alphas",
+      "success=0.75,refusal=0.25",
+      "--sets",
+      "success,refusal",
+      "--concurrency",
+      "4"
+    ],
+    "git_diff_sha": "952617fe9ac6ded5ac0b44e4f30022c293d069544343da3662780ca00beb39a5",
+    "git_dirty": true,
+    "git_sha": "60c62d52e4f32c2fd33bc6bef5e89c5541f64213",
+    "host": "LAPTOP-11LEDOPR",
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.2",
+    "resumed_from": 0,
+    "timestamp": "2026-08-17T12:06:47",
+    "wall_s": 318.35
+  },
+  "inputs": {
+    "cell_run_keys": {
+      "steer_induce__noop__L18": "4bad71f758c1b84bf52e1d5cc681809854d0e3a95b614bf8991beb0864771fb8",
+      "steer_induce__story_v2_1k__add__L18__a0.25": "b8374bb20df3f7a3337e8e9f3e46143dcb8c2f226348aa54641092d41e8215c9",
+      "steer_single__noop__L18": "1421b87a687288e6c2cc8027558f26370229a154f118457f325730fda5080a64",
+      "steer_single__story_v2_1k__add__L18__a-0.75": "92d8a32abc713afcea9664f4b1688120df6f390d30f45da6bdf484830a6008d6"
+    }
+  },
+  "notes": [],
+  "run_key": "2af0cf98000a630e420a02b5ead621e33dc98996aaa05ef7c4352598fdc70c69",
+  "status": "complete",
+  "stem": "judge_narrativity__story_v2_1k__L18"
+}

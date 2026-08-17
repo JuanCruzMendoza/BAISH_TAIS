@@ -679,6 +679,52 @@ are the manipulation check that says whether the contamination was geometric at 
   cannot produce −94.6). It is run as a method control, not on a prediction.
 - No `random` arm, so nothing here is a specificity claim.
 
+### 5_run — story's steering layer (L7, L18)
+
+**Objective:** find story's best steering site. 2_run answered "is the detection-best layer the
+better steering layer" with L23 → L15, but only ever compared two layers, and `gemma-2-9b-it`
+restores 4× as much refusal with story@L15 as Qwen@L15 does. Two more layers, chosen by two
+*competing* rules, so the run discriminates between them:
+
+| L | criterion |
+|---|---|
+| **18** | read-out **profile** match to gemma's winning layer — fires on hybrid jailbreaks (32%) as well as fiction, where Qwen's L15 is fiction-only (hybrid 13%) |
+| **7** ⚠ | **depth/band** parallel — gemma's winner is out of band, and L7 is Qwen's out-of-band shallow margin peak (fic−nonfic 59.0) |
+
+#### Configs
+
+`story_v2_1k` only, `add` only, the gemma ladder **α = 0.25 / 0.50 / 0.75 / 1.00** signed by
+`RESTORE_SIGN`. No `ablate`, no `cap`, no `random`.
+
+| # | script | set | direction | mode | L | α |
+|---|---|---|---|---|---|---|
+| 1–4 | `steer_single` | 508 successes | `story_v2_1k` | `add` | 7 ⚠ | −0.25 … −1.00 |
+| 5–8 | `steer_single` | 508 successes | `story_v2_1k` | `add` | 18 | −0.25 … −1.00 |
+| 9–12 | `steer_induce` | 433 refusals | `story_v2_1k` | `add` | 7 ⚠ | +0.25 … +1.00 |
+| 13–16 | `steer_induce` | 433 refusals | `story_v2_1k` | `add` | 18 | +0.25 … +1.00 |
+| 17–20 | both | both | `noop` | — | 7 ⚠, 18 | — |
+
+**20 cells, 9,410 generations** (≈1.6 h GPU, ≈1.6 h judging, ≈$3). Unlike 3_run and 4_run these are
+**new layers**, so they need their own no-ops — 4 of the 20 cells. Batch parameters stay at 1_run's
+`32 / 65536` so the cells sit on the same α curve as L15 and L23.
+
+#### Metrics
+
+Unchanged, target vs its own `noop` at the same (set, layer), on non-degenerate rows. Read across
+layers on the **frontier** — largest ΔASR at `deg` ≤ 5% — not on the peak, and against `|α|·σ_l`
+rather than α, since σ is not comparable between sites.
+
+#### Open
+
+- **The two criteria predict different winners**, which is the point: L18 winning says the read-out
+  profile transfers across models; L7 winning says band position does; both weak says story's
+  effect is not layer-limited and the cross-model gap is architectural.
+- **Judging runs off the GPU box.** 9,410 calls is under the 10,000/day cap only if nothing else
+  spent it, so arm the OpenRouter fallback.
+- No `random` arm, so nothing here is a specificity claim — and 4_run showed story@L15's effect is
+  largely its 14% persona component, so a large effect at a new layer owes the same projection pass
+  at that layer before it is read as story-mode.
+
 ## 1K_per_direction — Qwen 32B
 
 `Qwen/Qwen2.5-32B-Instruct`, L=64, d=5120, band **L26–L58**. Third model, same tag and corpus.

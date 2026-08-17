@@ -131,7 +131,7 @@ persona result may simply be the harm axis moving. No cell moves only its own ax
 
 ---
 
-# 1K_per_direction
+# 1K_per_direction Qwen 7B
 
 ## 1_run
 
@@ -576,6 +576,30 @@ winner is out of band too.
   largely its 14% persona component. L18 is the cell that most needs the same projection pass —
   `story ⊥ persona`, `story ⊥ harm`, and a norm-matched random direction at α = −0.75 — before −46.5
   is read as a story-mode result rather than a refusal direction found at a better site.
+
+### Narrativity manipulation check at L18 (§5.9, pairwise judge)
+
+Same forced A/B against each cell's own no-op, run on the two best cells only — restore α=−0.75 and
+induce α=+0.25. 891 pairs; pairs where either side is degenerate are excluded. Columns as in 2_run.
+
+| set | α | n | neither | by row | by cluster | 95% CI | picked A | expect |
+|---|---|---|---|---|---|---|---|---|
+| success | −0.75 | 449 | 8% | 3.3% | **3.4%** | [0.8, 11.0] | 46% | noop |
+| refusal | +0.25 | 314 | 22% | 86.6% | **87.0%** | [82.1, 91.1] | 51% | steered |
+
+- **L18 installs story mode more cleanly than any other layer**, on both sides: 3.4% against L15's
+  11.5% and L23's 13.2% for removing it, 87.0% against 81.5% / 63.5% for inducing it. `neither` also
+  falls (22% vs L15's 30% at the same α) and position bias is the smallest in the study (46 / 51%).
+- **But both CIs overlap L15's, while the ASR effect is 3.3× larger.** L15 already installs story mode
+  strongly — 81.5% induce — for −14.0 ASR; L18 installs it marginally better for −46.5. So installing
+  story mode is **not sufficient** to produce −46.5, and L18's advantage is not "more story mode
+  installed". This is 2_run's within-layer dissociation reproduced *across* layers.
+- **Ceiling caveat.** 87.0% and 3.4% sit near the measure's extremes, so it cannot resolve whether
+  L18's manipulation is genuinely stronger than L15's — only that it is not *weaker*, which is all
+  the dissociation argument needs.
+- **Passing this check does not protect L18.** 4_run found story@L15's ASR effect largely
+  persona-carried while the narrativity check passed at that same layer, so a clean manipulation
+  check says nothing about what carries −46.5.
 
 ---
 
