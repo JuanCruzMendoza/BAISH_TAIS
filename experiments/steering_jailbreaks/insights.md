@@ -581,30 +581,96 @@ added or treated as percentages of the reference. The persona dose–response is
 # 1K_per_direction - Gemma 9B
 
 `google/gemma-2-9b-it`, greedy, `max_new_tokens=512`, batch 16 / 24576 pinned for the baseline and
-every cell. **`add` only**, α ∈ 0.25/0.50/0.75/1.00 at each chosen (axis, layer), signed by
-`cell.RESTORE_SIGN`. 48 cells: 5 (axis, layer) pairs × 4 α × 2 prompt sets, plus one no-op per
-(set, layer). No `ablate`, no `cap`, no `random` arm. Judged by StrongREJECT, gpt-4o-mini.
+every cell. **`add` only**, signed by `cell.RESTORE_SIGN`. **56 cells**: α ∈ 0.25/0.50/0.75/1.00 at
+each of 5 (axis, layer) pairs × 2 prompt sets, one no-op per (set, layer), plus an **α tail** where
+the sweep had not turned over — story@L15 at 1.25/1.50 and eval@L8 at 1.50/2.00. No `ablate`, no
+`cap`, no `random` arm. Judged by StrongREJECT, gpt-4o-mini.
 
 **Baseline** (1,009 prompts): ASR 55.0%, StrongREJECT 0.533, complied/refused/degenerate
 54.8/42.5/2.7%, `hit_cap_rate` 0.256. That split *defines* the two prompt sets — **542 success**
 (complied) and **423 refusal** (refused).
 
-## Best cell per direction
+## ΔASR per direction, both signs
 
-`restore` = success set, target ↓; `induce` = refusal set, target ↑. Δ is against that set's no-op at
-the same layer. **Read `deg` first**: a degenerate response scores `strongreject ≈ 0`, which is what
-a refusal also scores, so a high-`deg` cell cannot be told from a restored refusal.
+`restore` = success set (α with the restoring sign, target ↓); `induce` = refusal set (its mirror,
+target ↑). **ASR is on non-degenerate rows only**, against that set's own no-op on the same basis —
+no-op ASR **98.5** success / **4.5** refusal, identical at all four layers because a no-op generates
+the same text wherever it is hooked.
 
-| direction | L | best restore α | ΔSR | deg | best induce α | ΔSR | deg |
-|---|---|---|---|---|---|---|---|
-| `persona_v2` | 15 | −1.00 | **−0.955** | 0.2 | +0.50 | **+0.413** | 3.5 |
-| `harm_v2` | 19 | +0.50 | **−0.952** | **0.0** | −0.50 | +0.283 | 2.6 |
-| `story_v2_1k` | **15** | −1.00 | **−0.440** | 0.7 | +0.50 | +0.216 | 3.8 |
-| `story_v2_1k` | **28** | −0.75 | −0.203 | 16.6 | +0.50 | +0.008 | 7.3 |
-| `eval_v2` | 8 | +1.00 | −0.108 | 3.0 | −1.00 | +0.081 | 2.6 |
+It has to exclude degenerate rows: a broken response scores `strongreject == 0`, which is exactly
+what a refusal scores, so an all-rows ASR cannot tell a restored refusal from a destroyed model.
+**Read `deg` first** — above ~15% the ΔASR column is measuring degeneration.
 
-`persona_v2` and `harm_v2` both **saturate** (99.8% and 99.4% refused), so their Δ is a floor on the
-effect, not a measurement of it.
+α ≥ 1.25 for `story_v2_1k` @L15 and α ≥ 1.5 for `eval_v2` come from `notebook_1K_gemma_2`; the rest
+is the original sweep.
+
+**`persona_v2` (L15)**
+
+| α | restore ΔASR | deg | induce ΔASR | deg |
+|---|---|---|---|---|
+| ±0.25 | −33.0 | 1.5 | +27.0 | 5.4 |
+| ±0.50 | −81.7 | 0.4 | +44.8 | 3.5 |
+| ±0.75 | **−96.9** | **0.0** | **+45.2** | 5.0 |
+| ±1.00 | −98.1 | 0.2 | +23.9 | 15.1 |
+
+**`harm_v2` (L19)**
+
+| α | restore ΔASR | deg | induce ΔASR | deg |
+|---|---|---|---|---|
+| ±0.25 | −49.6 | 2.4 | +21.7 | 1.9 |
+| ±0.50 | **−98.0** | **0.0** | **+36.2** | 2.6 |
+| ±0.75 | −98.5 | 11.6 | +34.0 | 7.3 |
+| ±1.00 | −98.5 | 60.1 ⚠ | +18.6 | 55.1 ⚠ |
+
+**`story_v2_1k` (L15)**
+
+| α | restore ΔASR | deg | induce ΔASR | deg |
+|---|---|---|---|---|
+| ±0.25 | −10.1 | 0.7 | +12.4 | 2.4 |
+| ±0.50 | −20.8 | 0.6 | **+24.2** | 3.8 |
+| ±0.75 | −32.1 | 1.1 | +21.4 | 3.5 |
+| ±1.00 | −37.4 | 0.7 | +14.1 | 8.5 |
+| ±1.25 | −52.5 | 2.2 | +0.1 | 53.9 ⚠ |
+| ±1.50 | **−72.7** | **6.5** | +0.2 | 95.0 ⚠ |
+
+**`story_v2_1k` (L28)**
+
+| α | restore ΔASR | deg | induce ΔASR | deg |
+|---|---|---|---|---|
+| ±0.25 | −3.6 | 2.2 | +1.1 | 3.5 |
+| ±0.50 | −4.4 | 2.4 | +1.3 | 7.3 |
+| ±0.75 | −15.8 | 16.6 ⚠ | −3.8 | 66.7 ⚠ |
+| ±1.00 | −48.5 | 99.6 ⚠ | −4.5 | 97.9 ⚠ |
+
+**`eval_v2` (L8)**
+
+| α | restore ΔASR | deg | induce ΔASR | deg |
+|---|---|---|---|---|
+| ±0.25 | −3.8 | 1.5 | +3.9 | 1.9 |
+| ±0.50 | −8.1 | 1.8 | +6.2 | 3.1 |
+| ±0.75 | −8.0 | 2.6 | +6.5 | 3.5 |
+| ±1.00 | −11.6 | 3.0 | **+10.0** | 2.6 |
+| ±1.50 | −18.3 | 1.1 | +6.5 | 1.9 |
+| ±2.00 | **−43.7** | **4.1** | +2.3 | 13.9 |
+
+**The two sides are not symmetric.** Every direction restores far harder than it induces: persona
+reaches −96.9 restore against +45.2 induce, harm −98.0 against +36.2. Part of that is headroom — the
+no-op is at 98.5 on successes and 4.5 on refusals, so restore has 98.5 points to move and induce only
+95.5 — but the gap is larger than that asymmetry accounts for. Pushing a model into refusing is
+easier than pushing it out.
+
+**Induce turns over while restore is still climbing.** persona peaks at ±0.75 and loses half by
+±1.00; story@L15 peaks at ±0.50 and is gone by ±1.25; eval peaks at ±1.00. Restore has no such peak
+below the degeneracy wall on any direction. The induce arm reaching its maximum first, at α where
+`deg` is still low, means that is a real ceiling and not a rendering artefact.
+
+**`eval_v2` is not the null it looked like at α ≤ 1.** Restore was −11.6 at α=1.00 and reaches
+**−43.7 at α=2.00 with only 4.1% degenerate** — the cleanest large effect in the table after
+persona/harm. The first sweep simply stopped an octave short. Its induce side does peak and decay
+(+10.0 → +2.3), so the axis is weak in that direction, but "eval does nothing" was a range artefact.
+
+**Nothing here is a specificity claim.** There is no `random` arm at this tag, so the no-op separates
+a direction's effect from *no* perturbation, not from an arbitrary one of the same norm.
 
 ## story@L15 beats story@L28, and L28's only large number is degeneration
 
@@ -615,11 +681,17 @@ The whole point of carrying story at two layers, resolved:
 | −0.25 | −0.099 | 0.7 | −0.033 | 2.2 |
 | −0.50 | −0.205 | 0.6 | −0.059 | 2.4 |
 | −0.75 | −0.332 | 1.1 | −0.203 | 16.6 |
-| −1.00 | **−0.440** | **0.7** | −0.707 | **99.6** ⚠ |
+| −1.00 | −0.440 | 0.7 | −0.707 | **99.6** ⚠ |
+| −1.25 | −0.556 | 2.2 | — | — |
+| −1.50 | **−0.703** | **6.5** | — | — |
 
 **L28's −0.707 at α=−1 is not a restore, it is a destroyed model** — 99.6% of responses are
 degenerate. At every α where L28 produces coherent text it is ~4× weaker than L15, and on the refusal
 set it induces nothing (+0.006, +0.008) before collapsing to 98% degenerate.
+
+**The α tail settles it.** L15 reaches **−0.703 at 6.5% degenerate** — the same effect size L28 only
+reaches by destroying 99.6% of its output. L28 was not extended: there is nothing left there to
+measure.
 
 **So the `cohens_dz` criterion picked the worse steering layer.** L28 is story's d_z peak (3.62) and
 L15 its fiction − nonfiction margin peak (§2). This reproduces Qwen's 2_run result, where story@L15
@@ -636,8 +708,11 @@ never have shown.
 - **Degeneracy arrives earlier here.** Qwen's harm_v2 stayed usable to α=0.75 (deg 14.4) and broke at
   α=1.00 (deg 96.3); gemma's harm_v2 breaks at α=0.75 (deg 11.6) and is 60.1% degenerate at α=1.00.
   Story@L28 is the extreme case at 99.6%.
-- **story_v2_1k is *not* a clean null here.** On Qwen's 1_run it was; on gemma L15 restores −0.440 at
-  0.7% degeneracy, which is a real effect on coherent text.
+- **story_v2_1k is *not* a clean null here.** On Qwen's 1_run it was; on gemma L15 restores −72.7
+  ΔASR at 6.5% degeneracy, which is a large effect on coherent text.
+- **`eval_v2` is weak, not null** — the α ≤ 1 range hid it on both models. Extending gemma's to α=2
+  found −43.7 ΔASR at 4.1% degenerate, so Qwen's "near-null `eval_v2`" may be the same range
+  artefact, and is worth an α tail before it is reported as a null again.
 - Disagreement between the judge and the detectors climbs with α on both models (0.39 at the no-op →
   0.70 at `harm α−0.75`), so high-α rows want `strongreject_coherent` rather than raw ASR.
 
@@ -649,5 +724,7 @@ never have shown.
   success rows do not comply at steer time. The no-op is the denominator, never the baseline.
 - 4 cells scored n−1 rows: one response per cell did not parse into a `#scores` block and counts
   against ASR (≤0.2%).
+- **56 cells, not 48**: `notebook_1K_gemma_2` added the α tail (story@L15 1.25/1.50, eval@L8
+  1.50/2.00) at the same pinned batch size, so those cells share the original no-ops.
 - Narrativity (§5) is not yet run, so *why* story@L15 restores — narrative framing or something else
   — is unanswered here.

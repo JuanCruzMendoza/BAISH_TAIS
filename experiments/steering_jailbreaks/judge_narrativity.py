@@ -2,6 +2,8 @@
 
     python judge_narrativity.py <model> --tag 1K_per_direction \
         --direction story_v2_1k --layer 23 --alphas 0.25,0.75
+    python judge_narrativity.py <model> --tag 1K_per_direction \
+        --direction story_v2_1k --layer 15 --alphas success=1.5,refusal=0.5
 
 Forced A/B choice between a cell's response and its own no-op response on the same row.
 The no-op is the control, so this is the output-side manipulation check the ASR tables
@@ -110,7 +112,44 @@ def read_judged(meta_dir, stem):
     return {r["unit_id"]: r for r in J.read_rows(path)}
 
 
-def comparisons(direction, layer_spec, mags, prompt_sets):
+def parse_alphas(spec, prompt_sets):
+    """'0.5,1.5' -> the same magnitudes on every set; 'success=1.5,refusal=0.5' -> per set.
+
+    The two sides rarely want the same magnitude. Restore keeps working well past the α
+    where induce has peaked and gone degenerate -- at 1K_per_direction, story@L15 is 6.5%
+    degenerate on successes at 1.5 and 95% on refusals -- and judging a cell with nothing
+    coherent left in it spends calls to report `no decided pairs`.
+
+    Returns {prompt_set: [magnitudes]} and whether the per-set form was used, which the
+    caller records; a uniform spec must keep writing the config it always did, or every
+    existing run's run_key moves and its results are archived.
+    """
+    parts = [p.strip() for p in str(spec).split(",") if p.strip()]
+    if not any("=" in p for p in parts):
+        mags = [float(p) for p in parts]
+        return {ps: list(mags) for ps in prompt_sets}, False
+    out = {}
+    for p in parts:
+        ps, sep, ms = p.partition("=")
+        ps = ps.strip()
+        if not sep:
+            raise SystemExit(f"--alphas: mixed forms -- {p!r} has no set. Use either "
+                             f"'0.5,1.5' for every set or 'success=1.5,refusal=0.5'")
+        if ps not in ("success", "refusal"):
+            raise SystemExit(f"--alphas: unknown set {ps!r}; expected success or refusal")
+        out.setdefault(ps, [])
+        out[ps] += [float(x) for x in ms.split("+") if x.strip()]
+    missing = [ps for ps in prompt_sets if ps not in out]
+    if missing:
+        raise SystemExit(f"--alphas names {', '.join(out)} but --sets asks for "
+                         f"{', '.join(prompt_sets)}; {', '.join(missing)} has no magnitude")
+    extra = [ps for ps in out if ps not in prompt_sets]
+    if extra:
+        raise SystemExit(f"--alphas names {', '.join(extra)}, which --sets excludes")
+    return out, True
+
+
+def comparisons(direction, layer_spec, mags_by_set, prompt_sets):
     """-> [{prompt_set, script, alpha, steered_stem, noop_stem, expect}].
 
     The sign is not a free choice: `add` on a framing axis restores refusal at negative
@@ -122,7 +161,7 @@ def comparisons(direction, layer_spec, mags, prompt_sets):
     for ps in prompt_sets:
         script = "steer_single" if ps == "success" else "steer_induce"
         sign = cell.RESTORE_SIGN[direction] * (1.0 if ps == "success" else -1.0)
-        for m in mags:
+        for m in mags_by_set[ps]:
             a = sign * abs(m)
             out.append({
                 "prompt_set": ps, "script": script, "alpha": a, "alpha_mag": abs(m),
@@ -179,7 +218,11 @@ def main():
     ap.add_argument("--layer", default="23",
                     help=f"layer spec as the steer scripts take it: {cfg.LAYER_SPEC}")
     ap.add_argument("--alphas", default="0.25,0.75",
-                    help="magnitudes; the sign per prompt set is resolved from the axis")
+                    help="magnitudes; the sign per prompt set is resolved from the axis. "
+                         "'0.5,1.5' uses both on every set; 'success=1.5,refusal=0.5' "
+                         "gives each set its own, and '+' lists several for one set "
+                         "(success=1.25+1.5). The two sides peak at different alpha, so "
+                         "the per-set form is usually what you want")
     ap.add_argument("--sets", default="success,refusal")
     ap.add_argument("--judge-model", default=J.DEFAULT_JUDGE)
     ap.add_argument("--provider", choices=("auto", "openrouter"), default="auto",
@@ -208,17 +251,17 @@ def main():
     layer_spec = args.layer.strip()
     if layer_spec[:1].upper() == "L" and layer_spec[1:2].isdigit():
         layer_spec = layer_spec[1:]
-    mags = [float(x) for x in args.alphas.split(",") if x.strip()]
-    if any(m == 0 for m in mags):
-        raise SystemExit("alpha 0 is the no-op arm, which is the control here, not a cell")
     prompt_sets = [s.strip() for s in args.sets.split(",") if s.strip()]
     bad = set(prompt_sets) - {"success", "refusal"}
     if bad:
         raise SystemExit(f"--sets takes success and/or refusal, got {', '.join(bad)}")
+    mags_by_set, per_set = parse_alphas(args.alphas, prompt_sets)
+    if any(m == 0 for ms in mags_by_set.values() for m in ms):
+        raise SystemExit("alpha 0 is the no-op arm, which is the control here, not a cell")
 
     lay = cfg.Layout(sets.EXPERIMENT, args.model, args.tag, acts_cache=False)
     meta = Path(lay.meta)
-    comps = comparisons(args.direction, layer_spec, mags, prompt_sets)
+    comps = comparisons(args.direction, layer_spec, mags_by_set, prompt_sets)
 
     # Load every cell first: a missing or unjudged one should fail before any API spend.
     loaded, run_keys = {}, {}
@@ -249,13 +292,24 @@ def main():
             why = "forced" if args.provider == "openrouter" else f"{var} not set"
             print(f"  judging on OpenRouter as {judge.wire_model()} ({why})")
 
+    # The stem carries neither the alphas nor the sets, so two invocations at one (direction,
+    # layer) write the same artefacts -- and since both are in `config`, the second has a
+    # different run_key and Run.__enter__ archives the first. That is why the per-set form
+    # exists: it puts both sides in ONE run instead of two that overwrite each other.
     stem = mf.stem("judge_narrativity", args.direction, cfg.layer_stem(layer_spec))
+    # `alpha_mags` stays the flat sorted union it has always been, so a uniform spec hashes
+    # to exactly the key it did before this option existed and no completed run is
+    # invalidated. The per-set mapping is added only when it actually differs.
     config = {"tag": cfg.tag(args.tag), "direction": args.direction,
-              "layers_spec": layer_spec, "alpha_mags": mags, "prompt_sets": prompt_sets,
+              "layers_spec": layer_spec,
+              "alpha_mags": sorted({m for ms in mags_by_set.values() for m in ms}),
+              "prompt_sets": prompt_sets,
               "judge_model": None if judge is None else args.judge_model,
               "template_sha": None if judge is None else judge.template_sha,
               "max_chars": args.max_chars, "limit": args.limit or None,
               "exclude_degenerate": not args.include_degenerate}
+    if per_set:
+        config["alpha_mags_by_set"] = {ps: mags_by_set[ps] for ps in prompt_sets}
     inputs = {"cell_run_keys": {s: k for s, k in sorted(run_keys.items())}}
 
     # Pair building needs no Run, and mf.Run writes an in_progress manifest on __enter__ --

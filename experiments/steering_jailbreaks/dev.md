@@ -399,6 +399,10 @@ done
 min for both layers. Degenerate pairs are excluded because a repetition loop reads as more literary
 and would score as a story win.
 
+`--alphas` also takes a per-set form, `success=1.5,refusal=0.5`, for the common case where the two
+sides peak at different α. Use one invocation per layer either way: the stem carries neither the α
+nor the set, so a second invocation at the same layer archives the first one's results.
+
 **Metrics.** The steered-wins rate against a 50% null, reported twice: `pct_steered_more_narrative`
 (one vote per row) and `pct_cluster` (each `template_id` collapsed first, spec 0.7). The
 Clopper–Pearson CI belongs to the clustered one. Also `pct_neither`, the judge's escape rate, and

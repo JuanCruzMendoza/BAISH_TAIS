@@ -242,12 +242,13 @@ low), at `story_v2_1k`'s chosen layer. Judge only: it runs off the existing `_ju
 never touches the GPU box (§J.3).
 
 **Configs.** Forced A/B against each cell's **own no-op** on the same row; both sets (sign resolved
-per set); pairs where either side is degenerate excluded; both texts cut to 2,000 chars; `gpt-4o-mini`
-at temperature 0, `--provider openrouter`, `--concurrency 8`.
+per set), **each with its own α magnitude**, since the two sides peak at different α; pairs where
+either side is degenerate excluded; both texts cut to 2,000 chars; `gpt-4o-mini` at temperature 0,
+`--provider openrouter`, `--concurrency 8`.
 
 ```bash
-python judge_narrativity.py $M --direction story_v2_1k --layer <l> --alphas <a1>,<a2> \
-    --provider openrouter --concurrency 8
+python judge_narrativity.py $M --direction story_v2_1k --layer <l> \
+    --alphas success=<a_restore>,refusal=<a_induce> --provider openrouter --concurrency 8
 ```
 
 **Read.** `pct_cluster` (per `template_id`) with its CI against the 50% null; `pct_neither` and
@@ -352,10 +353,24 @@ cap with no fallback left — stop and resume tomorrow rather than marching the 
 ```bash
 for L in 28 15; do            # one invocation per story layer: the stem carries the layer
   python experiments/steering_jailbreaks/judge_narrativity.py $M --tag $T \
-      --direction story_v2_1k --layer $L --alphas <a1>,<a2> --provider openrouter --concurrency 8
+      --direction story_v2_1k --layer $L \
+      --alphas success=<a_restore>,refusal=<a_induce> --provider openrouter --concurrency 8
 done
 push "narrativity"
 ```
+
+**One invocation per layer, never two.** The stem is `judge_narrativity__<axis>__L<l>` and carries
+neither the α nor the set, while both are in `config` — so a second invocation at the same layer has
+a different `run_key`, and `Run.__enter__` archives the first one's `_pairs.jsonl` and
+`_narrativity.csv` into `meta/_archive/`. Splitting the two sides across two commands silently keeps
+only the second.
+
+**Give each side its own magnitude.** They peak in different places: restore keeps working past the α
+where induce has already turned over and gone degenerate. At gemma's story@L15, α=1.5 is 6.5%
+degenerate on successes but **95%** on refusals, and degenerate pairs are dropped — so a shared
+magnitude either wastes the restore side's headroom or spends calls on a cell with nothing coherent
+left to judge. `--alphas 0.5,1.5` (no `=`) still applies both to every set; `success=1.25+1.5` lists
+several for one side.
 
 `--provider openrouter` deliberately: same model and same cache key, so it is not a different judge —
 it just leaves the OpenAI day for the 20×-larger StrongREJECT pass.
