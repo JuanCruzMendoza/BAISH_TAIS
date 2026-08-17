@@ -651,10 +651,11 @@ induce α=+0.25. 891 pairs; pairs where either side is degenerate are excluded. 
 # 1K_per_direction - Gemma 9B
 
 `google/gemma-2-9b-it`, greedy, `max_new_tokens=512`, batch 16 / 24576 pinned for the baseline and
-every cell. **`add` only**, signed by `cell.RESTORE_SIGN`. **56 cells**: α ∈ 0.25/0.50/0.75/1.00 at
+every cell. **`add` only**, signed by `cell.RESTORE_SIGN`. **58 cells**: α ∈ 0.25/0.50/0.75/1.00 at
 each of 5 (axis, layer) pairs × 2 prompt sets, one no-op per (set, layer), plus an **α tail** where
-the sweep had not turned over — story@L15 at 1.25/1.50 and eval@L8 at 1.50/2.00. No `ablate`, no
-`cap`, no `random` arm. Judged by StrongREJECT, gpt-4o-mini.
+the sweep had not turned over — story@L15 at 1.25/1.50 and eval@L8 at 1.50/2.00, then story@L15 at
+1.75/2.00 on the success set alone. No `ablate`, no `cap`, no `random` arm. Judged by StrongREJECT,
+gpt-4o-mini.
 
 **Baseline** (1,009 prompts): ASR 55.0%, StrongREJECT 0.533, complied/refused/degenerate
 54.8/42.5/2.7%, `hit_cap_rate` 0.256. That split *defines* the two prompt sets — **542 success**
@@ -702,6 +703,20 @@ is the original sweep.
 | ±1.00 | −37.4 | 0.7 | +14.1 | 8.5 |
 | ±1.25 | −52.5 | 2.2 | +0.1 | 53.9 ⚠ |
 | ±1.50 | **−72.7** | **6.5** | +0.2 | 95.0 ⚠ |
+| ±1.75 | −90.0 | 24.4 ⚠ | *not run* | — |
+| ±2.00 | −97.3 | 68.5 ⚠ | *not run* | — |
+
+**α=1.50 is the usable maximum, and 1.75/2.00 are what establish that.** Degeneracy goes
+6.5 → 24.4 → 68.5 across the last three, so the −90.0 and −97.3 are the same artefact as
+L28's: a broken response scores `strongreject ≈ 0`, exactly as a refusal does. Two
+independent signals agree — `pct_complied` collapses to 4% then **0%** (the model is not
+refusing more substantively, it is not answering at all), and judge/detector disagreement
+reaches **0.95 / 0.99** against 0.37 at the no-op, i.e. the text is no longer classifiable.
+At 1.50 the curve still looked like it was accelerating cleanly, so this could not have been
+read off the α ≤ 1.50 range.
+
+The induce column is blank at 1.75/2.00 **by decision, not for want of data**: that arm was
+already 95% degenerate at 1.50, so it was not generated (`notebook_1K_gemma_3`).
 
 **`story_v2_1k` (L28)**
 
@@ -731,8 +746,14 @@ easier than pushing it out.
 
 **Induce turns over while restore is still climbing.** persona peaks at ±0.75 and loses half by
 ±1.00; story@L15 peaks at ±0.50 and is gone by ±1.25; eval peaks at ±1.00. Restore has no such peak
-below the degeneracy wall on any direction. The induce arm reaching its maximum first, at α where
-`deg` is still low, means that is a real ceiling and not a rendering artefact.
+on any direction — it runs into the degeneracy wall instead. The induce arm reaching its maximum
+first, at α where `deg` is still low, means that is a real ceiling and not a rendering artefact.
+
+**Where the restore wall is, once you look for it.** story@L15 was extended to α=2.00 precisely
+because it still looked clean at 1.50, and the wall turned out to be immediately above: 6.5 → 24.4 →
+68.5% degenerate over 1.50 → 1.75 → 2.00. So "restore keeps climbing" is a statement about the range
+that was swept, not about the operator — every direction has a wall, and only the α at which it
+arrives differs (harm ~0.75, story@L28 ~0.75, story@L15 ~1.50, eval still clean at 2.00).
 
 **`eval_v2` is not the null it looked like at α ≤ 1.** Restore was −11.6 at α=1.00 and reaches
 **−43.7 at α=2.00 with only 4.1% degenerate** — the cleanest large effect in the table after
@@ -799,7 +820,10 @@ never have shown.
   success rows do not comply at steer time. The no-op is the denominator, never the baseline.
 - 4 cells scored n−1 rows: one response per cell did not parse into a `#scores` block and counts
   against ASR (≤0.2%).
-- **56 cells, not 48**: `notebook_1K_gemma_2` added the α tail (story@L15 1.25/1.50, eval@L8
-  1.50/2.00) at the same pinned batch size, so those cells share the original no-ops.
+- **58 cells, not 48**: `notebook_1K_gemma_2` added the α tail (story@L15 1.25/1.50, eval@L8
+  1.50/2.00) and `notebook_1K_gemma_3` story@L15 1.75/2.00, all at the same pinned batch size, so
+  they share the original no-ops.
+- **story@L15's induce arm stops at 1.50 by decision**, not for want of data: it was already 95%
+  degenerate there, so 1.75/2.00 were never generated on that side.
 - Narrativity (§5) is not yet run, so *why* story@L15 restores — narrative framing or something else
   — is unanswered here.
