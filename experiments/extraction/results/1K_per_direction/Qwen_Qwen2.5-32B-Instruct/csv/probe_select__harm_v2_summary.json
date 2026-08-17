@@ -1,0 +1,61 @@
+{
+  "band": [
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58
+  ],
+  "n": {
+    "train": 800,
+    "heldout": 200,
+    "length": null
+  },
+  "sanity": {
+    "view": {
+      "n_pairs": 800,
+      "source": "token_ids",
+      "n_distinct_final_pos": 1,
+      "n_distinct_final_neg": 1,
+      "n_tokens_delta_mean": 2.1,
+      "same_final_within_pair": true,
+      "final_separates_poles": false
+    },
+    "band_mean_null_shuffled": 0.4987954545454545,
+    "band_mean_null_random_dir_abs": 0.6698674242424243,
+    "band_min_margin_sd": -0.6087272763252258,
+    "band_median_margin_sd": 1.3000659942626953,
+    "band_max_lopo_auroc": 0.99875,
+    "passes": true,
+    "failures": [],
+    "warnings": []
+  }
+}

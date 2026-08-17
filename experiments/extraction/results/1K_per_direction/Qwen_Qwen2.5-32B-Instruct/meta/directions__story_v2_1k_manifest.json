@@ -1,0 +1,45 @@
+{
+  "config": {
+    "curve": true,
+    "curve_seeds": 5,
+    "curve_step": 50,
+    "direction": "story_v2_1k",
+    "estimator": "diff_in_means",
+    "n_pairs": 800,
+    "position": "last_token",
+    "seed": 20260731
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/extract_direction.py",
+      "Qwen/Qwen2.5-32B-Instruct",
+      "--tag",
+      "1K_per_direction",
+      "--direction",
+      "story_v2_1k",
+      "--curve"
+    ],
+    "git_diff_sha": "f8620ce343102208fd1c71770bed150b6bc5126206cad350a4d813f688b69388",
+    "git_dirty": true,
+    "git_sha": "f122b07c02c9acdc386bd0e014ef13914c53aeea",
+    "host": "db798ccb-ea59-451d-b93c-c5629a9a1657-5pdn9",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.11",
+    "resumed_from": 0,
+    "timestamp": "2026-08-17T13:18:35",
+    "wall_s": 4.86
+  },
+  "inputs": {
+    "source_files": [
+      {
+        "path": "data/story_mode_v2/pairs_1k.jsonl",
+        "sha256": "01181023e3a87634b7be67f9937a6a2e65e9abeb983155cb1933fa49e849e776"
+      }
+    ],
+    "view_key": "1bb6d9ed64469c8ed917ad42e859aa9b1cf2c99da3b98307bf3ad210b861368f"
+  },
+  "notes": [],
+  "run_key": "84ae50fcfa6902c4ab727d3250a799ffdea5b0e43b10e3141ab6be07662750e9",
+  "status": "complete",
+  "stem": "directions__story_v2_1k"
+}

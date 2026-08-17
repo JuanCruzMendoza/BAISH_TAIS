@@ -1,0 +1,2 @@
+timestamp,script,stem,run_key,git_sha,git_dirty,outcome,resumed_from,wall_s,argv
+2026-08-17T14:00:46,gen_baseline.py,gen_baseline,e35627ec2040f264,f122b07c02c9,True,written,0,1856.9,"Qwen/Qwen2.5-32B-Instruct --tag 1K_per_direction --split all --decoding greedy --batch-size 32 --max-batch-tokens 32768"

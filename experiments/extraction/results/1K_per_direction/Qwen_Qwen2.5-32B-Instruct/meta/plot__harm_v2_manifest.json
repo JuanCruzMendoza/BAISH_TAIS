@@ -1,0 +1,44 @@
+{
+  "config": {
+    "direction": "harm_v2",
+    "layers": [
+      0,
+      7,
+      14,
+      21,
+      28,
+      36,
+      43,
+      50,
+      57,
+      64
+    ],
+    "with_heldout": true
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/plot_figures.py",
+      "Qwen/Qwen2.5-32B-Instruct",
+      "--tag",
+      "1K_per_direction",
+      "--with-heldout"
+    ],
+    "git_diff_sha": "f8620ce343102208fd1c71770bed150b6bc5126206cad350a4d813f688b69388",
+    "git_dirty": true,
+    "git_sha": "f122b07c02c9acdc386bd0e014ef13914c53aeea",
+    "host": "db798ccb-ea59-451d-b93c-c5629a9a1657-5pdn9",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.11",
+    "resumed_from": 0,
+    "timestamp": "2026-08-17T13:25:38",
+    "wall_s": 4.37
+  },
+  "inputs": {
+    "directions_run_key": "99b9e0570fc93b8783337bde71d70cf430e660ca4b45781f771b79db0dd2cfff",
+    "probe_select_run_key": "40520e54ca7b7893de75a3c9934efe9f4c79a18c6f8b4fdb4cbb6d123fab080d"
+  },
+  "notes": [],
+  "run_key": "3ddd4b4143ad2c7158466d7f72c62c864bc7c7d2b0e9d6470d6b5cfa2d625fa4",
+  "status": "complete",
+  "stem": "plot__harm_v2"
+}

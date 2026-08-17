@@ -1,0 +1,36 @@
+{
+  "config": {
+    "auroc_vector": "lopo",
+    "direction": "harm_v2",
+    "dz_vector": "full_sample",
+    "interval": "clopper_pearson",
+    "seed": 20260731,
+    "selection": "manual (insights.md)"
+  },
+  "env": {
+    "argv": [
+      "experiments/extraction/probe_select.py",
+      "Qwen/Qwen2.5-32B-Instruct",
+      "--tag",
+      "1K_per_direction",
+      "--direction",
+      "harm_v2"
+    ],
+    "git_diff_sha": "f8620ce343102208fd1c71770bed150b6bc5126206cad350a4d813f688b69388",
+    "git_dirty": true,
+    "git_sha": "f122b07c02c9acdc386bd0e014ef13914c53aeea",
+    "host": "db798ccb-ea59-451d-b93c-c5629a9a1657-5pdn9",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.11",
+    "resumed_from": 0,
+    "timestamp": "2026-08-17T13:23:23",
+    "wall_s": 48.55
+  },
+  "inputs": {
+    "view_key": "e073bcc0767e46405ce53857fce5074a3798fa9ff72484952cb4a3ecf9400476"
+  },
+  "notes": [],
+  "run_key": "40520e54ca7b7893de75a3c9934efe9f4c79a18c6f8b4fdb4cbb6d123fab080d",
+  "status": "complete",
+  "stem": "probe_select__harm_v2"
+}

@@ -46,15 +46,16 @@ Single takeaway: **fiction framing is not why fiction jailbreaks work — person
 
 **Introduction.** 
 Context: fiction/roleplay wrappers are common for jailbreaks, evidence for harm, eval and persona (related work, one citation per direction, assistant axis paper for persona) 
-Gap: the fiction explanation has never been tested as a *direction*, against other directions carrying refusal with the same methodology
+Gap: the fiction explanation has never been tested as a *direction*, against other directions carrying refusal with the same methodology and the same corpus of jailbreaks
 RQ: does the narrativity axis carry the jailbreak? Contribution: C1–C4. Preview the strongest evidence. 
-Threat model: a wrong causal story sends defenses after the wrapper instead of the mechanism.
+Threat model: A black-box attacker with prompt access can wrap a harmful request in fiction or roleplay. In our corpus these wrappers defeat refusal on 75.8% of attempts and are the largest family (472/1,009 prompts) — they cost nothing to write and transfer across requests. We take the failure as given and ask what internally causes it and whether we can restore refusal by suppressing this mechanism.
 
 
 **Methods** (brief, replicable).
 - Four axes — `story`, `persona`, `harm`, `eval` — 800 train / 200 held-out contrastive pairs each, diff-in-means at the last prompt token (formula).
-- Layer chosen by `cohens_dz_train`, confirmed on held-out (AUROC saturated)
 - Corpus: 1,009 jailbreaks, 424 wrappers, 4 families.
+- Layer chosen by `cohens_dz_train`, confirmed on held-out (AUROC saturated), extra criteria for story: max gap between pct reads of fictional jailbreaks and non fictional
+
 - Interventions: `add` at ±α (multiplied by sigma, formula) and directional ablation (formula), single layer, greedy 
 - Outcome: StrongREJECT > 0 on non-degenerate rows (explaining what this rubric measures); degeneracy = union of judge label and four length-robust detectors.
 - Projection arms: `perp_alpha` = necessity, `par_component` = sufficiency.

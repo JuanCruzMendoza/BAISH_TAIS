@@ -63,3 +63,4 @@ timestamp,script,stem,run_key,git_sha,git_dirty,outcome,resumed_from,wall_s,argv
 2026-08-16T01:38:34,steer_batch.py,steer_induce__noop__L28,42443549ee89e94a,ae475bd7c808,True,written,0,508.8,"google/gemma-2-9b-it --tag 1K_per_direction --script steer_induce --jobs /tmp/gemma_jobs_refusal.json --batch-size 16 --max-batch-tokens 24576"
 2026-08-16T13:16:06,aggregate.py,aggregate,bf6fdf027aade16b,ae475bd7c808,True,written,0,1.4,"google/gemma-2-9b-it --tag 1K_per_direction"
 2026-08-16T13:17:34,aggregate.py,aggregate,bf6fdf027aade16b,ae475bd7c808,True,written,0,1.1,"google/gemma-2-9b-it --tag 1K_per_direction"
+2026-08-17T11:00:18,aggregate.py,aggregate,aab16dde28311dcd,f122b07c02c9,True,written,0,5.7,"google/gemma-2-9b-it --tag 1K_per_direction"

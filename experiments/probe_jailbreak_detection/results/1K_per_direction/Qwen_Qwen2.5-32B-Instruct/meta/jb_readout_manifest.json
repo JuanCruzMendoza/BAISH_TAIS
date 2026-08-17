@@ -1,0 +1,58 @@
+{
+  "config": {
+    "axes": [
+      "story_v2_1k",
+      "persona_v2",
+      "harm_v2",
+      "eval_v2"
+    ],
+    "n_rows": 1009,
+    "poles": [
+      "pos"
+    ],
+    "position": "last_token",
+    "readout": "(h - mu) . u_hat",
+    "reference": "train+heldout poles",
+    "seed": 20260731,
+    "split": "all",
+    "subsample": null
+  },
+  "env": {
+    "argv": [
+      "experiments/probe_jailbreak_detection/jb_readout.py",
+      "Qwen/Qwen2.5-32B-Instruct",
+      "--tag",
+      "1K_per_direction",
+      "--axes",
+      "story_v2_1k,persona_v2,harm_v2,eval_v2"
+    ],
+    "git_diff_sha": "f8620ce343102208fd1c71770bed150b6bc5126206cad350a4d813f688b69388",
+    "git_dirty": true,
+    "git_sha": "f122b07c02c9acdc386bd0e014ef13914c53aeea",
+    "host": "db798ccb-ea59-451d-b93c-c5629a9a1657-5pdn9",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.11",
+    "resumed_from": 0,
+    "timestamp": "2026-08-17T13:28:41",
+    "wall_s": 3.05
+  },
+  "inputs": {
+    "direction_run_keys": {
+      "eval_v2": "a4117d8a033896c508acc2a913e5b49d3b272b9d389cf00277f48413a1fbdcbd",
+      "harm_v2": "99b9e0570fc93b8783337bde71d70cf430e660ca4b45781f771b79db0dd2cfff",
+      "persona_v2": "5d633ee109a08c14dec6169434c9185d85fc95a04fd99f2ca885f522e146b917",
+      "story_v2_1k": "84ae50fcfa6902c4ab727d3250a799ffdea5b0e43b10e3141ab6be07662750e9"
+    },
+    "jb_view_key": "eceda24e49aac6ccb64783efd401b48025a942ef70e6fb1cf74355f808dde8e8",
+    "source_files": [
+      {
+        "path": "data/jailbreaks/jailbreaks.csv",
+        "sha256": "85b15b7957de7f980835a32ab2a47113431f43f1d3dfa3414767ae1c8f21b0f3"
+      }
+    ]
+  },
+  "notes": [],
+  "run_key": "d3ab25d600b0c6f7901e01b38f54b23ad32215487c81936129a85caa77256e83",
+  "status": "complete",
+  "stem": "jb_readout"
+}

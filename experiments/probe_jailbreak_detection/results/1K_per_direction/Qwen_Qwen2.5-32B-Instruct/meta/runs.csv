@@ -1,0 +1,5 @@
+timestamp,script,stem,run_key,git_sha,git_dirty,outcome,resumed_from,wall_s,argv
+2026-08-17T13:28:42,jb_readout.py,jb_readout,d3ab25d600b0c6f7,f122b07c02c9,True,written,0,4.6,"Qwen/Qwen2.5-32B-Instruct --tag 1K_per_direction --axes story_v2_1k,persona_v2,harm_v2,eval_v2"
+2026-08-17T13:28:55,jb_metrics.py,jb_metrics__midpoint__all,b2c7da6f67b07e21,f122b07c02c9,True,written,0,6.0,"Qwen/Qwen2.5-32B-Instruct --tag 1K_per_direction --axes story_v2_1k,persona_v2,harm_v2,eval_v2 --threshold midpoint --all-layers"
+2026-08-17T13:29:03,jb_metrics.py,jb_metrics__gap_mid__all,2ac091f6724b99aa,f122b07c02c9,True,written,0,6.1,"Qwen/Qwen2.5-32B-Instruct --tag 1K_per_direction --axes story_v2_1k,persona_v2,harm_v2,eval_v2 --threshold gap_mid --all-layers"
+2026-08-17T13:29:10,plot_layer_curves.py,plot_layer_curves__all,23366abc4d7ca9a9,f122b07c02c9,True,written,0,6.8,"Qwen/Qwen2.5-32B-Instruct --tag 1K_per_direction --all-layers"

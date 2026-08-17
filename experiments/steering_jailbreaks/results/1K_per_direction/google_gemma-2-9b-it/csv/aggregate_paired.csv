@@ -1,5 +1,5 @@
 direction,layers_spec,success_mode,restore_d_refused_vs_noop,restore_d_refused_vs_random,restore_degenerate_pct,refusal_mode,induce_d_sr_vs_noop,induce_d_sr_vs_random,induce_degenerate_pct
-eval_v2,8,add,10.9,,3.0,add,0.081,,2.6
+eval_v2,8,add,46.2,,4.1,add,0.0114,,13.9
 harm_v2,19,add,37.9,,60.1,add,0.0668,,55.1
 persona_v2,15,add,97.8,,0.2,add,0.1653,,15.1
 story_v2_1k,15,add,39.7,,0.7,add,0.0891,,8.5

@@ -678,3 +678,67 @@ are the manipulation check that says whether the contamination was geometric at 
 - **`persona → story` is answered by arithmetic** (story alone at full α gets −13.9, so 14% of it
   cannot produce −94.6). It is run as a method control, not on a prediction.
 - No `random` arm, so nothing here is a specificity claim.
+
+## 1K_per_direction — Qwen 32B
+
+`Qwen/Qwen2.5-32B-Instruct`, L=64, d=5120, band **L26–L58**. Third model, same tag and corpus.
+Against Qwen2.5-7B it is a **scale** control — same tokenizer, chat template and architecture — where
+gemma-2-9b is the architecture control. Spec: `research/spec-whole-rerun.md`; run by
+`notebooks/notebook_1K_qwen32B.py`.
+
+Config follows the gemma run, not 1_run: `add` only, **α = 0.25 / 0.50 / 0.75 / 1.00** signed by
+`RESTORE_SIGN`, and no `ablate`, `cap`, `length` foil, `random` arm or decoding comparison.
+
+### Layers
+
+| direction | layer(s) | depth | criterion |
+|---|---|---|---|
+| `story_v2_1k` | **45** + **53** | 0.70 / 0.83 | L45 = fiction − nonfiction `pct_reads` peak (+78.1); L53 = in-band `cohens_dz_train` peak (3.69) |
+| `persona_v2` | **29** | 0.45 | `cohens_dz_train` peak (2.92) |
+| `harm_v2` | **57** | 0.89 | in-band `cohens_dz_train` peak (1.68) |
+| `eval_v2` | **28** | 0.44 | in-band `cohens_dz_train` peak (2.00) |
+
+**All five are inside the band, so no cell carries `--allow-out-of-band`** — the first run at this tag
+where that is true.
+
+Story keeps two layers for the third model running, because its two criteria disagree again — and
+here more sharply than on either smaller model. `cohens_dz_train` rises monotonically to the output
+(3.03 at L45, 3.69 at L53, 3.73 at L62) while the fiction read collapses over the same stretch
+(84.5% → 2.8% → **0.2%**): at its own global `dz` argmax the story probe separates its own poles at
+AUROC 1.000 and reads essentially no jailbreak as fiction. L53 is taken rather than L62 because the
+`dz` difference is 0.04 — inside noise — and L53 is in band with `dz_heldout > dz_train`.
+
+The same monotone rise is why `harm_v2` sits at depth 0.89. Its margin there is **negative** (−56.3)
+at `ref_tpr` 0.76, so the harm probe is not reading the corpus usefully at any layer; the layer is a
+`dz` choice by default, not a confident one.
+
+### Configs
+
+5 (axis, layer) pairs × 4 α = **20 target cells per set**, plus one `noop` per (set, layer) — 5, no
+two axes sharing a layer — so **25 per set, 50 cells**. Greedy, `max_new_tokens=512`,
+**`--batch-size 32 --max-batch-tokens 32768`** pinned for the baseline and every cell.
+
+That pin is not the 7B's 32/65536: weights are 65.6 GB in bf16 and KV is 256 KiB/token (2 × 64 layers
+× 8 KV heads × 128), so 32768 caps peak KV near 12 GiB — ~81 GB of a 96 GB card. It bounds
+`len(batch) × longest_prompt`, so a batch reaches 32 only under a ≤1024-token prompt; `jailbreaks` is
+median 288, p95 1,063, max 8,688, and the tail self-limits to batches of 3.
+
+### Cost
+
+`gen_baseline` is generated (1,009 rows) but **not yet judged**, so the success/refusal split is
+still open and the per-set generation count with it: ≈25 × n_rows per set, ≈25k in total, one judge
+call each. ~23.5k StrongREJECT calls at ≈$6.8, over the 10k/day cap — `OPENROUTER_API_KEY` is what
+keeps it one day.
+
+### Run order
+
+GPU: extraction → probe_jb all-layers → `gen_baseline` → **gate 1** → probe_jb at the chosen layers →
+cross-probe (free, the pole cache is resident). Then judge the baseline locally, re-enter for the
+sweep. Every judge pass and the narrativity check are local; §J of the spec has the commands.
+
+### Metrics
+
+Unchanged: target vs **its own `noop`**, matched on `prompt_set` × `layers_spec`, `pct_degenerate`
+read before any ΔASR. Story's two layers confound layer with criterion deliberately — the one
+replicated steering result so far is that `cohens_dz` picked the worse layer on both smaller models
+(L15 beat L28 on gemma, L11 beat L19 on the 7B), and L45 vs L53 is the third test of it.

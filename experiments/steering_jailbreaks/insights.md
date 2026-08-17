@@ -531,6 +531,52 @@ added or treated as percentages of the reference. The persona dose–response is
 
 
 
+## 5_run — is L15 the best *steering* layer for story? (L7, L18)
+
+20 cells, same α ladder and no-ops per (set, layer). 2_run asked whether the detection-best layer
+steers better and answered yes for story (L23 → L15), but it only ever compared two layers.
+`gemma-2-9b-it` restores 57.6 pp of refusal with story@L15 where Qwen@L15 restores 16.4, so two
+untried Qwen layers were run: **L18**, whose story probe reads *hybrid* jailbreaks the way gemma's
+winning layer does (32% vs L15's 13%), and **L7**, the out-of-band shallow margin peak — gemma's
+winner is out of band too.
+
+**Frontier per layer**, each layer's largest ΔASR at `deg` ≤ 5% (no-op 95.7 success / 2.8 refusal):
+
+| layer | frac | restore ΔASR | α | deg | induce ΔASR | α | deg |
+|---|---|---|---|---|---|---|---|
+| L7 | 0.25 | −6.5 | −0.75 | 1.2 | +3.4 | +0.50 | 3.2 |
+| L15 (2_run) | 0.54 | −14.0 | −0.75 | 3.3 | +9.7 | +0.25 | 5.3 |
+| **L18** | 0.64 | **−46.5** | −0.75 | 2.4 | **+11.3** | +0.25 | 5.1 |
+| L23 (1_run) | 0.82 | −2.0 | −0.75 | 3.0 | +6.2 | +0.50 | 3.7 |
+
+**story_v2_1k @ L18**, the new cell's full ladder:
+
+| α | restore ΔASR | deg | induce ΔASR | deg | read_story restore / induce |
+|---|---|---|---|---|---|
+| ±0.25 | −11.3 | 1.2 | **+11.3** | 5.1 | −72 / +25 |
+| ±0.50 | −24.8 | 1.0 | +5.5 | 5.8 | −95 / +52 |
+| ±0.75 | **−46.5** | 2.4 | −1.0 | 3.2 | −105 / +69 |
+| ±1.00 | −82.9 | 28.0 ⚠ | −1.4 | 9.0 | −107 / +78 |
+
+- **L18 is 3.3× L15 on restore and the largest story cell in the study**, at 2.4% degeneracy —
+  −46.5 against −14.0. It also matches gemma@L15's −57.6 to within the α grid, so the cross-model
+  gap 2_run's layer choice implied does not exist.
+- **A layer effect, not a push effect.** At the *same* α = −0.75, L18 displaces `read_story` −105
+  against L15's −89 — 18% more push for 3.3× the ASR. L23 pushes −184 there and gets −2.0.
+- **Depth-fraction alignment across models fails; read-out-profile alignment works.** Gemma's winner
+  sits at frac 0.36, whose Qwen counterpart is L10; the layer that actually transfers is L18 at 0.64.
+  L7, picked on the depth/out-of-band parallel, is a null (−6.5).
+- **`cohens_dz` has now picked the wrong steering layer twice at this tag** — L23 over L15 in 1_run,
+  L15 over L18 here — and the same criterion picked L28 over L15 on gemma. Direction *quality* is not
+  a steering-site rule, in either model.
+- **The two arms do not scale together.** Restore grows 3.3× from L15 to L18; induce grows 1.2×
+  (+9.7 → +11.3) and turns over one rung earlier. Whatever L18 buys, it buys almost entirely on the
+  refusal-promoting side.
+- **Still no `random` arm, and 4_run's result applies here first.** 4_run showed story@L15's effect is
+  largely its 14% persona component. L18 is the cell that most needs the same projection pass —
+  `story ⊥ persona`, `story ⊥ harm`, and a norm-matched random direction at α = −0.75 — before −46.5
+  is read as a story-mode result rather than a refusal direction found at a better site.
+
 ---
 
 ## Improvements
@@ -704,7 +750,12 @@ never have shown.
 - **Same ordering of directions**: persona and harm move behaviour most, story is real but partial,
   `eval_v2` is near-null on both models.
 - **Same L15-over-L28 verdict for story**, from an independent architecture and a 13-layer gap
-  instead of Qwen's 8.
+  instead of Qwen's 8. But 5_run supersedes the lesson drawn from it: Qwen's L18 beats its L15 by
+  3.3×, so the shared finding is only that `cohens_dz` picked the worse layer in both models — not
+  that either winner is the best site. Gemma's L15-vs-L28 comparison never tested a mid-depth layer
+  either, and gemma's frac-0.64 counterpart (≈L27) is untried.
+- **The cross-model story gap was a layer artefact.** Read against Qwen@L15 (−14.0) gemma's story
+  looked 4× stronger; read against Qwen@L18 (−46.5) the two models agree to within the α grid.
 - **Degeneracy arrives earlier here.** Qwen's harm_v2 stayed usable to α=0.75 (deg 14.4) and broke at
   α=1.00 (deg 96.3); gemma's harm_v2 breaks at α=0.75 (deg 11.6) and is 60.1% degenerate at α=1.00.
   Story@L28 is the extreme case at 99.6%.

@@ -1,6 +1,6 @@
 {
   "config": {
-    "n_cells": 49,
+    "n_cells": 57,
     "n_excluded": 0,
     "rank_layers": true,
     "tag": "1K_per_direction"
@@ -12,19 +12,20 @@
       "--tag",
       "1K_per_direction"
     ],
-    "git_diff_sha": "20168db23aa4ee6e17893e5cb528657d53601fe55a49e37809383c750eaf583b",
+    "git_diff_sha": "9cc33bc76b4cef497a575260e65021acb85ce614bd15583748980204dc78426a",
     "git_dirty": true,
-    "git_sha": "ae475bd7c8082ae404b97835a9f4bb52f405665d",
+    "git_sha": "f122b07c02c9acdc386bd0e014ef13914c53aeea",
     "host": "LAPTOP-11LEDOPR",
     "platform": "Windows-10-10.0.19045-SP0",
     "python": "3.12.2",
     "resumed_from": 0,
-    "timestamp": "2026-08-16T13:17:34",
-    "wall_s": 0.69
+    "timestamp": "2026-08-17T11:00:16",
+    "wall_s": 3.98
   },
   "inputs": {
     "cell_run_keys": [
       "0514c64a4dacd95e",
+      "07be6a2e11e98ae5",
       "08ef9fb3330bab87",
       "09303ee441ac735b",
       "0ea18285a6c31aad",
@@ -39,17 +40,22 @@
       "2ecc200232f2b87c",
       "39adfb19a406166c",
       "3dd2cf59e3b4e6ce",
+      "3f3e4cc6d35d0229",
+      "423a0bd9b112f68e",
       "42443549ee89e94a",
       "446c5620105af98c",
+      "4937b9847ffdc4ac",
       "4a45db3adc8f2cf2",
       "533a4c2a22405d3c",
       "53a5e2d7f695e6f8",
+      "56c61bce24f725a8",
       "5843405d9a52aa22",
       "5acbcc982f24752b",
       "5fc507c364accac7",
       "69fb19c694c8887b",
       "74448c1ecfe1e344",
       "7b47341a860192ec",
+      "7e85ab37f2ab0b26",
       "7f39368cef27a08b",
       "8206f543323a9f02",
       "84ef4ff55a67fee7",
@@ -59,6 +65,8 @@
       "98656e389a691780",
       "9a8aec6c96155165",
       "9d5cc0c6e6854dc0",
+      "a33be7c803394801",
+      "b916061ab0784c7a",
       "baad213a56671be4",
       "bb1278f56e87a33f",
       "bc546b1d3915c85b",
@@ -75,8 +83,10 @@
       "f5db8825f972fe9d"
     ]
   },
-  "notes": [],
-  "run_key": "bf6fdf027aade16bcb6d991e59a5e73b2149950382cce13aa7407ca95c4f9e27",
+  "notes": [
+    "archived prior run bf6fdf02"
+  ],
+  "run_key": "aab16dde28311dcd87ba781994cb8f29273ed33f277481e128d41994d5c69d59",
   "status": "complete",
   "stem": "aggregate"
 }
