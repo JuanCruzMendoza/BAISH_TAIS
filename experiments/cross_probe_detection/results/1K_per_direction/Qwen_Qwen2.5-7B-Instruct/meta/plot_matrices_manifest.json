@@ -17,8 +17,7 @@
         15
       ],
       "story_v2_1k": [
-        23,
-        15
+        18
       ]
     }
   },
@@ -29,24 +28,24 @@
       "--tag",
       "1K_per_direction"
     ],
-    "git_diff_sha": "18b122692fc124888a0aa0368230fc85a4c3ef2be0d313415f77fe5a869df400",
+    "git_diff_sha": "8a147ee41114528e8b30c49580751959ed35409d7c1d17a893cb547e92bdeb14",
     "git_dirty": true,
-    "git_sha": "ae475bd7c8082ae404b97835a9f4bb52f405665d",
+    "git_sha": "492dd2dc1ae2f116f46d777d4f69dce015609392",
     "host": "LAPTOP-11LEDOPR",
     "platform": "Windows-10-10.0.19045-SP0",
     "python": "3.12.2",
     "resumed_from": 0,
-    "timestamp": "2026-08-15T17:32:57",
-    "wall_s": 3.67
+    "timestamp": "2026-08-17T12:22:40",
+    "wall_s": 5.15
   },
   "inputs": {
-    "cross_auroc_run_key": "bf38514f74fb73361bcd679b7cd6a731f9c8359d7503736153227a40e405d195",
-    "geometry_run_key": "795823149ab1e7f3f9370ea1bc9de8404509875dbb179d681d0a4f0d51ab6c7b"
+    "cross_auroc_run_key": "6fa6f505c595041bc802609a009dbd057c2a1393e36d1b87084a568a213a2cf6",
+    "geometry_run_key": "00ffbbabff4c62c6a705cb11e3ab6d0ffd211845fa8189dfbe9c02882c029212"
   },
   "notes": [
-    "archived prior run 61a11d66"
+    "archived prior run 9677f6c4"
   ],
-  "run_key": "9677f6c4d348f74c78d5825593c4ac753b8e3c7e54fe058d6b5fecd0115ac49f",
+  "run_key": "108e19c27c0deaa42afd24d2433622050da6088433d606fc38ffdcf951e381c5",
   "status": "complete",
   "stem": "plot_matrices"
 }

@@ -20,7 +20,6 @@ import argparse
 import csv
 import json
 import sys
-import textwrap
 from pathlib import Path
 
 import matplotlib
@@ -39,7 +38,7 @@ def read_rows(path):
         return list(csv.DictReader(f))
 
 
-def heatmap(M, row_lab, col_lab, title, sub, cbar, path, vmin, vmax, fmt="{:+.3f}",
+def heatmap(M, row_lab, col_lab, title, cbar, path, vmin, vmax, fmt="{:+.3f}",
             boxes=()):
     """`boxes` = the self-cells: same axis on both sides, not a cross-axis claim.
 
@@ -67,11 +66,7 @@ def heatmap(M, row_lab, col_lab, title, sub, cbar, path, vmin, vmax, fmt="{:+.3f
     for i, j in boxes:
         ax.add_patch(plt.Rectangle((j - 0.5, i - 0.5), 1, 1, fill=False,
                                    edgecolor="0.15", lw=1.6))
-    # ~11 chars per inch at this font size; a one-line subtitle overruns the axes.
-    wrapped = textwrap.fill(sub, int(11 * fig.get_figwidth()))
-    ax.set_title(title, fontsize=11, pad=12 + 11 * (wrapped.count("\n") + 1))
-    ax.text(0.5, 1.01, wrapped, transform=ax.transAxes, ha="center", va="bottom",
-            fontsize=8.5, color="0.3")
+    ax.set_title(title, fontsize=11, pad=12)
     fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04, label=cbar)
     fig.tight_layout()
     fig.savefig(path, dpi=160)
@@ -169,32 +164,29 @@ def main():
     with mf.Run(lay, stem, config, inputs) as run:
         made = [
             (run.artefact("_auroc.png"), A, lab, plain, box_cell,
-             "paired AUROC at the chosen layers",
-             f"every cell read at the row's layer; {diag_note}, "
-             f"off-diagonal = pooled train+heldout", "AUROC", 0.0, 1.0, "{:.3f}"),
+             "paired AUROC at the chosen layers", "AUROC", 0.0, 1.0, "{:.3f}"),
             (run.artefact("_excess_over_null.png"), E, lab, plain, box_cell,
              "AUROC net of the random-direction null",
-             "folded AUROC − what 20 random unit directions score on that axis at the "
-             "row's layer; ≤0 = no better than an arbitrary direction",
              "excess", -ex_max, ex_max, "{:+.3f}"),
             (run.artefact("_cohens_dz.png"), D, lab, plain, box_cell,
              "Cohen's $d_z$ at the chosen layers",
-             "same cells as the AUROC matrix; sign is the direction of the read",
              r"$d_z$", -dz_max, dz_max, "{:+.2f}"),
             (run.artefact("_cos_own.png"), C_own, lab, lab, box_own,
-             "cos between the chosen vectors",
-             f"each vector at its own chosen layer — different bases; "
-             f"null ±{null:.3f}", "cosine", -1.0, 1.0, "{:+.3f}"),
+             "cos between the chosen vectors", "cosine", -1.0, 1.0, "{:+.3f}"),
             (run.artefact("_cos_matched.png"), C_mat, plain, lab, box_mat,
-             "cos at the column's chosen layer",
-             f"row vector re-read at the column's layer — one basis; "
-             f"null ±{null:.3f}", "cosine", -1.0, 1.0, "{:+.3f}"),
+             "cosine similarity at the column's chosen layer",
+             "cosine", -1.0, 1.0, "{:+.3f}"),
         ]
-        for path, M, rl, cl, bx, title, sub, cbar, lo, hi, fmt in made:
-            heatmap(M, rl, cl, title, sub, cbar, path, lo, hi, fmt, bx)
+        for path, M, rl, cl, bx, title, cbar, lo, hi, fmt in made:
+            heatmap(M, rl, cl, title, cbar, path, lo, hi, fmt, bx)
             print(f"  {Path(path).relative_to(lay.root).as_posix()}")
 
-    print("\n  chosen layers: " + " ".join(f"{a}=L{l}" for a, l in entries))
+    # The subtitles are gone from the figures, so the reading conventions they carried are
+    # printed here instead -- they are what the off-diagonal cells mean.
+    print(f"\n  cells read at the row's layer; {diag_note}, "
+          f"off-diagonal = pooled train+heldout")
+    print(f"  cos null band ±{null:.3f}")
+    print("  chosen layers: " + " ".join(f"{a}=L{l}" for a, l in entries))
     off = C_mat.copy()
     for i, j in box_mat:
         off[i, j] = np.nan

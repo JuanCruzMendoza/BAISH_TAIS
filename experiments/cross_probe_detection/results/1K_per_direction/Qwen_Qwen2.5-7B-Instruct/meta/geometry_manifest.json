@@ -21,8 +21,7 @@
         15
       ],
       "story_v2_1k": [
-        23,
-        15
+        18
       ]
     },
     "cos_null_band": 0.050111482858579574,
@@ -40,17 +39,17 @@
       "--axes",
       "story_v2_1k,persona_v2,harm_v2,eval_v2",
       "--layers",
-      "story_v2_1k=23+15,persona_v2=15,harm_v2=21,eval_v2=9"
+      "story_v2_1k=18,persona_v2=15,harm_v2=21,eval_v2=9"
     ],
-    "git_diff_sha": "78b46e8f5460d90b799aa6a1e6936bea35f8d7d11765d6a4d84a217febe05074",
+    "git_diff_sha": "c5a7ff3981cbb0f04e57fe9d553c2f1796192a53c733b7d7f778b56be107ab87",
     "git_dirty": true,
-    "git_sha": "ae475bd7c8082ae404b97835a9f4bb52f405665d",
+    "git_sha": "492dd2dc1ae2f116f46d777d4f69dce015609392",
     "host": "LAPTOP-11LEDOPR",
     "platform": "Windows-10-10.0.19045-SP0",
     "python": "3.12.2",
     "resumed_from": 0,
-    "timestamp": "2026-08-15T17:32:43",
-    "wall_s": 0.62
+    "timestamp": "2026-08-17T12:22:24",
+    "wall_s": 2.68
   },
   "inputs": {
     "direction_run_keys": {
@@ -67,9 +66,9 @@
     }
   },
   "notes": [
-    "archived prior run 2951a5c9"
+    "archived prior run 79582314"
   ],
-  "run_key": "795823149ab1e7f3f9370ea1bc9de8404509875dbb179d681d0a4f0d51ab6c7b",
+  "run_key": "00ffbbabff4c62c6a705cb11e3ab6d0ffd211845fa8189dfbe9c02882c029212",
   "status": "complete",
   "stem": "geometry"
 }
