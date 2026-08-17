@@ -4,8 +4,9 @@ Same tag (`1K_per_direction`), same datasets, same metrics; results are keyed by
 so nothing collides with the Qwen run. Only the model changes — and every absolute layer index with
 it.
 
-Run end to end by `notebooks/notebook_1K_gemma.py` (gemma-2-9b-it): every stage is guarded on its
-artefacts, and the manual decisions below are the points it stops at.
+Run end to end by one notebook per model — `notebooks/notebook_1K_gemma.py` (gemma-2-9b-it),
+`notebooks/notebook_1K_qwen32B.py` (Qwen2.5-32B-Instruct): every stage is guarded on its artefacts,
+and the manual decisions below are the points it stops at.
 
 **Only what needs the GPU runs on the GPU box** — plus whatever is free there because the data is
 already resident. §J has the local commands:
@@ -13,8 +14,8 @@ already resident. §J has the local commands:
 - **every judge pass, always local** — API-bound, ~23k calls over 3–5 h, and a rented GPU idling
   through it is the most expensive hour in the run. No API key reaches the instance.
 - **cross_probe_detection (§3), whichever side already holds the pole cache.** CPU-only and ~2 min,
-  but it reads the 2.2 GiB pole cache. So it is not pinned to a machine: it runs wherever that cache
-  already is, and downloads it nowhere.
+  but it reads the pole cache (2.23 GiB on gemma, 4.79 on the 32B). So it is not pinned to a
+  machine: it runs wherever that cache already is, and downloads it nowhere.
 
 The two sides hand off through the Hub, each pushing its own scope.
 
@@ -34,11 +35,19 @@ bearing and both were wrong during the gemma run:
 **Dropped vs the Qwen run:** `ablate` (no config where it helped), `cap`, the `length` foil,
 `compare_crossed` / §1.2a, the `random` arm, and the §5.1 decoding comparison (greedy is reused).
 
-**Chosen layers (gemma-2-9b-it, L=42, band 17–38):** `story_v2_1k` **L28 + L15**, `persona_v2` L15,
-`harm_v2` L19, `eval_v2` L8. Story keeps two because its criteria disagree by 13 layers — L28 is the
-`cohens_dz_train` peak, L15 the fiction − nonfiction `pct_reads` peak — and with one layer a null
-cell cannot be told apart from a wrong layer. L15 and L8 are outside the band, so their cells carry
-`--allow-out-of-band`.
+**Chosen layers.** Per model, derived at gate 1 and never carried across:
+
+| model | L | d | band | chosen |
+|---|---|---|---|---|
+| gemma-2-9b-it | 42 | 3584 | 17–38 | `story_v2_1k` **L28 + L15**, `persona_v2` L15, `harm_v2` L19, `eval_v2` L8 |
+| Qwen2.5-32B-Instruct | 64 | 5120 | 26–58 | *undecided — gate 1* |
+
+Story keeps two layers wherever its criteria disagree (on gemma by 13: L28 is the `cohens_dz_train`
+peak, L15 the fiction − nonfiction `pct_reads` peak), because with one layer a null cell cannot be
+told apart from a wrong layer. That is also the only replicated steering result so far — L15 beat
+L28 on gemma and L11 beat L19 on the 7B, i.e. `cohens_dz` picked the worse layer both times — so it
+is not an optional extra. A chosen layer outside the band carries `--allow-out-of-band` (gemma's L15
+and L8 do).
 
 **α default everywhere: 0.25, 0.50, 0.75, 1.00**, signed by `cell.RESTORE_SIGN`.
 
@@ -49,12 +58,21 @@ cell cannot be told apart from a wrong layer. L15 and L8 are outside the band, s
 - Datasets are model-independent and already built: `story_mode_v2/pairs_1k.jsonl`, `role_play_v2`,
   `eval_v2`, `harm_v2` (`pairs.jsonl` + `pairs_heldout.jsonl`), `jailbreaks/jailbreaks.jsonl`.
 - `$BLOB_STORE`: leave unset, or point at a **per-model** path. Blobs are keyed by token ids only, so
-  a store shared with a same-tokenizer model (Qwen2.5-7B vs -14B) would silently mix activations.
+  a store shared with a same-tokenizer model would silently serve the wrong activations —
+  **Qwen2.5-32B and Qwen2.5-7B share a tokenizer**, so this is a live risk on that run, not a
+  hypothetical. Its notebook raises if the variable is set at all.
 - `.env` **on the judging machine** with `OPENAI_API_KEY` and `OPENROUTER_API_KEY` — the sweep
   exceeds 10k RPD on one key. The GPU box needs only `HF_TOKEN`.
 - `$ATTN_IMPL` where the architecture needs a specific attention kernel: gemma-2 soft-caps its
   attention logits and sdpa drops that, so it runs at `eager` — a different activation and a
-  different generation, not a speed knob.
+  different generation, not a speed knob. Qwen2.5 needs none; leave it unset, which is also the only
+  choice with an sm_120 kernel if the box is Blackwell.
+- **Not Qwen3-32B**, though `Plan story-mode.md` names it. It is a hybrid-thinking model whose chat
+  template defaults to thinking on, so `max_new_tokens=512` would be spent inside `<think>` and
+  StrongREJECT would grade a truncated trace; disabling it means patching `templated()` and moving
+  the read position for one model only. Qwen2.5-32B-Instruct is L=64 × 5120 either way, so every
+  derived number is unchanged, and it makes the third model a clean **scale** control against the
+  7B (same tokenizer, template and architecture) while gemma covers architecture.
 - `M=<model>; export RUN_TAG=1K_per_direction` for every command below.
 
 ## 1. extraction
@@ -121,9 +139,9 @@ python plot_layer_curves.py $M
 
 **Needs.** No GPU, ~2 min of CPU, but it *does* need extraction's `acts/` — the off-diagonal AUROC
 is computed on the cached pole activations, not on the vectors — plus the vectors themselves. That
-cache is **2.23 GiB here, 4.8 GiB at a 32B** (one `blobs.tar`; the 7,731-blob file count does not
-change with the model). Its size is what decides where this runs, and the rule is that it never
-causes the download:
+cache is one `blobs.tar` of 7,731 blobs at `(L+1, d)` fp16 — **2.23 GiB on gemma, 4.79 GiB on the
+32B**; only the bytes scale, the file count does not. Its size is what decides where this runs, and
+the rule is that it never causes the download:
 
 - **On the GPU box, at gate 1, if extraction ran in that same session.** The cache is on local disk,
   so this is free, and it follows the layers just entered. Best case — take it when you can.
@@ -135,8 +153,9 @@ either is empty. Both sides pull the (small) `cross_probe_detection` scope so ea
 "computed at these layers" from "not computed here"; only the side that computes it pushes.
 
 One host-RAM caveat for the GPU-box branch: axes load one at a time at ~0.8 GB each on a 7B, but
-**~2.7 GB per axis at a 32B** (1,000 pairs × 65 layers × 5120 dims, fp32) — no longer free alongside
-a resident 65 GB model.
+**~2.7 GB per axis at a 32B** (1,000 pairs × 2 poles × 65 layers × 5120 dims, fp32) — no longer free
+alongside a resident 65.6 GB model. On a thin instance, take the local branch even when the cache
+is there.
 
 **Configs.** 4×4 at the chosen layers, `--diag heldout` (the deployed vector on the 200 held-out
 pairs; at n=800 LOPO moves `d_z` by ~0.005). `cohens_dz` emitted — AUROC saturates at n=1,000.
@@ -162,9 +181,19 @@ local judge pass between them: the two prompt sets *are* the baseline's 3-way la
 cannot be built until the baseline is graded (§J.1).
 
 **Configs.** Greedy, `max_new_tokens=512`, batch size and `--max-batch-tokens` **pinned and identical
-for the baseline and every cell** (Qwen 32 / 65536; gemma-2-9b 16 / 24576, its KV cache being ~6×
-bigger per token). Never change them between cells — greedy is bit-reproducible only at fixed batch
-composition, and each target is compared against its own no-op.
+for the baseline and every cell**. Never change them between cells — greedy is bit-reproducible only
+at fixed batch composition, each target is compared against its own no-op, and the pin can never be
+*lowered* afterwards, so it is sized to fit rather than to be fast:
+
+| model | KV/token | weights (bf16) | pin | peak KV |
+|---|---|---|---|---|
+| Qwen2.5-7B | 56 KiB | 15 GB | 32 / 65536 | ~3.5 GiB |
+| gemma-2-9b | 336 KiB | 18 GB | 16 / 24576 | ~10 GiB |
+| Qwen2.5-32B | 256 KiB | 65.6 GB | 32 / 32768 | ~12 GiB (96 GB card) |
+
+`--max-batch-tokens` bounds `len(batch) × longest_prompt`, so at 32768 a batch reaches 32 only when
+its longest prompt is ≤1024 — `jailbreaks` is median 288, p95 1,063, max 8,688 tokens, and the long
+tail falls into batches of 3 on its own.
 
 Single-layer steering, mode `add` only, one primary sign per (set, direction):
 
@@ -263,7 +292,8 @@ All CPU + API. Run in the repo on a machine with `.env` holding `OPENAI_API_KEY`
 preamble, and `$D` is the steering results dir:
 
 ```bash
-M=google/gemma-2-9b-it; T=1K_per_direction; export RUN_TAG=$T
+M=google/gemma-2-9b-it            # or Qwen/Qwen2.5-32B-Instruct
+T=1K_per_direction; export RUN_TAG=$T
 R=JuanCruzMendoza/BAISH_TAIS
 D=experiments/steering_jailbreaks/results/$T/${M//\//_}
 pull() { python -c "from experiments.common import ckpt; ckpt.pull('$R', experiment='steering_jailbreaks', tag='$T')"; }
@@ -271,13 +301,13 @@ push() { python -c "from experiments.common import ckpt; ckpt.push('$R', experim
 ```
 
 **J.0 — cross_probe_detection (§3), only if the GPU box skipped it.** Its gate-1 cell prints which
-branch it took. Once, after gate 1; no GPU, no judge, ~2 min of compute — the 2.23 GiB `blobs.tar` is
+branch it took. Once, after gate 1; no GPU, no judge, ~2 min of compute — the `blobs.tar` is
 the pull, and only the first time. Skip this whole block if the notebook already ran it.
 
 ```bash
 python -c "from experiments.common import ckpt; ckpt.pull('$R', experiment='extraction', tag='$T', subpaths=['*/vectors/**', '*/meta/**', '*/acts/blobs.tar', '*/acts/views/**'], pack=True)"
 A=story_v2_1k,persona_v2,harm_v2,eval_v2
-L=story_v2_1k=28+15,persona_v2=15,harm_v2=19,eval_v2=8   # `+` gives story a second probe row
+L=story_v2_1k=28+15,persona_v2=15,harm_v2=19,eval_v2=8   # gate 1's output; `+` = a second probe row
 python experiments/cross_probe_detection/cross_auroc.py   $M --tag $T --axes $A --layers $L --diag heldout
 python experiments/cross_probe_detection/geometry.py      $M --tag $T --axes $A --layers $L
 python experiments/cross_probe_detection/plot_matrices.py $M --tag $T

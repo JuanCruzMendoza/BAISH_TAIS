@@ -1,0 +1,53 @@
+{
+  "config": {
+    "batch_size": 32,
+    "decode": {
+      "do_sample": false
+    },
+    "decoding": "greedy",
+    "max_batch_tokens": 65536,
+    "max_new_tokens": 512,
+    "n_rows": 1009,
+    "seed": 20260731,
+    "split": "all"
+  },
+  "env": {
+    "argv": [
+      "experiments/steering_jailbreaks/gen_baseline.py",
+      "Qwen/Qwen2.5-7B-Instruct",
+      "--tag",
+      "1K_per_direction",
+      "--split",
+      "all",
+      "--decoding",
+      "greedy",
+      "--batch-size",
+      "32",
+      "--max-batch-tokens",
+      "65536"
+    ],
+    "git_diff_sha": "dd78312810b35fefe48d502c1af1667fdb15d7f34b2d32aeea47651ce3f5353b",
+    "git_dirty": true,
+    "git_sha": "68b54a13f102f0a29464e1851b2c7acc3b6dd87a",
+    "host": "996d4c5e-8d46-47c5-9dc0-dd32860c1d42-r74dj",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.11",
+    "resumed_from": 1009,
+    "timestamp": "2026-08-11T00:43:17",
+    "wall_s": 0.28
+  },
+  "inputs": {
+    "chat_template_sha": "cd8e9439f0570856",
+    "jb_view_key": "eceda24e49aac6ccb64783efd401b48025a942ef70e6fb1cf74355f808dde8e8",
+    "source_files": [
+      {
+        "path": "data/jailbreaks/jailbreaks.csv",
+        "sha256": "85b15b7957de7f980835a32ab2a47113431f43f1d3dfa3414767ae1c8f21b0f3"
+      }
+    ]
+  },
+  "notes": [],
+  "run_key": "3a4b2a59396092394b34c6b48f19ed3ee2cd60d69a8deb6e76e89217996dd3b0",
+  "status": "complete",
+  "stem": "gen_baseline"
+}

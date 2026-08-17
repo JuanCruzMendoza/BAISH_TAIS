@@ -1,0 +1,7 @@
+direction,layers_spec,success_mode,restore_d_refused_vs_noop,restore_d_refused_vs_random,restore_degenerate_pct,refusal_mode,induce_d_sr_vs_noop,induce_d_sr_vs_random,induce_degenerate_pct
+eval_v2,9,add,11.1,,80.9,add,0.017,,17.1
+harm_v2,21,add,-0.2,,96.3,add,0.3611,,73.0
+persona_v2,15,add,48.7,,47.0,add,0.0208,,82.2
+persona_v2,4,add,18.3,,2.0,add,0.0871,,3.2
+story_v2_1k,15,add,17.0,,41.3,add,-0.0132,,7.2
+story_v2_1k,23,add,5.4,,10.0,add,0.0025,,40.0
