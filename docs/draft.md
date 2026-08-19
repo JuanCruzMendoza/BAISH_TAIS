@@ -114,13 +114,15 @@ Footnote:
 
 The layer selected for persona, harm and eval was the one whose probe maximized cohens dz, however, it can be seen that the layer selected by cohens for the story direction does not differentiate well fictional from non-fictional jailbreaks. For this reason, not only do we steer at layer 23 (for Qwen 7B), but also at layer 18 which maximizes the percentage of reads of fictional jailbreaks minus the percentage of non-fictional. For Gemma, the same analysis applies, so we steer at two different layers for story.
 
-![[experiments/probe_jailbreak_detection/results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_layer_curves__all_story_v2_1k.png]]
+![Story probe reads of jailbreaks vs layer, Qwen 7B](../experiments/probe_jailbreak_detection/results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_layer_curves__all_story_v2_1k.png)
 
-In the following figures, these 4 probes are compared against each other. Off the diagonal, each probe is read on 1,000 pairs of an axis it was never fitted on, at its own chosen layer.![[experiments/cross_probe_detection/results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_matrices_excess_over_null.png]]
+In the following figures, these 4 probes are compared against each other. Off the diagonal, each probe is read on 1,000 pairs of an axis it was never fitted on, at its own chosen layer.
+
+![Excess AUROC over a random-direction null, probe by axis](../experiments/cross_probe_detection/results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_matrices_excess_over_null.png)
 
 
 The cosine similarity is calculated between the direction's chosen layer and the other's direction probe at the same layer.
-![[experiments/cross_probe_detection/results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_matrices_cos_matched.png]]
+![Cosine similarity between directions, each row re-read at the column's layer](../experiments/cross_probe_detection/results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_matrices_cos_matched.png)
 
 
 ### 2. Steering per axis
