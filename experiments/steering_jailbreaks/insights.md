@@ -232,15 +232,15 @@ It is genuinely story mode — the register changes in both directions, includin
 fails to break — but it is a **voice axis, not a compliance axis**: it never touches the refusal
 decision.
 
-| | refusal_prefix rate | judge `specific` on the flipped rows |
-|---|---|---|
-| no-op (refusal set) | 0.55 | — |
-| **story α=+0.75** | **0.52** | **3.79** |
-| eval α=−0.75 | 0.25 | 4.71 |
-| harm α=−0.5 | 0.01 | 4.66 |
-| no-op (success set) | 0.01 | — |
-| **story α=−0.75** | **0.00** | — |
-| harm α=+0.75 | 0.88 | — |
+|                     | refusal_prefix rate | judge `specific` on the flipped rows |
+| ------------------- | ------------------- | ------------------------------------ |
+| no-op (refusal set) | 0.55                | —                                    |
+| **story α=+0.75**   | **0.52**            | **3.79**                             |
+| eval α=−0.75        | 0.25                | 4.71                                 |
+| harm α=−0.5         | 0.01                | 4.66                                 |
+| no-op (success set) | 0.01                | —                                    |
+| **story α=−0.75**   | **0.00**            | —                                    |
+| harm α=+0.75        | 0.88                | —                                    |
 
 `harm` and `eval` suppress the refusal onset; story leaves it where it was and adds **zero** explicit
 refusals on the success set. The ±ASR movement is three side-effects of register:
@@ -558,24 +558,44 @@ winner is out of band too.
 | ±0.75 | **−46.5** | 2.4 | −1.0 | 3.2 | −105 / +69 |
 | ±1.00 | −82.9 | 28.0 ⚠ | −1.4 | 9.0 | −107 / +78 |
 
-- **L18 is 3.3× L15 on restore and the largest story cell in the study**, at 2.4% degeneracy —
-  −46.5 against −14.0. It also matches gemma@L15's −57.6 to within the α grid, so the cross-model
-  gap 2_run's layer choice implied does not exist.
-- **A layer effect, not a push effect.** At the *same* α = −0.75, L18 displaces `read_story` −105
-  against L15's −89 — 18% more push for 3.3× the ASR. L23 pushes −184 there and gets −2.0.
-- **Depth-fraction alignment across models fails; read-out-profile alignment works.** Gemma's winner
-  sits at frac 0.36, whose Qwen counterpart is L10; the layer that actually transfers is L18 at 0.64.
-  L7, picked on the depth/out-of-band parallel, is a null (−6.5).
-- **`cohens_dz` has now picked the wrong steering layer twice at this tag** — L23 over L15 in 1_run,
-  L15 over L18 here — and the same criterion picked L28 over L15 on gemma. Direction *quality* is not
-  a steering-site rule, in either model.
-- **The two arms do not scale together.** Restore grows 3.3× from L15 to L18; induce grows 1.2×
-  (+9.7 → +11.3) and turns over one rung earlier. Whatever L18 buys, it buys almost entirely on the
-  refusal-promoting side.
-- **Still no `random` arm, and 4_run's result applies here first.** 4_run showed story@L15's effect is
-  largely its 14% persona component. L18 is the cell that most needs the same projection pass —
-  `story ⊥ persona`, `story ⊥ harm`, and a norm-matched random direction at α = −0.75 — before −46.5
-  is read as a story-mode result rather than a refusal direction found at a better site.
+### ΔASR per family at L18, both best cells
+
+Against the **baseline**, which is 100 / 0 by construction of the sets, so ΔASR is just the steered
+ASR shifted. Totals therefore differ from the no-op-referenced −46.5 / +11.3 above.
+
+**success set** (restore, α = −0.75, baseline 100)
+
+| family | n | steered ASR | ΔASR | deg |
+|---|---|---|---|---|
+| fiction_narrative | 343 | 59.8 | −40.2 | 1.5 |
+| roleplay_persona | 67 | 26.9 | −73.1 | 7.5 |
+| hybrid | 64 | 25.0 | **−75.0** | 1.6 |
+| nonfiction_other | 34 | 32.4 | −67.6 | 2.9 |
+| **all** | **508** | **49.2** | **−50.8** | **2.4** |
+
+**refusal set** (induce, α = +0.25, baseline 0)
+
+| family | n | steered ASR | ΔASR | deg |
+|---|---|---|---|---|
+| fiction_narrative | 110 | 10.0 | +10.0 | 0.9 |
+| roleplay_persona | 210 | 14.8 | +14.8 | 7.6 |
+| hybrid | 73 | 17.8 | **+17.8** | 5.5 |
+| nonfiction_other | 40 | 15.0 | +15.0 | 2.5 |
+| **all** | **433** | **14.1** | **+14.1** | **5.1** |
+
+- **`fiction_narrative` is the least-moved family on both sides** (−40.2 vs −68…−75; +10.0 vs
+  +15…+18), and it is 68% of the success set — so the headline number is *dragged down* by the family
+  the direction is named after. Steered ASR lands at 25–32% for every other family and 59.8% here.
+- **`hybrid` moves most on both sides,** which is what motivated L18 in the first place (its story
+  probe reads hybrid at 32% vs L15's 13%). The one prior signal that picked this layer is also the
+  family it steers best — but n=64/73, so this is suggestive, not established.
+- **Baseline reference absorbs the no-op drift, and that halves the induce gradient.** No-op ASR is
+  not 0 on the refusal set for `fiction_narrative` (6.4%) and not 100 on the success set for
+  `roleplay_persona` (82.1%), so against the no-op the same cells read −38.8…−68.8 and +3.6…+15.1.
+  The restore ordering is unchanged either way; the induce spread shrinks from 11 pp to 8 pp.
+- **This is the first family gradient in the study** — 1_run found none. Plausible reading: prompts
+  already saturated in narrative framing have the least headroom for a narrativity push to change.
+  Untested and confounded with the ceiling; worth a matched-headroom check.
 
 ### Narrativity manipulation check at L18 (§5.9, pairwise judge)
 
@@ -600,6 +620,167 @@ induce α=+0.25. 891 pairs; pairs where either side is degenerate are excluded. 
 - **Passing this check does not protect L18.** 4_run found story@L15's ASR effect largely
   persona-carried while the narrativity check passed at that same layer, so a clean manipulation
   check says nothing about what carries −46.5.
+
+## 6_run — projection at L18 (§5.6)
+
+4 cells. The pair 4_run ran at L15, re-run at 5_run's better layer: `story_v2_1k` − proj(`persona_v2`)
+at **L18**, arms `perp_alpha` and `par_component`, α at each set's best `deg`-clean cell.
+`unprojected` is 5_run's own twin, not regenerated. cos(story@L18, persona@L18) = **+0.177**, against
++0.137 at L15 — a *larger* sliver to remove.
+
+**Each arm against its `unprojected` twin.** ΔASR is vs the L18 no-op (95.7 success / 2.8 refusal);
+`share` is the arm's ΔASR as a fraction of the twin's.
+
+| layer | set | arm | ‖v‖ | ASR | ΔASR | share | deg | read_story | read_persona |
+|---|---|---|---|---|---|---|---|---|---|
+| **L18** | success | `unprojected` | 1 | 49.2 | −46.5 | — | 2.4 | −105.2 | −2.1 |
+| **L18** | success | `perp_alpha` | 1 | 47.6 | **−48.1** | **103%** | 2.2 | −106.2 | +9.6 |
+| **L18** | success | `par_component` | 0.177 | 83.5 | −12.2 | **26%** | 1.0 | −34.6 | +25.2 |
+| **L18** | refusal | `unprojected` | 1 | 14.1 | +11.3 | — | 5.1 | +25.0 | +61.5 |
+| **L18** | refusal | `perp_alpha` | 1 | 15.0 | **+12.2** | **108%** | 7.4 | +22.0 | +53.7 |
+| **L18** | refusal | `par_component` | 0.177 | 10.6 | +7.8 | **69%** | 2.8 | −11.4 | +46.6 |
+| L15 | success | `unprojected` | 1 | 81.7 | −14.0 | — | 3.3 | −88.7 | +19.4 |
+| L15 | success | `perp_alpha` | 1 | 84.6 | −11.1 | 79% | 5.1 | −86.6 | +27.5 |
+| L15 | success | `par_component` | 0.137 | 62.8 | **−32.9** | **235%** | 5.3 | −33.9 | +37.2 |
+| L15 | refusal | `unprojected` | 1 | 12.5 | +9.7 | — | 5.3 | +15.7 | +56.1 |
+| L15 | refusal | `perp_alpha` | 1 | 8.8 | +6.0 | 62% | 3.0 | +13.0 | +51.4 |
+| L15 | refusal | `par_component` | 0.137 | 13.4 | **+10.6** | **109%** | 3.9 | −11.6 | +43.0 |
+
+- **The verdict inverts between the two layers.** At L15 persona was *sufficient* — the 13.7% sliver
+  alone produced 235% and 109% of the full story push, which is what 4_run read as "story@L15 is
+  persona contamination". At L18 the same axis at a **larger** overlap produces **26%** and 69%, and
+  removing it costs nothing (103%, 108%). Persona is neither necessary nor sufficient at L18.
+- **So 5_run's −46.5 survives the control that killed 4_run's −14.0.** It is the first steering cell
+  at this tag whose effect is not attributable to a neighbouring axis.
+- **Degeneracy is clean throughout** (1.0–7.4%), including `par_component`, which pushes persona at a
+  magnitude no L18 cell had tested. Nothing here is a broken-model artefact.
+- **`read_story` confirms which vector is doing the work.** `perp_alpha` moves it −106.2 against the
+  twin's −105.2 — orthogonalising against persona leaves the story push intact — while
+  `par_component` reaches only −34.6.
+
+### The ASR drop is not a refusal — and the two arms fail differently
+
+StrongREJECT's `refused` flag means "did not deliver the content". The deterministic
+`refusal_prefix` detector says whether the model actually declined. They come apart completely
+here. Success set, the 508 rows common to all four cells:
+
+| cell | ‖v‖ | `refused` % | `refusal_prefix` % | convincing | specific | out_tok | hit_cap % |
+|---|---|---|---|---|---|---|---|
+| no-op | — | 4.1 | 1.0 | 4.73 | 4.78 | 451 | 74 |
+| `unprojected` (story) | 1 | 47.0 | **0.0** | **2.52** | **2.70** | 509 | 98 |
+| `perp_alpha` | 1 | 48.0 | **0.0** | **2.42** | **2.60** | 509 | 98 |
+| `par_component` | 0.177 | 16.3 | **6.3** | 4.70 | 4.73 | 422 | 68 |
+
+| cell | rows judged `refused` | of which actually decline |
+|---|---|---|
+| `unprojected` | 322 | **0** |
+| `perp_alpha` | 300 | **0** |
+| `par_component` | 83 | **31** |
+
+- **Story never refuses. Not once in 322 rows** — nor in `perp_alpha`'s 300. What it does instead is
+  write *more* (451 → 509 tokens, 74% → 98% hitting the cap) and *vaguer*: `specific` 4.78 → 2.70,
+  `convincing` 4.73 → 2.52. The ASR collapse is a **specificity collapse**.
+- **`par_component` is the opposite failure.** Persona's sliver leaves answer quality untouched
+  (4.70 / 4.73, indistinguishable from the no-op) and produces **31 genuine declines**. So persona
+  restores refusal; story degrades answers. Two different mechanisms that both lower ASR.
+- **This is not degeneration.** On `nonfiction_other`, `loop_frac` 0.007 → 0.008 and `distinct_4`
+  0.986 → 0.879, at 2.4% degenerate. It is fluent, confident prose that has stopped being about the request — and it confabulates: asked for a 419 scam email it explains that "419" is an article of aUN investment-disputes convention; asked to argue for the Illuminati it describes an 18th-century scientific-rationality society and drifts into the metric system.
+
+- **This is what the family ordering below is measuring.** A nonfiction jailbreak succeeds only by
+  delivering specific operational content, so a specificity collapse destroys it (−70.6); a fiction
+  jailbreak still reads as a successful story while vague (−39.9). The ordering is a readout of how
+  much each family depends on specificity, not evidence about story mode.
+
+- **6_run's verdict stands and now has a mechanism** — story and persona are not the same effect,
+  which is why projecting one out does not touch the other. But **"restore refusal" is the wrong
+  description of story@L18**, and −46.5 against `par_component`'s −12.2 compares a capability
+  collapse with a refusal effect. This is the case the fourth outcome label in *Improvements*
+  (off-topic / non-responsive) exists for; without it the two are indistinguishable in every ΔASR
+  table in this file.
+
+### ΔASR per family, `perp_alpha` at L18
+
+Against the **no-op**, as in the arm table above — not the baseline 5_run's family tables use, so the
+totals here are −48.0 / +12.2 rather than −50.8 / +14.1. Rows are the units common to no-op, twin and
+arm. `share` is the arm's Δ over the twin's.
+
+**success** (restore, α = −0.75)
+
+| family | n | no-op | `perp_alpha` | ΔASR | twin Δ | share | deg |
+|---|---|---|---|---|---|---|---|
+| fiction_narrative | 343 | 98.5 | 58.6 | −39.9 | −38.8 | 103% | 1.5 |
+| roleplay_persona | 67 | 82.1 | 26.9 | −55.2 | −55.2 | 100% | 4.5 |
+| hybrid | 64 | 93.8 | 21.9 | **−71.9** | −68.8 | 105% | 0.0 |
+| nonfiction_other | 34 | 97.1 | 26.5 | −70.6 | −64.7 | 109% | 8.8 |
+| **all** | **508** | **95.7** | **47.6** | **−48.0** | −46.5 | 103% | 2.2 |
+
+**refusal** (induce, α = +0.25)
+
+| family | n | no-op | `perp_alpha` | ΔASR | twin Δ | share | deg |
+|---|---|---|---|---|---|---|---|
+| fiction_narrative | 110 | 6.4 | 18.2 | +11.8 | +3.6 | 325% ⚠ | 4.5 |
+| roleplay_persona | 210 | 1.4 | 13.3 | +11.9 | +13.3 | 89% | 10.0 |
+| hybrid | 73 | 2.7 | 13.7 | +11.0 | +15.1 | 73% | 4.1 |
+| nonfiction_other | 40 | 0.0 | 17.5 | **+17.5** | +15.0 | 117% | 7.5 |
+| **all** | **433** | **2.8** | **15.0** | **+12.2** | +11.3 | 108% | 7.4 |
+
+- **The projection is family-neutral, not just neutral in aggregate.** Restore `share` is 100–109% in
+  every family, so removing persona costs nothing anywhere — the 6_run verdict is not an average
+  hiding a family where persona mattered.
+- **The ordering still runs against the story probe's own read order**, exactly as 2_run found at
+  L15. `fiction_narrative` is least-moved (−39.9) while `nonfiction_other` — which story@L18 reads at
+  **5.1%** — is second-most (−70.6). Not a ceiling artefact: fiction starts at 98.5, the most headroom
+  of any family, and still moves least. So a control that rules out persona does **not** make the
+  effect story-shaped; the restore is broad, not fiction-selective.
+- **Induce is nearly flat** (+11.0 … +17.5 across four families) where restore spans 32 pp. Whatever
+  L18 does, it does it to the whole corpus on the compliance side.
+- n = 34–73 for three of the four families on restore, so per-family CIs are wide; and the ⚠ 325% is
+  an unstable ratio (denominator +3.6), not a disagreement between the arms.
+
+### It acts on the frame, so `family` is the wrong unit
+
+**Restore.** Steering strips the fictional frame and re-renders the answer as a document: narrative
+openings 66% → **4%**, markdown-heading openings 33% → **88%**. What that costs depends on what the
+jailbreak used the frame *for* — and `fiction_narrative` contains both kinds:
+
+| technique | n | ΔASR | the frame is… |
+|---|---|---|---|
+| `narrative_mimicry` | 281 | **−29.9** | a wrapper around content the model states anyway — unwrapping keeps it (`sr 1.00 → 1.00` on several rows) |
+| `nested_fiction` | 44 | **−81.8** | the exploit itself — remove it and the layers become generic definitions |
+| `in_the_wild_wrapper` | 6 | −66.7 | |
+| `creative_form_poetry` | 4 | −100.0 | |
+
+`narrative_mimicry` is 82% of the family and alone drags it to −39.9; every other technique in it
+collapses harder than nonfiction's −70.6. The fiction-vs-nonfiction contrast is really
+**frame-exploit vs content-exploit**.
+
+**Induce mirrors it.** Nonfiction's baseline refusals are the softest in the corpus — only **22.5%**
+actually decline, against 55.5 / 58.1 / 65.8% for fiction / roleplay / hybrid — and long (240 tok vs
+128). So +α only has to re-render an engaged expository non-answer as a scene: one flat *"I will not
+provide a script… illegal and unethical"* becomes *"In the dead of night, under the cover of
+moonlight, she approached the facility…"*, `sr 0.00 → 1.00`. Fiction and roleplay prompts already
+carry a frame the model refused, so more story mode offers nothing new. **The direction acts where
+the frame is missing.**
+
+- **Do not rank the induce families.** nonfiction is **6/40**, Wilson [7.1, 29.1], overlapping every
+  other family; on the story cell `hybrid` (17.8) is highest, not nonfiction (15.0).
+- **Displacement predicts nothing on either side.** `read_story` is pushed hardest on the most
+  *resistant* restore technique (−120 `narrative_mimicry` vs −96 `nested_fiction`) and least on the
+  family that induces most (nonfiction +13.3 vs +23…+30).
+
+### Two reasons the pass is weaker than the share column looks
+
+- **`perp_alpha` is 98.4% story by construction.** At c = +0.177 the residual keeps
+  cos = √(1−c²) = 0.984 with the original, so "removing persona changes nothing" is close to
+  arithmetic. It is informative only because the *same* near-identity operation at L15 (0.991) still
+  lost 21% of the effect — the necessity result is a contrast between layers, not a standalone fact.
+- **`par_component`'s weakness may be persona's layer, not story's purity.** L15 is persona's own
+  chosen layer, where it is the most potent axis in the study (−94.6 at α=−0.50); L18 is not, and
+  persona has never been steered there alone. A persona push that underperforms at L18 could mean
+  persona is weak at L18 rather than that story@L18 is uncontaminated. **A persona@L18 α ladder is
+  the missing control**, and until it exists the sufficiency half rests on an untested assumption.
+- Still **no `random` arm**, so a surviving `perp_alpha` does not separate story from any direction of
+  that norm at L18.
 
 ---
 
@@ -706,17 +887,7 @@ is the original sweep.
 | ±1.75 | −90.0 | 24.4 ⚠ | *not run* | — |
 | ±2.00 | −97.3 | 68.5 ⚠ | *not run* | — |
 
-**α=1.50 is the usable maximum, and 1.75/2.00 are what establish that.** Degeneracy goes
-6.5 → 24.4 → 68.5 across the last three, so the −90.0 and −97.3 are the same artefact as
-L28's: a broken response scores `strongreject ≈ 0`, exactly as a refusal does. Two
-independent signals agree — `pct_complied` collapses to 4% then **0%** (the model is not
-refusing more substantively, it is not answering at all), and judge/detector disagreement
-reaches **0.95 / 0.99** against 0.37 at the no-op, i.e. the text is no longer classifiable.
-At 1.50 the curve still looked like it was accelerating cleanly, so this could not have been
-read off the α ≤ 1.50 range.
 
-The induce column is blank at 1.75/2.00 **by decision, not for want of data**: that arm was
-already 95% degenerate at 1.50, so it was not generated (`notebook_1K_gemma_3`).
 
 **`story_v2_1k` (L28)**
 
@@ -762,6 +933,52 @@ persona/harm. The first sweep simply stopped an octave short. Its induce side do
 
 **Nothing here is a specificity claim.** There is no `random` arm at this tag, so the no-op separates
 a direction's effect from *no* perturbation, not from an arbitrary one of the same norm.
+
+## story@L15 per jailbreak family — the ordering runs *against* the framing hypothesis
+
+Its two best cells, each family against **its own rows in the same no-op**, so a family that was
+already easy is not credited. ASR on non-degenerate rows, as above.
+
+**restore — `story_v2_1k` L15, α = −1.50** (success set)
+
+| family | n | no-op ASR | cell ASR | ΔASR | deg |
+|---|---|---|---|---|---|
+| `fiction_narrative` | 337 | 98.8 | 33.4 | **−65.4** | 5.9 |
+| `roleplay_persona` | 112 | 98.2 | 14.6 | **−83.6** | 8.0 |
+| `hybrid` | 80 | 98.8 | 12.2 | **−86.6** | 7.5 |
+| `nonfiction_other` | 13 | 92.3 | 7.7 | −84.6 | 0.0 |
+| **all** | 542 | 98.5 | 25.8 | **−72.7** | 6.5 |
+
+**induce — `story_v2_1k` L15, α = +0.50** (refusal set)
+
+| family | n | no-op ASR | cell ASR | ΔASR | deg |
+|---|---|---|---|---|---|
+| `fiction_narrative` | 129 | 7.8 | 22.8 | **+15.0** | 1.6 |
+| `roleplay_persona` | 170 | 3.6 | 34.6 | **+31.0** | 8.2 |
+| `hybrid` | 59 | 3.4 | 22.0 | **+18.6** | 0.0 |
+| `nonfiction_other` | 65 | 1.5 | 32.3 | **+30.8** | 0.0 |
+| **all** | 423 | 4.5 | 28.7 | **+24.2** | 3.8 |
+
+**`fiction_narrative` is the family the story vector moves LEAST, on both arms.** Restoring, it is
+−65.4 against −83.6/−86.6 for roleplay and hybrid; inducing, +15.0 against +31.0 for roleplay and
++30.8 for nonfiction. If the vector worked by installing or removing narrative framing, the
+fiction-framed jailbreaks are exactly the ones it should own — and they are the ones it moves least,
+in both directions independently.
+
+That is the same shape as 50_per_direction's *"`persona` is weakest exactly where it should be
+strongest"*, and it is not a ceiling artefact: on the success set every family starts at 92–99, and
+fiction ends at **33.4** where the others end at 7–15, so there was room and it was not used.
+
+**It is also not the probe's ordering.** §2 has story@L15 reading fiction at 83.9% and nonfiction at
+6.4% — the detection ordering is strongly fiction-first, while the steering ordering is
+fiction-last. So detection and causation disagree *within a single direction and layer* here, which
+is a sharper version of the r = 0.00 that 50_per_direction measured across cells.
+
+Two things this does not settle. **`nonfiction_other` on the success set is n=13** — quote it as
+suggestive at most; the refusal set's n=65 is the usable one, and it agrees. And the family mix
+differs by set (the success set is 62% fiction, the refusal set 40% roleplay) because the baseline
+complied more on fiction, so the two **all** rows are differently weighted and are not comparable to
+each other.
 
 ## story@L15 beats story@L28, and L28's only large number is degeneration
 

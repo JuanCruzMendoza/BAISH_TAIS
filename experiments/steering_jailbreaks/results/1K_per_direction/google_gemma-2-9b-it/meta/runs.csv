@@ -64,3 +64,6 @@ timestamp,script,stem,run_key,git_sha,git_dirty,outcome,resumed_from,wall_s,argv
 2026-08-16T13:16:06,aggregate.py,aggregate,bf6fdf027aade16b,ae475bd7c808,True,written,0,1.4,"google/gemma-2-9b-it --tag 1K_per_direction"
 2026-08-16T13:17:34,aggregate.py,aggregate,bf6fdf027aade16b,ae475bd7c808,True,written,0,1.1,"google/gemma-2-9b-it --tag 1K_per_direction"
 2026-08-17T11:00:18,aggregate.py,aggregate,aab16dde28311dcd,f122b07c02c9,True,written,0,5.7,"google/gemma-2-9b-it --tag 1K_per_direction"
+2026-08-17T15:03:33,steer_batch.py,steer_single__story_v2_1k__add__L15__a-1.75,710c55fb889f75a4,60c62d52e4f3,True,written,0,739.1,"google/gemma-2-9b-it --tag 1K_per_direction --script steer_single --jobs /tmp/gemma3_jobs_success.json --batch-size 16 --max-batch-tokens 24576"
+2026-08-17T15:15:51,steer_batch.py,steer_single__story_v2_1k__add__L15__a-2,b1265515219dd2c9,60c62d52e4f3,True,written,0,737.4,"google/gemma-2-9b-it --tag 1K_per_direction --script steer_single --jobs /tmp/gemma3_jobs_success.json --batch-size 16 --max-batch-tokens 24576"
+2026-08-17T12:30:35,aggregate.py,aggregate,65c88cd1fe3746a8,492dd2dc1ae2,True,written,0,4.0,"google/gemma-2-9b-it --tag 1K_per_direction"

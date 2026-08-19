@@ -21,21 +21,21 @@
   },
   "env": {
     "argv": [
-      "plot_layer_curves.py",
+      "experiments/probe_jailbreak_detection/plot_layer_curves.py",
       "Qwen/Qwen2.5-7B-Instruct",
       "--tag",
       "1K_per_direction",
       "--all-layers"
     ],
-    "git_diff_sha": "d9d8bfc1abfe29a9560d13d6d15f29a79e5670976e9e6b9c93885e67bc8a4cc2",
-    "git_dirty": true,
-    "git_sha": "a8cc47aff5532eac5261a42ab09b7e3080de69d8",
+    "git_diff_sha": null,
+    "git_dirty": false,
+    "git_sha": "6b858d901911bcdae2fcc597a60ce272a02075c9",
     "host": "LAPTOP-11LEDOPR",
     "platform": "Windows-10-10.0.19045-SP0",
     "python": "3.12.2",
     "resumed_from": 0,
-    "timestamp": "2026-08-12T09:22:18",
-    "wall_s": 3.84
+    "timestamp": "2026-08-18T14:01:47",
+    "wall_s": 10.04
   },
   "inputs": {
     "jb_metrics_run_key": "f11931e8ac198b4ed83e789b63aed75c5d0afa12ddcc78f77f1fc6d06cbcad1c"

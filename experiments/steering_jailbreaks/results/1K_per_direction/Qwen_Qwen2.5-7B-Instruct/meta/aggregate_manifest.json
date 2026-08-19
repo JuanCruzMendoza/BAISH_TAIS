@@ -1,6 +1,6 @@
 {
   "config": {
-    "n_cells": 117,
+    "n_cells": 121,
     "n_excluded": 0,
     "rank_layers": true,
     "tag": "1K_per_direction"
@@ -12,15 +12,15 @@
       "--tag",
       "1K_per_direction"
     ],
-    "git_diff_sha": "f03f6ae8c81f2dc138030c940d43ee68d3a552d1cb3feb974f2f3204d74d8764",
+    "git_diff_sha": "d3dae0f8f33b531705229a0882617f764365b04e5d47062e69703db30691d707",
     "git_dirty": true,
-    "git_sha": "d93721199d8ae5c14b69154cd9852c53507098fd",
+    "git_sha": "6b858d901911bcdae2fcc597a60ce272a02075c9",
     "host": "LAPTOP-11LEDOPR",
     "platform": "Windows-10-10.0.19045-SP0",
     "python": "3.12.2",
     "resumed_from": 0,
-    "timestamp": "2026-08-17T11:38:22",
-    "wall_s": 8.04
+    "timestamp": "2026-08-17T14:00:28",
+    "wall_s": 8.56
   },
   "inputs": {
     "cell_run_keys": [
@@ -57,6 +57,7 @@
       "4091f8d898dd4633",
       "43be70e76109adcc",
       "46f3681bf5c3692a",
+      "49e4f5926714ee26",
       "49f456cf73a07094",
       "4b8bcad1654812ba",
       "4bad71f758c1b84b",
@@ -106,12 +107,14 @@
       "99e8a57e7c49f433",
       "a3c93805118ded86",
       "a590cf4812dbac93",
+      "a5c60388f7eac07c",
       "a644da120a19d478",
       "ae92b4b175070888",
       "b03869f87ef97a9b",
       "b03f7766d3907fbc",
       "b123275ed183107b",
       "b35ad2b5cfc29c04",
+      "b3d7dfb9f1e93bce",
       "b3e4be2f7a6c4613",
       "b61452cfb3531b07",
       "b66e605292ddb5bd",
@@ -130,6 +133,7 @@
       "d796c80275131263",
       "d98da4893955238f",
       "da075952244a0d50",
+      "df141108322f1e33",
       "e4b8ee4c2dc845bf",
       "e9901ce633380b89",
       "ec295e65a1fb605c",
@@ -144,9 +148,9 @@
     ]
   },
   "notes": [
-    "archived prior run 3a8255cb"
+    "archived prior run 424e22a1"
   ],
-  "run_key": "424e22a117a22017db18574072ef0eb3f5f2512cd45eaf8877b2724dab0845ef",
+  "run_key": "4d10b60e00f4b8bf5d32f1571ea1b2ed61a313197eff2011b93a597c859395da",
   "status": "complete",
   "stem": "aggregate"
 }

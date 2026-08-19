@@ -121,3 +121,4 @@ timestamp,script,stem,run_key,git_sha,git_dirty,outcome,resumed_from,wall_s,argv
 2026-08-17T03:09:08,steer_batch.py,steer_induce__noop__L18,4bad71f758c1b84b,f122b07c02c9,True,written,0,264.8,"Qwen/Qwen2.5-7B-Instruct --tag 1K_per_direction --script steer_induce --jobs /tmp/qwen5_jobs_refusal.json --batch-size 32 --max-batch-tokens 65536"
 2026-08-17T11:38:26,aggregate.py,aggregate,424e22a117a22017,d93721199d8a,True,written,0,12.2,"Qwen/Qwen2.5-7B-Instruct --tag 1K_per_direction"
 2026-08-17T12:06:48,judge_narrativity.py,judge_narrativity__story_v2_1k__L18,2af0cf98000a630e,60c62d52e4f3,True,written,0,318.7,"Qwen/Qwen2.5-7B-Instruct --tag 1K_per_direction --direction story_v2_1k --layer 18 --alphas success=0.75,refusal=0.25 --sets success,refusal --concurrency 4"
+2026-08-17T14:00:31,aggregate.py,aggregate,4d10b60e00f4b8bf,6b858d901911,True,written,0,11.6,"Qwen/Qwen2.5-7B-Instruct --tag 1K_per_direction"
