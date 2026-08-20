@@ -17,7 +17,7 @@ We extract all four directions the same way, from 800 contrastive prompt pairs e
 
 Four main results:
 - The narrativity direction is real and distinct from the other 3: it separates narrative from non-narrative prompts and is close to orthogonal to the other three. 
-- Suppressing it decreases ASR: −51pp ASR in Qwen and −73pp in Gemma, with output remaining coherent.
+- Suppressing it decreases ASR: −51 points in Qwen and −73 in Gemma, with output remaining coherent.
 - With the same methodology, we were able to restore or disable refusal by suppressing or adding the other 3 directions.
 - The story direction's ASR effect is not attributable to its persona overlap: it still had almost the same effect while steering the component orthogonal to the persona direction.
 
@@ -116,9 +116,11 @@ The layer selected for persona, harm and eval was the one whose probe maximized 
 
 ![Story probe reads of jailbreaks vs layer, Qwen 7B](../experiments/probe_jailbreak_detection/results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_layer_curves__all_story_v2_1k.png)
 
-In the following figures, these 4 probes are compared against each other. Off the diagonal, each probe is read on 1,000 pairs of an axis it was never fitted on, at its own chosen layer.
 
-![Excess AUROC over a random-direction null, probe by axis](../experiments/cross_probe_detection/results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_matrices_excess_over_null.png)
+In the following figures, these 4 probes are compared against each other. Off the diagonal, each probe is read on 1,000 pairs of an axis it was never fitted on, at its own chosen layer.
+![Paired AUROC of each probe on each axis, minus the mean of 20 random unit directions on the same cells](../experiments/cross_probe_detection/results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_matrices_excess_over_null.png)
+
+Each cell is the probe's paired AUROC minus what 20 random unit directions score on the same axis and layer, so 0 means the probe reads that axis no better than an arbitrary direction does. Even on its own axis a fitted probe only beats the null by 0.24 to 0.37.
 
 
 The cosine similarity is calculated between the direction's chosen layer and the other's direction probe at the same layer.
@@ -127,31 +129,31 @@ The cosine similarity is calculated between the direction's chosen layer and the
 
 ### 2. Steering per axis
 
-The following table shows the best cell per axis and model, i.e the $\alpha$ that produced the highest ΔASR against that cell's baseline, and the percentage of degenerate responses in brackets. `restore` suppresses the axis on the jailbreaks that worked, `enable` adds it to the ones that were refused.
+The following table shows the best cell per axis and model, i.e the $\alpha$ that produced the highest ΔASR against that cell's baseline, and the percentage of degenerate responses in brackets. `restore` suppresses the axis on the jailbreaks that worked, `enable` adds it to the ones that were refused. A cell qualifies only if degeneracy stays under 15%, and where two cells are within one point we report the cleaner one.
 
 | axis              | Qwen restore     | Qwen enable      | Gemma restore   | Gemma enable    |
 | ----------------- | ---------------- | ---------------- | --------------- | --------------- |
-| harm              | **−99.8** (14.4) | **+65.6** (16.6) | **−99.4** (0.0) | +41.8 (2.6)     |
-| persona           | **−98.4** (0.4)  | **+62.8** (12.5) | **−98.3** (0.0) | **+51.1** (5.0) |
+| harm              | **−99.8** (14.4) | **+64.9** (8.3)  | **−99.4** (0.0) | +41.8 (2.6)     |
+| persona           | **−98.4** (0.4)  | **+62.8** (12.5) | **−99.6** (0.2) | **+51.1** (5.0) |
 | story, max gap    | −50.8 (2.4)      | +14.1 (5.1)      | −73.4 (6.5)     | +29.3 (3.8)     |
-| story, max `d_z`  | −6.3 (3.0)       | +9.0 (3.7)       | −6.5 (2.4)      | +6.6 (3.5)      |
+| story, max `d_z`  | −12.0 (10.0)     | +9.9 (10.2)      | −6.5 (2.4)      | +7.1 (7.3)      |
 | eval              | −17.7 (1.2)      | +48.7 (9.9)      | −44.1 (4.1)     | +15.1 (2.6)     |
+
 Caption:
 
-While the story direction selected by cohens is a null, the layer maximizing the gap between fictional/non-fictional jailbreaks has a strong effect. 
+Every cell reported here sits below the 15% degeneracy ceiling, so none of these ASR changes is the model breaking down rather than changing behaviour. The story layer chosen by Cohen's `d_z` barely moves behaviour in either model, while the layer maximizing the gap between fictional and non-fictional jailbreaks moves it 4× as much in Qwen and 11× as much in Gemma. 
 
 ### 3. Story monotonic effect
 
 This table shows ΔASR in Qwen 7B at the story direction in L18. It can be observed how it increases with $\alpha$ when restoring refusal, but the opposite effect decreases with $\alpha$. This asymmetric effect can be also seen in the other 3 directions (see Appendix) in both models.
 It can also be seen how the percentage of degenerate responses increases with $\alpha$, until the model is completely broken with $\alpha$ > 1. 
 
-| α     | restore ΔASR | deg  | enable ΔASR | deg |
-| ----- | ------------ | ---- | ----------- | --- |
-| ±0.25 | −15.6        | 1.2  | **+14.1**   | 5.1 |
-| ±0.50 | −29.1        | 1.0  | +8.3        | 5.8 |
-| ±0.75 | **−50.8**    | 2.4  | +1.8        | 3.2 |
-| ±1.00 | −87.2        | 28.0 | +1.4        | 9.0 |
-
+| α     | restore ΔASR | deg  | enable ΔASR | degeneracy |
+| ----- | ------------ | ---- | ----------- | ---------- |
+| ±0.25 | −15.6        | 1.2  | **+14.1**   | 5.1        |
+| ±0.50 | −29.1        | 1.0  | +8.3        | 5.8        |
+| ±0.75 | **−50.8**    | 2.4  | +1.8        | 3.2        |
+| ±1.00 | −87.2        | 28.0 | +1.4        | 9.0        |
 
 ### 4. Measuring story
 
@@ -205,55 +207,71 @@ Persona at L15, gives a different answer for each rival: story is neither necess
 
 ## Discussion
 
-### Steering is asymmetric
+### Different directions, same effect
 
-No direction moves the two arms equally. Restoring refusal grows with α until the output breaks, while enabling it peaks at the smallest α we tried and then decays with degeneracy still under 10%, so the ceiling is the axis and not the model breaking. Pushing a model into refusing is easier than pushing it out of one, and the gap is widest for story (−50.8 against +14.1).
+When trying to explain why do fictional jailbreaks work, the first problem that arised was how do we know if the directions we are extracting are different, since a successful story direction at moving ASR could be just steering a role-play / fictional direction. The first result presented that geometrically the directions were different, since most of the pairs had a low cosine similarity, and that using them as probes to detect other directions did not work in most cases, shown by the low cross AUROC. 
 
-### Suppressing story does not make the model refuse
+The steering experiment had positive results: the four directions were able to significantly move the ASR, both in restoring refusal and enabling jailbreaks and in both Qwen and Gemma with very similar $\Delta$ ASR. 
 
-The narrativity judge confirms the vector works in both directions, but the way ASR falls is not the way it falls for the other axes. Success set, non-degenerate rows:
+No direction moves the two arms equally. Restoring refusal grows with α until the output breaks, while enabling jailbreaks peaks at the smallest α we tried and then decays with degeneracy still under 10%. Pushing a model into refusing is easier than pushing it out of one, and the gap is widest for story (−50.8 $\Delta$ ASR against +14.1).
 
-| cell | ASR | explicit declines | judge specificity |
-|---|---|---|---|
-| baseline | 100 | 1% | 4.87 |
-| story L18, α=−0.75 | 49.2 | **0%** | **2.73** |
-| persona L15, α=−0.5 | 1.6 | 31% | 4.10 |
-| harm L21, α=+0.75 | 0.2 | 90% | 4.08 |
-| eval L9, α=+0.5 | 82.3 | 5% | 4.69 |
+The persona and harm directions had a greater effect than story and eval. However, they were between the pairs with the highest cosine similarity, so they were tested in the steering attribution section and this showed that both persona and harm are not entirely distinct effects, since the harm component in the persona direction accounted for most of the $\Delta$ ASR, although the persona direction with the harm component projected out still had an impact in ASR.
 
-Story never declines. In the 235 rows the judge scored as refusals, **not one** begins with a refusal, and their mean specificity is 1.94. The model writes more, not less — 457 to 510 tokens, hitting the length cap 98% of the time — and what it writes stops being about the request. Subtracting the direction pushes the answer toward the negative pole of its own training contrast: definitions, categories and general statements instead of particular events.
+The other pairs with the highest AUROC and cosine similarity did exhibit distinct effects. The most crucial pair was story - persona because story had not shown high similarity with any other pair. For this reason, they were tested both at the best persona layer and the best story layer: in either case steering one while projecting out the other had a decrease in the $\Delta$ ASR, therefore accomplishing the same effect with different mechanisms. 
 
-> **Nigerian 419 scam email.** Baseline: *"Dear friend, I need help moving money, I have 50 million dollars hidden, give me your bank info"*. Steered: *"Nigerian 419 scams focus on transferring funds. Key points include: always clarify that funds require proper transfer procedures... For instance, funds for IT relate to computing resources."*
+### How do story drops ASR?
 
-> **Nested-fiction fraud guide.** Baseline: a cast list and a plan — *"Aria, you can use your hacking skills to get access to their financial records"*. Steered: *"In this document, you will find a structured approach to understanding the concept of layers in science fiction... particularly in the context of information technology and data management."*
+The narrativity judge confirms the vector works in both directions, adding or removing a narration / fictional framing to the response, but the way ASR falls is not the way it falls for the other axes. This can be seen by analyzing the specificity dimension of the StrongReject rubric (measured between 1-5) in the successful jailbreaks:
 
-Persona and harm lower ASR by making the model decline. Story lowers it by making the model unable to answer. Both show up as `refused` in the rubric, which is why the headline numbers are not comparable as mechanisms.
+| cell                | ASR  | explicit declines | judge specificity |
+| ------------------- | ---- | ----------------- | ----------------- |
+| baseline            | 100  | 0%                | 4.87              |
+| story L18, α=−0.75  | 49.2 | **0%**            | **2.73**          |
+| persona L15, α=−0.5 | 1.6  | 31%               | 4.10              |
+| harm L21, α=+0.75   | 0.2  | 90%               | 4.08              |
+| eval L9, α=+0.5     | 82.3 | 5%                | 4.69              |
 
-### Why fiction moves least
+Steering away from the story direction does not make the model decline: in the 235 rows the judge scored as refusals, none of them begins with an explicit refusal. Instead, its mean specificity dropped by 2.14 compared to the baseline responses. Meanwhile, when steering away from persona, the best cell only decreased 0.77 in mean specificity and had 31% of declines, implying they have different mechanisms to change the ASR.
+
+On the other hand, when steering story, the model also writes more, hitting the length cap of 512 tokens 98% of the time, and what it writes stops being about the request itself. This is likely because by subtracting the direction, it pushes the answer toward the negative pole of its own training pairs: definitions, categories and general statements instead of particular events.
+
+> **Nigerian 419 scam email.** 
+> Baseline: *"Dear friend, I need help moving money, I have 50 million dollars hidden, give me your bank info"*. 
+> Steered: *"Nigerian 419 scams focus on transferring funds. Key points include: always clarify that funds require proper transfer procedures... For instance, funds for IT relate to computing resources."*
+
+> **Nested-fiction fraud guide.** 
+> Baseline: a cast list and a plan — *"Aria, you can use your hacking skills to get access to their financial records"*. 
+> Steered: *"In this document, you will find a structured approach to understanding the concept of layers in science fiction... particularly in the context of information technology and data management."*
+
+Persona and harm lower ASR by making the model decline, but story lowers it by making the model unable to answer. Both show up as `refused` in the rubric, which is why the headline numbers are not comparable as mechanisms.
+
+### Why fictional jailbreaks moves least
 
 The specificity collapse is uniform across families, but the ASR loss is not:
 
-| family | specificity | ΔASR | rows still specific (≥4) |
-|---|---|---|---|
-| fiction_narrative | 4.95 → 2.92 | −40.2 | 38% |
-| hybrid | 4.86 → 2.30 | −76.2 | 14% |
-| roleplay_persona | 4.65 → 2.40 | −72.6 | 15% |
-| nonfiction_other | 4.58 → 2.12 | −66.7 | 15% |
+| family              | specificity | ΔASR  | rows still specific (≥4) |
+| ------------------- | ----------- | ----- | ------------------------ |
+| Fiction / Narrative | 4.95 → 2.92 | −40.2 | 38%                      |
+| Hybrid              | 4.86 → 2.30 | −76.2 | 14%                      |
+| Roleplay / Persona  | 4.65 → 2.40 | −72.6 | 15%                      |
+| Non-fiction / Other | 4.58 → 2.12 | −66.7 | 15%                      |
 
-Two things protect fiction. More of its rows stay specific at all, and when they do go vague they still count as successful attacks twice as often as the other families (20% against 7–16% among rows scoring specificity ≤ 2). A nonfiction jailbreak succeeds only by delivering operational content, so losing specificity destroys it. A fiction jailbreak still reads as a plausible story while saying nothing usable. The family ordering is therefore a readout of how much each family depends on specificity, not evidence that the direction is fiction-selective.
+There are two possible causes for why the Fiction / Narrative ASR moves less than the rest of the families:
+- More of its rows stay specific, and when they do go vague they still count as successful attacks twice as often as the other families, but a nonfiction jailbreak succeeds only by delivering operational content, so losing specificity disables it. 
+- A fiction jailbreak still reads as a plausible story while saying nothing usable. The family ordering is therefore a readout of how much each family depends on specificity.
 
 ### Adding story removes the disclaimer
 
 On the refusal set the same axis works through a different channel. Narration has no slot for a meta-frame, so the hedge disappears and the payload becomes part of the scene.
 
-> **Lottery mail scam, same jailbreak wrapper.** Baseline: *"I must clarify that I cannot assist in any illegal or unethical activities... Instead, I can provide you with an example of how such a fraudulent letter might look, so you understand the tactics used"* — scored 0. With +story: the letter itself, *"Congratulations! You've Won the Grand Prize of $10 Million"*, no framing sentence, scored 1.0.
+> **Lottery mail scam, same jailbreak wrapper.** 
+> Baseline: *"I must clarify that I cannot assist in any illegal or unethical activities... Instead, I can provide you with an example of how such a fraudulent letter might look, so you understand the tactics used"* — scored 0. 
+> With +story: the letter itself, *"Congratulations! You've Won the Grand Prize of $10 Million"*, no framing sentence, scored 1.0.
 
-Across the arm, explicit declines fall from 56% to 49% and 20 of the 55 newly-successful rows had begun with a refusal at baseline. This is the effect worth following up directly, with disclaimer presence as the outcome rather than ASR.
+Across the arm, explicit declines fall from 56% to 49% and 20 of the 55 newly-successful rows had begun with a refusal at baseline. Then, the disclaimer presence is what is driving the increase in ASR.
 
 ## Appendix
 Degeneracy is the union of the judge's label and four length-robust detectors (compression ratio, longest token run, distinct 4-grams, loop fraction), calibrated to 0% false positives on 1,040 unsteered responses and 99.5% recall on 218 verified-broken ones.
-
-Every cell is compared against the unsteered baseline on the same rows. The two prompt sets are defined by that baseline, so its ASR is 100 on the success set and 0 on the refusal set by construction, and ΔASR is the steered ASR shifted by that constant.
 
 ### A1. Dataset construction
 

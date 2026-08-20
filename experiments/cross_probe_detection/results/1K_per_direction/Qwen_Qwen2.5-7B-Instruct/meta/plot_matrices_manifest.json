@@ -28,23 +28,21 @@
       "--tag",
       "1K_per_direction"
     ],
-    "git_diff_sha": "8a147ee41114528e8b30c49580751959ed35409d7c1d17a893cb547e92bdeb14",
+    "git_diff_sha": "bbb51b1a952ef75f79117d370e1921e441eb16bd725cb892130efef1ae957031",
     "git_dirty": true,
-    "git_sha": "492dd2dc1ae2f116f46d777d4f69dce015609392",
+    "git_sha": "016e3f34fd634e19f0a343e8ef541e0543952fcb",
     "host": "LAPTOP-11LEDOPR",
     "platform": "Windows-10-10.0.19045-SP0",
     "python": "3.12.2",
     "resumed_from": 0,
-    "timestamp": "2026-08-17T12:22:40",
-    "wall_s": 5.15
+    "timestamp": "2026-08-20T12:59:28",
+    "wall_s": 3.28
   },
   "inputs": {
     "cross_auroc_run_key": "6fa6f505c595041bc802609a009dbd057c2a1393e36d1b87084a568a213a2cf6",
     "geometry_run_key": "00ffbbabff4c62c6a705cb11e3ab6d0ffd211845fa8189dfbe9c02882c029212"
   },
-  "notes": [
-    "archived prior run 9677f6c4"
-  ],
+  "notes": [],
   "run_key": "108e19c27c0deaa42afd24d2433622050da6088433d606fc38ffdcf951e381c5",
   "status": "complete",
   "stem": "plot_matrices"
