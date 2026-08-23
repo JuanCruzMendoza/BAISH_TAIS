@@ -23,20 +23,20 @@
   },
   "env": {
     "argv": [
-      "experiments/cross_probe_detection/plot_matrices.py",
+      "plot_matrices.py",
       "Qwen/Qwen2.5-7B-Instruct",
       "--tag",
       "1K_per_direction"
     ],
-    "git_diff_sha": "bbb51b1a952ef75f79117d370e1921e441eb16bd725cb892130efef1ae957031",
-    "git_dirty": true,
-    "git_sha": "016e3f34fd634e19f0a343e8ef541e0543952fcb",
+    "git_diff_sha": null,
+    "git_dirty": false,
+    "git_sha": "0f88d1227cf1cc12406c3979e140e10dd7086d98",
     "host": "LAPTOP-11LEDOPR",
     "platform": "Windows-10-10.0.19045-SP0",
     "python": "3.12.2",
     "resumed_from": 0,
-    "timestamp": "2026-08-20T12:59:28",
-    "wall_s": 3.28
+    "timestamp": "2026-08-22T12:35:18",
+    "wall_s": 2.54
   },
   "inputs": {
     "cross_auroc_run_key": "6fa6f505c595041bc802609a009dbd057c2a1393e36d1b87084a568a213a2cf6",

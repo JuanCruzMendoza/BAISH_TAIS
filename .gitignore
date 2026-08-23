@@ -48,3 +48,5 @@ _ckpt_test/
 # after it stops changing. Removed in a finally; this is for the session that gets killed
 # between the mkdtemp and the rmtree.
 .ckpt_stage_*/
+
+research

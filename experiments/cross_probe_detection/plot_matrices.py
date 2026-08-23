@@ -33,6 +33,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from experiments.common import config as cfg, manifest as mf
 
 
+# Display names, so a figure reads as the four rivals rather than as dataset stems.
+AXIS_NAMES = {"story_v2_1k": "Story", "persona_v2": "Persona",
+              "harm_v2": "Harm", "eval_v2": "Eval"}
+
+
+def axis_name(axis):
+    return AXIS_NAMES.get(axis, axis.split("_v")[0].replace("_", " ").capitalize())
+
+
 def read_rows(path):
     with Path(path).open(encoding="utf-8-sig", newline="") as f:
         return list(csv.DictReader(f))
@@ -141,19 +150,21 @@ def main():
     A, D, E = M["auroc"], M["cohens_dz"], M["excess_over_null"]
     cos_rows = read_rows(lay.csv / "geometry_cos_chosen.csv")
     C_own = cos_matrix(cos_rows, entries, entries, "own_layer", keyed_rows=True)
-    C_mat = cos_matrix(cos_rows, axes, entries, "matched_to_col", keyed_rows=False)
+    # Transposed so the layer sits on the row, as it does in every cell matrix: read
+    # M[i][j] as "the column axis re-read at the row's chosen layer". Cosine is
+    # symmetric in its two vectors, so only the layer distinguishes the two triangles.
+    C_mat = cos_matrix(cos_rows, axes, entries, "matched_to_col", keyed_rows=False).T
 
     # The layer belongs on the axis it is operative for. In a cell matrix everything
     # happens at the *row's* layer, so labelling the columns with theirs would name a
     # number the off-diagonal cells never use.
-    lab = [f"{a}\nL{l}" for a, l in entries]
-    plain = list(axes)
+    lab = [f"{axis_name(a)}\nL{l}" for a, l in entries]
+    plain = [axis_name(a) for a in axes]
     # Self-cells: the same axis on both sides, wherever it sits. With two chosen layers
     # these are no longer the literal diagonal.
     box_cell = [(i, axes.index(a)) for i, (a, _) in enumerate(entries)]
     box_own = [(i, j) for i, e in enumerate(entries) for j, f in enumerate(entries)
                if e == f]
-    box_mat = [(axes.index(a), j) for j, (a, _) in enumerate(entries)]
     null = ge["config"]["cos_null_band"]
     dz_max = float(np.nanmax(np.abs(D)))
     ex_max = float(np.nanmax(np.abs(E)))
@@ -174,8 +185,8 @@ def main():
              r"$d_z$", -dz_max, dz_max, "{:+.2f}"),
             (run.artefact("_cos_own.png"), C_own, lab, lab, box_own,
              "cos between the chosen vectors", "cosine", -1.0, 1.0, "{:+.3f}"),
-            (run.artefact("_cos_matched.png"), C_mat, plain, lab, box_mat,
-             "cosine similarity at the column's chosen layer",
+            (run.artefact("_cos_matched.png"), C_mat, lab, plain, box_cell,
+             "Cosine similarity at the row's chosen layer",
              "cosine", -1.0, 1.0, "{:+.3f}"),
         ]
         for path, M, rl, cl, bx, title, cbar, lo, hi, fmt in made:
@@ -189,7 +200,7 @@ def main():
     print(f"  cos null band ±{null:.3f}")
     print("  chosen layers: " + " ".join(f"{a}=L{l}" for a, l in entries))
     off = C_mat.copy()
-    for i, j in box_mat:
+    for i, j in box_cell:
         off[i, j] = np.nan
     print(f"  strongest off-diagonal |cos| (matched): {np.nanmax(np.abs(off)):.3f}   "
           f"null ±{null:.3f}")

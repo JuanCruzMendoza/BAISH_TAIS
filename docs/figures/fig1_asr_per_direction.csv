@@ -1,0 +1,21 @@
+arm,direction,label,model,layer,mode,alpha,asr,delta_asr,ci_lo,ci_hi,cluster_asr,n_clusters,pct_degenerate,n
+success,harm_v2,Harm,Qwen2.5-7B-Instruct,21,add,0.75,0.2,-99.8,-0.0,1.2,1.4,72,14.4,508
+success,harm_v2,Harm,Gemma-2-9B-it,19,add,0.5,0.6,-99.4,0.2,1.7,2.3,131,0.0,542
+success,persona_v2,Persona,Qwen2.5-7B-Instruct,15,add,-0.5,1.6,-98.4,0.7,3.1,1.4,87,0.4,508
+success,persona_v2,Persona,Gemma-2-9B-it,15,add,-1.0,0.4,-99.6,0.1,1.4,0.0,130,0.2,542
+success,story_v2_1k,Story,Qwen2.5-7B-Instruct,18,add,-0.75,49.2,-50.8,44.7,53.7,26.2,83,2.4,508
+success,story_v2_1k,Story,Gemma-2-9B-it,15,add,-1.5,26.6,-73.4,22.8,30.6,8.9,122,6.5,542
+success,story_v2_1kdz,Story (d_z),Qwen2.5-7B-Instruct,23,add,-1.0,88.0,-12.0,85.0,90.4,81.5,81,10.0,508
+success,story_v2_1kdz,Story (d_z),Gemma-2-9B-it,28,add,-0.25,94.1,-5.9,91.9,95.8,89.5,127,2.2,542
+success,eval_v2,Eval,Qwen2.5-7B-Instruct,9,add,0.5,82.3,-17.7,78.7,85.5,57.5,87,1.2,508
+success,eval_v2,Eval,Gemma-2-9B-it,8,add,2.0,55.9,-44.1,51.5,60.2,18.8,126,4.1,542
+refusal,harm_v2,Harm,Qwen2.5-7B-Instruct,21,add,-0.5,64.9,64.9,60.0,69.6,61.9,291,8.3,433
+refusal,harm_v2,Harm,Gemma-2-9B-it,19,add,-0.5,41.8,41.8,37.0,46.7,31.1,272,2.6,423
+refusal,persona_v2,Persona,Qwen2.5-7B-Instruct,15,add,0.25,62.8,62.8,57.8,67.6,62.3,281,12.5,433
+refusal,persona_v2,Persona,Gemma-2-9B-it,15,add,0.75,51.1,51.1,46.1,56.1,40.5,263,5.0,423
+refusal,story_v2_1k,Story,Qwen2.5-7B-Instruct,18,add,0.25,14.1,14.1,11.0,17.8,11.6,308,5.1,433
+refusal,story_v2_1k,Story,Gemma-2-9B-it,15,add,0.5,29.3,29.3,24.9,34.0,19.7,268,3.8,423
+refusal,story_v2_1kdz,Story (d_z),Qwen2.5-7B-Instruct,23,add,0.5,9.0,9.0,6.6,12.1,6.9,307,3.7,433
+refusal,story_v2_1kdz,Story (d_z),Gemma-2-9B-it,28,add,0.25,6.6,6.6,4.6,9.3,5.0,267,3.5,423
+refusal,eval_v2,Eval,Qwen2.5-7B-Instruct,9,add,-1.25,48.7,48.7,43.7,53.8,45.7,289,9.9,433
+refusal,eval_v2,Eval,Gemma-2-9B-it,8,add,-1.0,15.1,15.1,11.8,18.9,11.8,270,2.6,423
