@@ -239,10 +239,10 @@ is doing all the work; see below.
 the curve above it is not a statement about jailbreaks. L0 is omitted: `ref_tpr` is 0 there, so its
 0% is τ sitting above the whole positive pole, not a reading.
 
-![story_v2_1k](results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_layer_curves__all_story_v2_1k.png)
-![persona_v2](results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_layer_curves__all_persona_v2.png)
-![harm_v2](results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_layer_curves__all_harm_v2.png)
-![eval_v2](results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_layer_curves__all_eval_v2.png)
+![story_v2_1k](../../experiments/probe_jailbreak_detection/results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_layer_curves__all_story_v2_1k.png)
+![persona_v2](../../experiments/probe_jailbreak_detection/results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_layer_curves__all_persona_v2.png)
+![harm_v2](../../experiments/probe_jailbreak_detection/results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_layer_curves__all_harm_v2.png)
+![eval_v2](../../experiments/probe_jailbreak_detection/results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_layer_curves__all_eval_v2.png)
 
 **`story_v2_1k` has two selective regions, one of them entirely outside the band, and the chosen
 layer is in neither.** L14–18 is selective: fiction 41–68% while `nonfiction_other` sits at **0.0%**
@@ -387,10 +387,10 @@ genuinely not reading jailbreaks as story that deep. Past L19 every curve collap
 **L18 is a saturation layer, not a discriminating one**: 95.4% of *all* jailbreaks clear τ there,
 including 59% of `nonfiction_other`. Its high fiction number is not separation.
 
-![story_v2_1k](results/1K_per_direction/google_gemma-2-9b-it/figures/plot_layer_curves__all_story_v2_1k.png)
-![persona_v2](results/1K_per_direction/google_gemma-2-9b-it/figures/plot_layer_curves__all_persona_v2.png)
-![harm_v2](results/1K_per_direction/google_gemma-2-9b-it/figures/plot_layer_curves__all_harm_v2.png)
-![eval_v2](results/1K_per_direction/google_gemma-2-9b-it/figures/plot_layer_curves__all_eval_v2.png)
+![story_v2_1k](../../experiments/probe_jailbreak_detection/results/1K_per_direction/google_gemma-2-9b-it/figures/plot_layer_curves__all_story_v2_1k.png)
+![persona_v2](../../experiments/probe_jailbreak_detection/results/1K_per_direction/google_gemma-2-9b-it/figures/plot_layer_curves__all_persona_v2.png)
+![harm_v2](../../experiments/probe_jailbreak_detection/results/1K_per_direction/google_gemma-2-9b-it/figures/plot_layer_curves__all_harm_v2.png)
+![eval_v2](../../experiments/probe_jailbreak_detection/results/1K_per_direction/google_gemma-2-9b-it/figures/plot_layer_curves__all_eval_v2.png)
 
 ### Findings
 

@@ -106,7 +106,7 @@ the refit — as `extraction`'s ~0.005 d_z estimate predicted.
 | harm_v2 (21)     | +0.094      | −0.121     | **+0.341** | −0.078     |
 | eval_v2 (9)      | −0.014      | +0.031     | +0.011     | **+0.356** |
 
-![excess over null](results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_matrices_excess_over_null.png)
+![excess over null](../../experiments/cross_probe_detection/results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot_matrices_excess_over_null.png)
 
 - **The diagonal tops out at +0.29…+0.37**, so a fitted probe beats an arbitrary direction on its own
   axis by less than 0.4 AUROC. This is the same point as `rand±` in `extraction`: paired AUROC
@@ -210,7 +210,7 @@ weaker but had the same sign.
 | harm_v2 (19) | +0.226 | −0.127 | **+0.344** | −0.040 |
 | eval_v2 (8) | +0.226 | −0.110 | −0.014 | **+0.354** |
 
-![excess over null](results/1K_per_direction/google_gemma-2-9b-it/figures/plot_matrices_excess_over_null.png)
+![excess over null](../../experiments/cross_probe_detection/results/1K_per_direction/google_gemma-2-9b-it/figures/plot_matrices_excess_over_null.png)
 
 The diagonal tops out at **+0.32…+0.36**, the same ceiling as Qwen's +0.29…+0.37: a fitted probe
 beats an arbitrary direction on its own axis by under 0.4 AUROC. **Story's two rows are again

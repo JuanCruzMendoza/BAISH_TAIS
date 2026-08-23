@@ -185,8 +185,8 @@ shortfall (n* = 105, and the 50-tag reported ~98).
 ±0.050), so the vector is real but not converged, and its norm is 4× smaller than the others' —
 which matters directly for experiment 4's steering units.
 
-![story_v2_1k saturation](results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot__story_v2_1k_cos_curve.png)
-![eval_v2 saturation](results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot__eval_v2_cos_curve.png)
+![story_v2_1k saturation](../../experiments/extraction/results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot__story_v2_1k_cos_curve.png)
+![eval_v2 saturation](../../experiments/extraction/results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot__eval_v2_cos_curve.png)
 
 Story is flat above n≈150 at every layer; `eval` is still climbing at 750 and its shallow layers
 converge visibly later than its band.
@@ -205,7 +205,7 @@ layer within 1 SE of the best, SE ≈ √((1+d_z²/2)/n), so it is what the colu
 | `harm_v2` | L23 (1.48) | **L19–25** | L21 (1.47) | L19–25 | L21 (0.585) |
 | `eval_v2` | L13 (1.76) | **L13** | L25 (1.43) | **L11–25 (all)** | L14 (0.324) |
 
-![story_v2_1k effect size](results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot__story_v2_1k_cohens_dz_train.png)
+![story_v2_1k effect size](../../experiments/extraction/results/1K_per_direction/Qwen_Qwen2.5-7B-Instruct/figures/plot__story_v2_1k_cohens_dz_train.png)
 
 **The held-out column confirms but cannot select.** At n=200 its SE is 2× the train column's, so it
 resolves 5 layers where train resolves 3, and for `eval_v2` it resolves *nothing* — all 15 band layers
@@ -310,8 +310,8 @@ Band-mean L17–38. `c` is `mean_paired_cos`; `n@.99` is where the subsample cur
 and `eval_v2` is again the outlier — norm 5× smaller than the others, slowest to converge. Its halves
 agree better here than on Qwen (+0.812 vs +0.734), so the weak axis is slightly less weak, not fixed.
 
-![story_v2_1k saturation](results/1K_per_direction/google_gemma-2-9b-it/figures/plot__story_v2_1k_cos_curve.png)
-![eval_v2 saturation](results/1K_per_direction/google_gemma-2-9b-it/figures/plot__eval_v2_cos_curve.png)
+![story_v2_1k saturation](../../experiments/extraction/results/1K_per_direction/google_gemma-2-9b-it/figures/plot__story_v2_1k_cos_curve.png)
+![eval_v2 saturation](../../experiments/extraction/results/1K_per_direction/google_gemma-2-9b-it/figures/plot__eval_v2_cos_curve.png)
 
 ## Where to read each axis
 
@@ -327,7 +327,7 @@ layer within 1 SE of the argmax.
 
 ⚠ outside the band, so those cells carry `--allow-out-of-band`.
 
-![story_v2_1k effect size](results/1K_per_direction/google_gemma-2-9b-it/figures/plot__story_v2_1k_cohens_dz_train.png)
+![story_v2_1k effect size](../../experiments/extraction/results/1K_per_direction/google_gemma-2-9b-it/figures/plot__story_v2_1k_cohens_dz_train.png)
 
 **Every axis reads shallower than on Qwen** in fractional depth (0.19–0.67 vs 0.32–0.82), and two now
 fall outside the band entirely — an artefact of the band being a fixed fraction while the axes sit at
