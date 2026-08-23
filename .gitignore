@@ -50,3 +50,6 @@ _ckpt_test/
 .ckpt_stage_*/
 
 research
+draft.md
+*.html
+guion.md
