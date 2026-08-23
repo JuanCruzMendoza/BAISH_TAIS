@@ -853,7 +853,7 @@ It has to exclude degenerate rows: a broken response scores `strongreject == 0`,
 what a refusal scores, so an all-rows ASR cannot tell a restored refusal from a destroyed model.
 **Read `deg` first** — above ~15% the ΔASR column is measuring degeneration.
 
-α ≥ 1.25 for `story_v2_1k` @L15 and α ≥ 1.5 for `eval_v2` come from `notebook_1K_gemma_2`; the rest
+α ≥ 1.25 for `story_v2_1k` @L15 and α ≥ 1.5 for `eval_v2` come from a follow-up pass; the rest
 is the original sweep.
 
 **`persona_v2` (L15)**
@@ -1037,9 +1037,9 @@ never have shown.
   success rows do not comply at steer time. The no-op is the denominator, never the baseline.
 - 4 cells scored n−1 rows: one response per cell did not parse into a `#scores` block and counts
   against ASR (≤0.2%).
-- **58 cells, not 48**: `notebook_1K_gemma_2` added the α tail (story@L15 1.25/1.50, eval@L8
-  1.50/2.00) and `notebook_1K_gemma_3` story@L15 1.75/2.00, all at the same pinned batch size, so
-  they share the original no-ops.
+- **58 cells, not 48**: two follow-up passes added the α tail (story@L15 1.25/1.50 and eval@L8
+  1.50/2.00, then story@L15 1.75/2.00), all at the same pinned batch size, so they share the
+  original no-ops.
 - **story@L15's induce arm stops at 1.50 by decision**, not for want of data: it was already 95%
   degenerate there, so 1.75/2.00 were never generated on that side.
 - Narrativity (§5) is not yet run, so *why* story@L15 restores — narrative framing or something else

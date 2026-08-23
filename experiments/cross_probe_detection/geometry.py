@@ -162,7 +162,7 @@ def main():
     ap.add_argument("--axes", default=",".join(views.DIRECTIONS))
     ap.add_argument("--layers", default=None,
                     help="axis=layer[+layer],... the chosen layers per direction "
-                         "(extraction insights.md); adds _cos_chosen.csv")
+                         "(docs/extraction/insights.md); adds _cos_chosen.csv")
     args = ap.parse_args()
 
     src = cfg.acts_layout(args.model, args.tag)

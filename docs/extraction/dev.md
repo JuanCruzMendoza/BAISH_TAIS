@@ -1,6 +1,6 @@
 # extraction — build the directions, pick the layer
 
-Spec: `research/spec-experiments.md` §1. Phase 1 of `research/Plan story-mode.md`.
+Spec: `docs/spec-experiments.md` §1. Phase 1 of `research/Plan story-mode.md`.
 
 **Objective.** Extract each of the four rival directions (+ `length` as a nuisance axis) by
 diff-in-means on the last prompt token, at every layer, and decide which layer band reads each

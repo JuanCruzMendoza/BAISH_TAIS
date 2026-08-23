@@ -444,7 +444,7 @@ Two things 1_run left open, and nothing else:
 
 #### New layers
 
-| direction | 1_run | 2_run adds | why (probe_jailbreak_detection/insights.md) |
+| direction | 1_run | 2_run adds | why (docs/probe_jailbreak_detection/insights.md) |
 |---|---|---|---|
 | `story_v2_1k` | L23 | **L15** | largest fiction-vs-rest margin, +57.3 against L23's +28.3, with `nonfiction_other` at 0.0%; `cohens_dz` 2.80 is the highest of the large-margin layers |
 | `persona_v2` | L15 | **L4** ⚠ | largest roleplay − nonfiction margin of any layer (+50.4), and `cohens_dz_train` (2.77) and `mean_paired_cos` (0.606) both peak there |
@@ -729,8 +729,7 @@ rather than α, since σ is not comparable between sites.
 
 `Qwen/Qwen2.5-32B-Instruct`, L=64, d=5120, band **L26–L58**. Third model, same tag and corpus.
 Against Qwen2.5-7B it is a **scale** control — same tokenizer, chat template and architecture — where
-gemma-2-9b is the architecture control. Spec: `research/spec-whole-rerun.md`; run by
-`notebooks/notebook_1K_qwen32B.py`.
+gemma-2-9b is the architecture control. Spec: `docs/spec-experiments.md` §7.
 
 Config follows the gemma run, not 1_run: `add` only, **α = 0.25 / 0.50 / 0.75 / 1.00** signed by
 `RESTORE_SIGN`, and no `ablate`, `cap`, `length` foil, `random` arm or decoding comparison.

@@ -248,7 +248,7 @@ def main():
     ap.add_argument("--axes", default=",".join(views.DIRECTIONS))
     ap.add_argument("--layers", default=None,
                     help="axis=layer[+layer],... the chosen layers per direction "
-                         "(extraction insights.md); default is the mean_paired_cos peak "
+                         "(docs/extraction/insights.md); default is the mean_paired_cos peak "
                          "in band")
     ap.add_argument("--diag", choices=["lopo", "heldout"], default="lopo",
                     help="diagonal cell: LOPO on train + the held-out split, or the "
@@ -339,7 +339,7 @@ def main():
         dk = "diag_lopo" if args.diag == "lopo" else "diag_heldout"
         print_matrix(m_matched, names, f"(a) matched layer L{matched_l} "
                                       f"(depth {matched_l / L:.3f})", dk)
-        rule = ("chosen layer (extraction insights.md): " if chosen is not None else
+        rule = ("chosen layer (docs/extraction/insights.md): " if chosen is not None else
                 "own-best layer = peak mean_paired_cos in band: ")
         head = rule + " ".join(f"{a}=L" + "+L".join(str(l) for l in probe_layers[a])
                                for a in names)

@@ -2,13 +2,13 @@
 Flatten a steer_<direction>.jsonl into a spreadsheet CSV, with the response scored.
 
 One row per generation. Drops the full response (kept as a 120-char preview) and adds the
-readout used to judge the run in insights.md 3:
+readout used to judge the run in docs/initial_tests/insights.md 3:
     saturated      out_tokens hit the max_new cap -> length is a ceiling, not a measurement
     nonascii_frac  fraction of non-ASCII chars   -> collapse into non-English character salad
     rep_frac       1 - unique_words/total_words  -> repetition loop
     degenerate     nonascii_frac > 0.15 or rep_frac > 0.6 (auto; UNDERcounts, see insights 3)
 Also writes a <name>_by_cell.csv pivot: mean proj / out_tokens / degenerate-count per
-(layer, alpha), which is what the tables in insights.md 3 are built from.
+(layer, alpha), which is what the tables in docs/initial_tests/insights.md 3 are built from.
 
 Usage:
     python steer_to_csv.py [steer_narrativity_orth.jsonl | /path/to.jsonl] [model_name]

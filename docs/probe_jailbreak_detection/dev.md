@@ -173,7 +173,7 @@ vectors, at **one chosen layer per direction**, on the **whole** jailbreak corpu
 
 ### Chosen layers
 
-The same four as `cross_probe_detection` at this tag, from `extraction/insights.md` §1K (max
+The same four as `cross_probe_detection` at this tag, from `docs/extraction/insights.md` §1K (max
 `cohens_dz_train`, min train↔held-out gap), passed as an explicit `--layers`:
 
 | `story_v2_1k` | `persona_v2` | `harm_v2` | `eval_v2` |

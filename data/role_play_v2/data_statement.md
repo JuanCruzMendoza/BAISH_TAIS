@@ -5,7 +5,7 @@
 Extract the persona/role-play direction from 1,000 pairs instead of v1's 50, by widening the
 **role** axis (200 of the 275 assistant-axis roles, each with all 5 of its paraphrases) rather
 than crossing 50 roles with 100 requests. v1's 5,000-row crossed table bought nothing the
-50-pair construction did not already give (`extraction/insights.md`), so the extra rows here go
+50-pair construction did not already give (`docs/extraction/insights.md`), so the extra rows here go
 into framing variety, which is what the vector averages over.
 
 It also closes v1's two pole defects: the negative pole was **one** string (or 5 at 10× reuse),

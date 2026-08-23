@@ -115,7 +115,7 @@ direction** instead of a band or a run-time rule.
 
 ### Chosen layers
 
-From `extraction/insights.md` §1K (max `cohens_dz_train`, min train↔held-out gap). They enter as an
+From `docs/extraction/insights.md` §1K (max `cohens_dz_train`, min train↔held-out gap). They enter as an
 explicit `--layers`, not from any JSON:
 
 | `story_v2_1k` | `persona_v2` | `harm_v2` | `eval_v2` |
@@ -123,7 +123,7 @@ explicit `--layers`, not from any JSON:
 | **L23 + L15** | **L15** | **L21** | **L9** |
 
 `story_v2_1k` has a second layer, `a=L1+L2`. **L15** is its detection-best layer
-(`probe_jailbreak_detection/insights.md`: largest fiction-vs-rest margin, +57.3 against L23's +28.3)
+(`docs/probe_jailbreak_detection/insights.md`: largest fiction-vs-rest margin, +57.3 against L23's +28.3)
 and the layer `persona_v2` is chosen at, so the two claims it settles are whether story's leakage
 survives the change of read position and whether story@L15 is persona.
 
@@ -196,7 +196,7 @@ python plot_matrices.py $M --tag 1K_per_direction
 
 ## Open
 
-- `harm_v2` and `persona_v2` share 159 prompts verbatim (8% each, `extraction/insights.md`), so their
+- `harm_v2` and `persona_v2` share 159 prompts verbatim (8% each, `docs/extraction/insights.md`), so their
   cell is measured on overlapping data.
 - Length is uncached at this tag, so no foil enters selection or interpretation.
 - `eval_v2`'s L9 sits **outside** the reporting band L11–25, so its row's `band_*` columns and its

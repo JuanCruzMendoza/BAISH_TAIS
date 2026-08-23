@@ -121,7 +121,7 @@ hidden×hidden matrix. Also reports `sig_frac_*` (length share of the readout) a
 
 Outcomes: no leak → keep `narrativity_orth`, question closed. Leak + `leace_M` holds →
 switch to `narrativity_leace`. Leak + `leace_M` collapses → not separable at this n,
-escalate to the design-side controls in `research/deconfounding-length.md`.
+escalate to the design-side controls in `research/old_ideas/deconfounding-length.md`.
 
 ### 5. `steer_narrativity.py` — does steering narrativity move refusal? (§7a + §7b)
 

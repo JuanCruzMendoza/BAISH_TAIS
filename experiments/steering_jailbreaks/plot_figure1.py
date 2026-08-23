@@ -11,8 +11,8 @@ below `--max-deg`, preferring the cleaner cell when two are within `--tol` point
 above the ceiling is not a behaviour change, it is a broken model, and its ASR is
 indistinguishable from a refusal.
 
-The chosen layers are a research decision recorded in `extraction/insights.md` and
-`probe_jailbreak_detection/insights.md`, not derivable from these CSVs, so they live in
+The chosen layers are a research decision recorded in `docs/extraction/insights.md` and
+`docs/probe_jailbreak_detection/insights.md`, not derivable from these CSVs, so they live in
 MODELS below. `story` carries two of them: the layer maximising the fiction-vs-non-fiction
 reading gap (the primary bar) and the layer maximising Cohen's d_z, which `--no-story-dz` drops.
 """

@@ -18,7 +18,7 @@ WHY THIS EXISTS
     d^T b = 0 leaves d^T Sigma b != 0 and the residual leaks into steering. Removing
     length from the readout requires Sigma-orthogonality, which is the LEACE / mass-mean
     correction (Belrose et al. 2023; Marks & Tegmark 2023). See
-    `research/deconfounding-length.md`.
+    `research/old_ideas/deconfounding-length.md`.
 
 WHAT IT TESTS
     A PURE-LENGTH, NO-NARRATIVE contrast: filler-long vs filler-short. Neither class is
@@ -382,7 +382,7 @@ elif mean("leace_M") >= mean("ort_M") - 0.05:
 else:
     print("=> residual length detected BUT the Sigma correction also costs narrativity "
           "(leace_M << ort_M). Not separable at this n -- report both, escalate to the "
-          "design-side controls in research/deconfounding-length.md.")
+          "design-side controls in research/old_ideas/deconfounding-length.md.")
 print(f"\nresolution: {pos_len.shape[0]}x{neg_len.shape[0]} comparisons per cell, "
       f"p floor = 1/{2 ** pos_len.shape[0]}; read the band, not single layers.")
 print(f"saved metrics    -> {csv_path}")

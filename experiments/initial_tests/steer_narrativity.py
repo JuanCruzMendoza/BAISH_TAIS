@@ -19,7 +19,7 @@ stronger and differently-interpreted intervention.
 
 LAYER CHOICE (default 20,22,24,26)
     `ort_M` saturates at 1.00 across the whole band, so it cannot rank layers; the
-    selection comes from the residual-length column of insights.md 2c instead.
+    selection comes from the residual-length column of docs/initial_tests/insights.md 2c instead.
         L22  ~60% depth, where behavioural steering usually bites, and the fictionality
              best layer. HIGHEST residual-length leakage of the four (dev -0.130).
         L24  2c's primary pick: cleanest residual inside the fictionality overlap L19-24,
@@ -66,11 +66,11 @@ CONFOUND CHECK THE SWEEP GIVES YOU FREE
     `resid_ort_layer` carries each layer's residual-length AUROC from
     tier3_residual_length_metrics.csv when present. If steering power tracks residual-length
     leakage across L18-26, the effect is length-driven; if it does not, that is evidence
-    against. insights.md 2c found the leakage varies a lot inside this band (worst at
+    against. docs/initial_tests/insights.md 2c found the leakage varies a lot inside this band (worst at
     L19, L21-23), so the sweep is informative either way.
 
 CONTROLS (plan section 8) -- not run here, one flag away
-    --direction length_pooled   the named length rival from insights.md 2c
+    --direction length_pooled   the named length rival from docs/initial_tests/insights.md 2c
     --direction random          matched-norm random vector; must NOT restore refusal
     Same sweep, same units, so effects are comparable at matched strength.
 

@@ -4,7 +4,7 @@
     python probe_select.py <model> --direction story_v2 --transfer v1_nofiller100   # 1.2a
 
 LOPO on the train pairs is the out-of-sample column. Layers are chosen by hand from
-this table and recorded in insights.md. Intervals are Clopper-Pearson, never
+this table and recorded in docs/extraction/insights.md. Intervals are Clopper-Pearson, never
 bootstrap (spec 0.7).
 """
 import argparse
@@ -343,7 +343,7 @@ def main():
 
     stem = mf.stem("probe_select", args.direction)
     view = views.read_view(lay, args.direction, "train")
-    config = {"direction": args.direction, "selection": "manual (insights.md)",
+    config = {"direction": args.direction, "selection": "manual (docs/extraction/insights.md)",
               "interval": "clopper_pearson", "dz_vector": "full_sample",
               "auroc_vector": "lopo", "seed": cfg.SEED}
     inputs = {"view_key": view["view_key"]}
